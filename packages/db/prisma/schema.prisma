@@ -10,7 +10,8 @@ datasource db {
 
 model User {
   id                String    @id @default(uuid())
-  username          String    @unique
+  username          String    @unique // modifiable, unicité revérifiée à chaque changement (ADR-014)
+  profilePhotoUrl   String?             // recadrée/redimensionnée côté app avant upload (ADR-014)
   phoneNumber       String?   @unique // collecté à l'onboarding, jamais vérifié (ADR-010)
   email             String?   @unique // collecté à l'onboarding, jamais vérifié (ADR-010)
   subscriptionTier  String    @default("free")

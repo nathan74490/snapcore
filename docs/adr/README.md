@@ -17,3 +17,4 @@ Liste des Architecture Decision Records du projet.
 | [ADR-011](./ADR-011-camera-capture-cameraX.md) | Écran caméra : capture CameraX, geste tap/appui maintenu, nettoyage local après upload | Proposé |
 | [ADR-012](./ADR-012-gestion-amis.md) | Gestion des amis : recherche par pseudo en V1, Snapcode + meilleur ami + flammes en V2 | Proposé |
 | [ADR-013](./ADR-013-story-model.md) | Story : un STORY_ITEM par snap ajouté, expiration et vues réutilisant les mécanismes existants | Proposé |
+| [ADR-014](./ADR-014-profil-modifiable.md) | Profil simple avec photo, entièrement modifiable (y compris le pseudo) | Proposé |
