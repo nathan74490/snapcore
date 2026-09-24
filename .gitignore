@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+*.apk
+*.aab
+local.properties
+.gradle/

@@ -1,0 +1,15 @@
+{
+  "name": "@snapcore/backend",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"TODO: nest start --watch\"",
+    "build": "echo \"TODO: nest build\"",
+    "lint": "echo \"TODO: eslint .\"",
+    "test": "echo \"TODO: jest\""
+  },
+  "dependencies": {
+    "@snapcore/types": "*",
+    "@snapcore/db": "*"
+  }
+}

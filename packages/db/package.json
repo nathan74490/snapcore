@@ -1,0 +1,16 @@
+{
+  "name": "@snapcore/db",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate": "prisma migrate dev"
+  },
+  "devDependencies": {
+    "prisma": "^5.20.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0"
+  }
+}
