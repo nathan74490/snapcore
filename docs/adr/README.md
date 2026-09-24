@@ -15,3 +15,4 @@ Liste des Architecture Decision Records du projet.
 | [ADR-009](./ADR-009-statut-messages-couleurs.md) | Modèle de statut des messages (couleurs/icônes façon Snapchat) | Proposé |
 | [ADR-010](./ADR-010-onboarding-sans-verification.md) | Onboarding : téléphone et email collectés, sans système de vérification par code | Proposé |
 | [ADR-011](./ADR-011-camera-capture-cameraX.md) | Écran caméra : capture CameraX, geste tap/appui maintenu, nettoyage local après upload | Proposé |
+| [ADR-012](./ADR-012-gestion-amis.md) | Gestion des amis : recherche par pseudo en V1, Snapcode + meilleur ami + flammes en V2 | Proposé |

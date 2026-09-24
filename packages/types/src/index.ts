@@ -23,3 +23,16 @@ export interface Message {
   contentType: MessageContentType;
   createdAt: string;
 }
+
+// Relation d'amitié entre deux utilisateurs (voir ADR-012).
+// V1 : recherche par pseudo uniquement. V2 (plus tard) : Snapcode, meilleur ami, flammes.
+export type FriendshipStatus = "PENDING" | "ACCEPTED" | "BLOCKED" | "DECLINED";
+
+export interface Friendship {
+  id: string;
+  requesterId: string;
+  addresseeId: string;
+  status: FriendshipStatus;
+  createdAt: string;
+  respondedAt?: string;
+}
