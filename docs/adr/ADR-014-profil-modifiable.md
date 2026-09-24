@@ -8,10 +8,10 @@ SnapCore doit proposer un écran de profil simple pour ce premier lot de fonctio
 
 ## Décision
 - Champs du profil en V1 : `username`, `profilePhotoUrl`, `phoneNumber` et `email` (ces deux derniers déjà ajoutés par ADR-010). Pas de nom d'affichage distinct, pas de Snap Score, pas de Bitmoji pour l'instant.
-- Photo de profil : upload direct vers R2 via URL pré-signée, comme pour les snaps et les stories — même pipeline média, aucune nouvelle brique d'infra.
+- Photo de profil : upload direct vers R2 via URL pré-signée, comme pour les snaps et les stories — même pipeline média déjà formalisé par ADR-016.
 - La photo est recadrée et redimensionnée à une taille fixe (512×512) directement sur le téléphone avant l'envoi, pour limiter le stockage R2 utilisé et éviter un pipeline de traitement d'image côté serveur.
 - En l'absence de photo, un avatar par défaut est généré à l'affichage (initiales du pseudo sur fond coloré), côté app — aucune image par défaut stockée sur R2.
-- Toutes les informations du profil sont modifiables depuis l'écran profil, y compris le pseudo. Une modification du pseudo revérifie son unicité (contrainte `@unique` déjà présente en base sur `User.username`) ; en cas de conflit, l'API renvoie une erreur explicite (409) sans modifier la ligne.
+- Toutes les informations du profil sont modifiables depuis l'écran profil, y compris le pseudo. Une modification du pseudo revérifie son unicité (contrainte `@unique` déjà présente en base sur `User.username`) ; en cas de conflit, l'API renvoie une erreur explicite (409) sans modifier la ligne. L'unicité est **insensible à la casse** : le pseudo est normalisé en minuscules avant stockage et comparaison (`"Nathan"` et `"nathan"` sont considérés identiques), comme c'est le cas dans le vrai Snapchat.
 
 ## Alternatives
 - Pseudo figé après inscription (comme le vrai Snapchat) : plus fidèle à l'original, mais explicitement écarté ici à la demande du lead développeur, qui veut que tout le profil reste modifiable.
@@ -27,4 +27,4 @@ SnapCore doit proposer un écran de profil simple pour ce premier lot de fonctio
 - Changer librement de pseudo peut perturber la recherche d'amis par pseudo (ADR-012) si un ami cherche l'ancien pseudo après un changement — aucune limite de fréquence de changement n'est imposée en V1 ; à revoir si cela pose problème en usage réel.
 
 ## Liens
-- ADR liés : ADR-010, ADR-012
+- ADR liés : ADR-010, ADR-012, ADR-016

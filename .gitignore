@@ -12,3 +12,4 @@ build/
 *.aab
 local.properties
 .gradle/
+.idea/

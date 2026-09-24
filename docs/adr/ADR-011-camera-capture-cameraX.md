@@ -27,4 +27,4 @@ L'écran d'accueil de SnapCore est l'écran caméra, comme dans Snapchat : captu
 - Une vidéo interrompue par une erreur réseau avant confirmation de l'upload doit être conservée en cache le temps d'un nouvel essai, ce qui demande une gestion d'erreur explicite côté app (à prévoir dans l'implémentation).
 
 ## Liens
-- ADR liés : ADR-003
+- ADR liés : ADR-003, ADR-016

@@ -8,41 +8,89 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum SubscriptionTier {
+  free
+  premium
+}
+
+enum MessageContentType {
+  TEXT             // voir ADR-009
+  SNAP_PHOTO
+  SNAP_PHOTO_VIDEO
+}
+
+enum FriendshipStatus {
+  PENDING          // voir ADR-012
+  ACCEPTED
+  BLOCKED
+  DECLINED
+}
+
+enum StoryContentType {
+  PHOTO            // voir ADR-013
+  VIDEO
+}
+
 model User {
   id                String    @id @default(uuid())
-  username          String    @unique // modifiable, unicité revérifiée à chaque changement (ADR-014)
+  username          String    @unique // normalisé en minuscules, modifiable, unicité revérifiée (ADR-014)
+  passwordHash      String    // bcrypt (ADR-015)
   profilePhotoUrl   String?             // recadrée/redimensionnée côté app avant upload (ADR-014)
   phoneNumber       String?   @unique // collecté à l'onboarding, jamais vérifié (ADR-010)
   email             String?   @unique // collecté à l'onboarding, jamais vérifié (ADR-010)
-  subscriptionTier  String    @default("free")
+  subscriptionTier  SubscriptionTier @default(free)
   premiumUntil      DateTime?
   createdAt         DateTime  @default(now())
+
+  sentMessages        Message[]    @relation("MessageSender")
+  receivedMessages    Message[]    @relation("MessageRecipient")
+  friendshipsSent     Friendship[] @relation("FriendshipRequester")
+  friendshipsReceived Friendship[] @relation("FriendshipAddressee")
+  storyItems          StoryItem[]
 }
 
 model Message {
-  id            String   @id @default(uuid())
+  id            String             @id @default(uuid())
   senderId      String
+  sender        User               @relation("MessageSender", fields: [senderId], references: [id])
   recipientId   String
-  contentType   String   // "TEXT" | "SNAP_PHOTO" | "SNAP_PHOTO_VIDEO" — voir ADR-009
-  createdAt     DateTime @default(now())
+  recipient     User               @relation("MessageRecipient", fields: [recipientId], references: [id])
+  contentType   MessageContentType // voir ADR-009
+  content       String?            // texte du chat, renseigné uniquement si contentType = TEXT (ADR-009)
+  mediaUrl      String?            // média R2 (ADR-016), renseigné uniquement si contentType = SNAP_PHOTO | SNAP_PHOTO_VIDEO (ADR-009)
+  createdAt     DateTime           @default(now())
+  openedAt      DateTime?          // horodatage durable de la 1re ouverture ; null = jamais ouvert (ADR-009)
+
+  @@index([senderId])
+  @@index([recipientId])
 }
 
 model Friendship {
-  id            String    @id @default(uuid())
+  id            String           @id @default(uuid())
   requesterId   String
+  requester     User             @relation("FriendshipRequester", fields: [requesterId], references: [id])
   addresseeId   String
-  status        String    @default("PENDING") // "PENDING" | "ACCEPTED" | "BLOCKED" | "DECLINED" — voir ADR-012
-  createdAt     DateTime  @default(now())
+  addressee     User             @relation("FriendshipAddressee", fields: [addresseeId], references: [id])
+  status        FriendshipStatus @default(PENDING) // voir ADR-012
+  blockedBy     String?          // ID de l'utilisateur à l'origine du blocage, renseigné uniquement si status = BLOCKED (ADR-012)
+  createdAt     DateTime         @default(now())
   respondedAt   DateTime?
 
+  // Unicité de la paire dans CE sens ; l'absence de doublon dans l'autre sens
+  // (addresseeId, requesterId) est garantie côté application, pas en base (ADR-012).
   @@unique([requesterId, addresseeId])
+  @@index([addresseeId])
 }
 
 model StoryItem {
-  id            String   @id @default(uuid())
+  id            String           @id @default(uuid())
   authorId      String
+  author        User             @relation(fields: [authorId], references: [id])
   mediaUrl      String
-  contentType   String   // "PHOTO" | "VIDEO" — voir ADR-013
-  createdAt     DateTime @default(now())
-  expiresAt     DateTime // createdAt + 24h ; déclenche le job BullMQ de purge existant
+  contentType   StoryContentType // voir ADR-013
+  createdAt     DateTime         @default(now())
+  expiresAt     DateTime         // createdAt + 24h ; déclenche le job BullMQ de purge (ADR-017)
+
+  @@index([authorId])
+  @@index([expiresAt])
 }

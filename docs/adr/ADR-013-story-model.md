@@ -26,4 +26,4 @@ SnapCore doit proposer les stories : une succession de snaps publiés par un uti
 - Reconstituer "la story" d'un utilisateur nécessite de requêter tous ses `STORY_ITEM` non expirés à chaque affichage, plutôt qu'une seule ligne à lire — acceptable vu le volume attendu pour ce projet.
 
 ## Liens
-- ADR liés : ADR-003, ADR-012
+- ADR liés : ADR-003, ADR-012, ADR-016, ADR-017

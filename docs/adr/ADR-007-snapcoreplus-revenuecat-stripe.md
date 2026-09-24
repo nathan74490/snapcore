@@ -20,7 +20,7 @@ Utiliser RevenueCat pour orchestrer l'abonnement, avec Stripe (en mode test) com
 
 ### Négatives
 - Paiement via une page web Stripe (Checkout) plutôt que la boîte de dialogue native Android qu'un vrai utilisateur Play Store verrait — moins fidèle sur ce point précis à une vraie app Android publiée.
-- Le choix de basculer vers Google Play Billing reste ouvert et sera retranché plus tard si besoin.
+- Le choix de basculer vers Google Play Billing reste ouvert et sera tranché plus tard si besoin.
 
 ## Liens
 - ADR liés : aucun
