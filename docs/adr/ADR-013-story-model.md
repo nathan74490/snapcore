@@ -4,12 +4,12 @@
 Proposé
 
 ## Contexte
-SnapCore doit proposer les stories : une succession de snaps publiés par un utilisateur, visibles par ses amis pendant 24h, avec disparition automatique du contenu et de la liste des personnes ayant vu chaque snap. Le projet dispose déjà d'un worker BullMQ de purge des médias expirés et d'un mécanisme de suivi de vue éphémère dans Redis (ADR-003) pour les snaps privés.
+SnapCore doit proposer les stories : une succession de snaps publiés par un utilisateur, visibles par ses amis pendant 24h, avec disparition automatique du contenu et de la liste des personnes ayant vu chaque snap. Le projet dispose déjà d'un worker BullMQ de purge des médias expirés (ADR-017).
 
 ## Décision
-- Une entité `STORY_ITEM` par snap ajouté à une story (pas une entité "Story" unique) : `id`, `authorId`, `mediaUrl`, `contentType` (`PHOTO` | `VIDEO`), `createdAt`, `expiresAt` (`createdAt` + 24h). La "story" affichée à l'écran est simplement l'ensemble des `STORY_ITEM` non expirés d'un même auteur.
-- Expiration : chaque `STORY_ITEM` programme, à sa création, le job BullMQ de purge des médias déjà prévu dans l'architecture globale, exécuté à `expiresAt` (suppression du média sur R2 + suppression de la ligne PostgreSQL).
-- Suivi des vues : un `Set` Redis par `STORY_ITEM` (`story:views:<storyItemId>`) contenant les IDs des viewers, avec un TTL aligné sur `expiresAt` — même principe que le suivi de vue des snaps privés (ADR-003), pas de table PostgreSQL dédiée.
+- Une entité `STORY_ITEM` par snap ajouté à une story (pas une entité "Story" unique) : `id`, `authorId`, `mediaKey`, `contentType` (`PHOTO` | `VIDEO`), `createdAt`, `expiresAt` (`createdAt` + 24h). La "story" affichée à l'écran est simplement l'ensemble des `STORY_ITEM` non expirés d'un même auteur.
+- Expiration : chaque `STORY_ITEM` programme, à sa création, le job BullMQ de purge des médias déjà prévu dans l'architecture globale (ADR-017), exécuté à `expiresAt` (suppression de l'objet R2 + suppression de la ligne `STORY_ITEM`, contrairement au `Message` d'un snap privé dont seule la ligne est conservée à vide — voir ADR-009 : il n'y a pas de besoin d'affichage "expiré" pour un élément de story).
+- Suivi des vues : un `Set` Redis par `STORY_ITEM` (`story:views:<storyItemId>`) contenant les IDs des viewers, avec un TTL aligné sur `expiresAt`, pas de table PostgreSQL dédiée. Ce choix est indépendant du suivi de statut des snaps privés, qui ne repose plus sur Redis depuis ADR-009 (le statut y est stocké durablement en Postgres via `openedAt`) : pour une story, en revanche, la liste des viewers n'a pas besoin de survivre à l'expiration du contenu, donc Redis reste adapté ici.
 - Visibilité : tous les amis acceptés (statut `ACCEPTED` sur `FRIENDSHIP`, voir ADR-012) peuvent voir la story. Pas de liste personnalisée ("story privée") en V1.
 
 ## Alternatives
@@ -25,5 +25,8 @@ SnapCore doit proposer les stories : une succession de snaps publiés par un uti
 ### Négatives
 - Reconstituer "la story" d'un utilisateur nécessite de requêter tous ses `STORY_ITEM` non expirés à chaque affichage, plutôt qu'une seule ligne à lire — acceptable vu le volume attendu pour ce projet.
 
+## Historique
+- Révision 1 : remplacement de `mediaUrl` par `mediaKey` (cohérence avec ADR-016) ; suppression de la comparaison erronée avec le suivi de vue des snaps privés, qui ne repose plus sur Redis depuis ADR-009 ; clarification que la ligne `STORY_ITEM` est bien supprimée à la purge (contrairement au `Message` d'un snap privé).
+
 ## Liens
-- ADR liés : ADR-003, ADR-012, ADR-016, ADR-017
+- ADR liés : ADR-003, ADR-009, ADR-012, ADR-016, ADR-017

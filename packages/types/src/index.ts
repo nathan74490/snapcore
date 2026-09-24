@@ -42,15 +42,17 @@ export interface Friendship {
   requesterId: string;
   addresseeId: string;
   status: FriendshipStatus;
+  // BLOCKED masque le profil/contenu et interdit la messagerie dans les deux sens ;
+  // seul blockedByUser peut débloquer ; un blocage mutuel est un no-op documenté (ADR-012 v3).
   blockedBy?: string;   // ID de l'utilisateur à l'origine du blocage, uniquement si status = "BLOCKED" (voir ADR-012)
-  createdAt: string;
+  requestedAt: string;  // renommé depuis createdAt (ADR-012 v3)
   respondedAt?: string;
 }
 
 // Un élément de story = un snap publié en story (voir ADR-013).
 // Expiration à createdAt + 24h (job BullMQ de purge, voir ADR-017).
 // Lu via URL pré-signée générée à la demande, jamais via CDN (voir ADR-016).
-// Vues suivies dans Redis (Set avec TTL), pas en base — même principe qu'un snap privé (ADR-003).
+// Vues suivies dans Redis (Set avec TTL aligné sur expiresAt), pas en base : la liste des viewers n'a pas besoin de survivre à l'expiration du contenu (ADR-013). Indépendant du statut des snaps privés, qui est désormais stocké durablement en Postgres (ADR-009), pas sur Redis.
 export type StoryContentType = "PHOTO" | "VIDEO";
 
 export interface StoryItem {

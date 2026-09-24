@@ -33,5 +33,11 @@ L'onboarding (ADR-010) collecte téléphone et email sans vérification, mais au
 - Version initiale (supprimée, non conservée sous ce numéro) : JWT maison (access + refresh) avec mot de passe hashé en bcrypt, sans vérification d'email.
 - Révision : remplacement par Firebase Authentication (email/mot de passe), avec vérification d'email activée (gratuite) mais non bloquante. À partir de cette révision, les futures évolutions de cet ADR sont documentées ici plutôt que réécrites sans trace.
 
+## Sources
+- https://firebase.google.com/pricing (plan Spark : authentification email/mot de passe et vérification d'email gratuites)
+- https://firebase.google.com/docs/auth/limits (quotas : vérification d'email gratuite, limite indicative d'environ 1000 envois/jour sur le plan Spark)
+
+Ces chiffres n'ont pas pu être vérifiés autrement que par lecture de la documentation officielle Firebase citée ci-dessus ; à revalider si Firebase change sa politique de tarification.
+
 ## Liens
 - ADR liés : ADR-002, ADR-010, ADR-018

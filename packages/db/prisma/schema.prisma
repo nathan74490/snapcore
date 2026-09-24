@@ -77,9 +77,12 @@ model Friendship {
   addresseeId     String
   addressee       User             @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
   status          FriendshipStatus @default(PENDING) // voir ADR-012
+  // onDelete: SetNull inatteignable en pratique : blockedBy référence toujours
+  // requesterId ou addresseeId de la même ligne, qui cascadent avant que SetNull
+  // ne puisse s'appliquer ; conservé pour la cohérence du schéma (ADR-019).
   blockedBy       String?
   blockedByUser   User?            @relation("FriendshipBlockedBy", fields: [blockedBy], references: [id], onDelete: SetNull)
-  createdAt       DateTime         @default(now())
+  requestedAt     DateTime         @default(now()) // renommé depuis createdAt (ADR-012 v3) : plus explicite, une demande peut être BLOCKED sans jamais avoir été acceptée
   respondedAt     DateTime?
 
   // Paire triée (indépendante du sens) : empêche structurellement A→B et B→A
@@ -89,6 +92,10 @@ model Friendship {
 
   @@unique([pairLow, pairHigh])
   @@index([addresseeId])
+  // Contraintes CHECK à ajouter via une migration SQL brute (non exprimables en DSL Prisma, ADR-012 v3) :
+  //   CHECK ("requesterId" <> "addresseeId")                                   -- interdit l'auto-ajout
+  //   CHECK ("pairLow" = LEAST("requesterId", "addresseeId")
+  //          AND "pairHigh" = GREATEST("requesterId", "addresseeId"))          -- cohérence de la paire triée
 }
 
 model StoryItem {

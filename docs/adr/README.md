@@ -20,6 +20,6 @@ Liste des Architecture Decision Records du projet.
 | [ADR-014](./ADR-014-profil-modifiable.md) | Profil simple avec photo, entièrement modifiable (y compris le pseudo) | Proposé |
 | [ADR-015](./ADR-015-authentification-firebase.md) | Authentification : Firebase Authentication (email/mot de passe) avec vérification d'email | Proposé |
 | [ADR-016](./ADR-016-stockage-medias-r2.md) | Stockage des médias : Cloudflare R2, CDN public pour le profil uniquement, URL pré-signées pour les snaps et stories | Proposé |
-| [ADR-017](./ADR-017-purge-medias-bullmq.md) | Purge automatique des messages et médias expirés : job BullMQ | Proposé |
+| [ADR-017](./ADR-017-purge-medias-bullmq.md) | Purge automatique des Snaps expirés : job BullMQ, exception SnapCore+ | Proposé |
 | [ADR-018](./ADR-018-notifications-push-fcm.md) | Notifications push : Firebase Cloud Messaging, suivi des tokens et de la présence | Proposé |
 | [ADR-019](./ADR-019-suppression-compte-cascade.md) | Suppression de compte : cascade sur les données liées | Proposé |

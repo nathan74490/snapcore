@@ -17,6 +17,7 @@ Une révision précédente appliquait une règle unique d'expiration (24h après
 - Contenu du message : `content` (texte, uniquement si `contentType = TEXT`) ou `mediaKey` (clé d'objet R2, uniquement si `contentType` est un des deux types de Snap — voir ADR-016) — un seul des deux est renseigné selon le type.
 - **`content` (texte) n'expire jamais et n'est jamais purgé** : stocké durablement en PostgreSQL (jamais en cache), accessible sur n'importe quel appareil tant que le compte existe. La flèche bleue reste pleine (non lu) ou en contour (lu) selon `openedAt`, mais ne devient **jamais grise** — il n'y a pas de notion d'expiration pour un Chat texte.
 - **`mediaKey` (Snap photo/vidéo) reste éphémère**, selon les règles détaillées dans ADR-017 (purge à l'ouverture + 24h, sauf abonnement SnapCore+ actif qui conserve le média indéfiniment ; purge à 30 jours si jamais ouvert). Une fois le média purgé, l'icône passe au gris.
+- **Conservation par abonnement (SnapCore+)** : tant que `mediaKey` n'a pas été purgé, le destinataire peut **rouvrir le Snap autant de fois qu'il le souhaite** — la conservation par abonnement lève la contrainte "vue unique" habituelle d'un Snap. Quand la purge d'un Snap est évitée grâce à un abonnement actif (ADR-017), le backend émet un événement (temps réel si l'expéditeur est connecté, sinon push, ADR-018) informant l'**expéditeur** que son Snap a été conservé — analogue à la notification de sauvegarde du vrai Snapchat, pour que l'expéditeur ne croie pas à tort que son contenu a disparu.
 - Sens (envoyé/reçu) : déduit en comparant l'expéditeur à l'utilisateur connecté — aucun champ supplémentaire nécessaire.
 - Statut (non ouvert / ouvert) : `openedAt` (nullable, PostgreSQL, mis à jour une seule fois à la première ouverture) est la source de vérité, pour les deux types de contenu. Pour un Snap, l'état "gris" s'ajoute lorsque le média a été purgé (`mediaKey` devenu `null` après avoir été renseigné) — pas seulement à partir d'un délai calculé côté client, puisque la purge peut être repoussée indéfiniment par un abonnement actif (ADR-017).
 - Le rendu (couleur, forme, plein/contour/gris) reste entièrement calculé côté application mobile ; aucun calcul côté serveur.
@@ -35,11 +36,13 @@ Une révision précédente appliquait une règle unique d'expiration (24h après
 ### Négatives
 - Deux logiques de statut différentes selon le type de contenu (texte : jamais gris ; Snap : gris une fois purgé) à documenter clairement côté client pour ne pas les confondre.
 - L'icône "gris" d'un Snap dépend de l'état réel du média en base (`mediaKey` null) plutôt que d'un simple calcul de délai côté client — nécessite que le client dispose de cette information à jour (rafraîchissement de la conversation après une purge, notifiée par le canal temps réel ou au prochain chargement).
+- Un Snap conservé par abonnement perd sa sémantique "vue unique" (le destinataire peut le revoir librement), ce qui diffère du comportement classique d'un Snap — assumé comme contrepartie de l'avantage payant.
 
 ## Historique
 - Version initiale : statut basé sur une clé Redis avec TTL (ADR-003), sans champ `content`/`mediaKey`.
 - Révision 1 (revue technique) : ajout de `content`/`mediaKey`, remplacement du mécanisme Redis par `openedAt` + règle fixe de 24h appliquée uniformément à tous les types.
 - Révision 2 (clarification du lead développeur) : le texte (`TEXT`) devient permanent et n'expire jamais ; seul le Snap (photo/vidéo) reste éphémère, avec des règles propres définies par ADR-017 (y compris l'exception d'abonnement SnapCore+).
+- Révision 3 (revue technique) : un Snap conservé par abonnement peut être revu librement par le destinataire, et l'expéditeur est notifié quand son Snap est ainsi conservé.
 
 ## Liens
 - ADR liés : ADR-016, ADR-017
