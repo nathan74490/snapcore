@@ -18,7 +18,7 @@ Liste des Architecture Decision Records du projet.
 | [ADR-012](./ADR-012-gestion-amis.md) | Gestion des amis : recherche par pseudo en V1, Snapcode + meilleur ami + flammes en V2 | Proposé |
 | [ADR-013](./ADR-013-story-model.md) | Story : un STORY_ITEM par snap ajouté, expiration et vues réutilisant les mécanismes existants | Proposé |
 | [ADR-014](./ADR-014-profil-modifiable.md) | Profil simple avec photo, entièrement modifiable (y compris le pseudo) | Proposé |
-| [ADR-015](./ADR-015-authentification-jwt.md) | Authentification : mot de passe (bcrypt) + JWT access/refresh | Proposé |
+| [ADR-015](./ADR-015-authentification-firebase.md) | Authentification : Firebase Authentication (email/mot de passe) avec vérification d'email | Proposé |
 | [ADR-016](./ADR-016-stockage-medias-r2.md) | Stockage des médias : Cloudflare R2 + upload direct par URL pré-signée + CDN | Proposé |
 | [ADR-017](./ADR-017-purge-medias-bullmq.md) | Purge automatique des médias expirés : job BullMQ | Proposé |
 | [ADR-018](./ADR-018-notifications-push-fcm.md) | Notifications push : Firebase Cloud Messaging | Proposé |

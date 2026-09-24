@@ -34,7 +34,7 @@ enum StoryContentType {
 model User {
   id                String    @id @default(uuid())
   username          String    @unique // normalisé en minuscules, modifiable, unicité revérifiée (ADR-014)
-  passwordHash      String    // bcrypt (ADR-015)
+  firebaseUid       String    @unique // identifiant du compte Firebase Authentication (ADR-015)
   profilePhotoUrl   String?             // recadrée/redimensionnée côté app avant upload (ADR-014)
   phoneNumber       String?   @unique // collecté à l'onboarding, jamais vérifié (ADR-010)
   email             String?   @unique // collecté à l'onboarding, jamais vérifié (ADR-010)

@@ -4,7 +4,7 @@ export type SubscriptionTier = "free" | "premium";
 export interface User {
   id: string;
   username: string;             // normalisé en minuscules, modifiable depuis le profil, unicité revérifiée (voir ADR-014)
-  // passwordHash n'est jamais exposé dans les types partagés app/backoffice : il ne quitte pas le backend (voir ADR-015)
+  // firebaseUid (lien vers le compte Firebase Authentication) n'est jamais exposé dans les types partagés app/backoffice (voir ADR-015)
   profilePhotoUrl?: string;     // recadrée/redimensionnée côté app avant upload (voir ADR-014, pipeline média ADR-016)
   phoneNumber?: string;         // collecté à l'onboarding, jamais vérifié (voir ADR-010)
   email?: string;               // collecté à l'onboarding, jamais vérifié (voir ADR-010)
