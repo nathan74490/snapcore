@@ -12,3 +12,4 @@ Liste des Architecture Decision Records du projet.
 | [ADR-006](./ADR-006-realtime-socketio-redis.md) | Passerelle temps réel Socket.io + pub/sub Redis pour le chat | Proposé |
 | [ADR-007](./ADR-007-snapcoreplus-revenuecat-stripe.md) | SnapCore+ : RevenueCat + Stripe (mode test) comme moyen de paiement | Proposé |
 | [ADR-008](./ADR-008-analytics-posthog.md) | PostHog (cloud) comme outil d'analytics, instrumenté côté app et côté backend | Proposé |
+| [ADR-009](./ADR-009-statut-messages-couleurs.md) | Modèle de statut des messages (couleurs/icônes façon Snapchat) | Proposé |

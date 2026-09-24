@@ -7,3 +7,17 @@ export interface User {
   subscriptionTier: SubscriptionTier;
   premiumUntil?: string;
 }
+
+// Types de contenu d'un message de chat, pour le rendu des icônes/couleurs
+// façon Snapchat (voir ADR-009). Le sens (envoyé/reçu) et le statut
+// (non ouvert / ouvert / expiré) se déduisent côté client, à partir de
+// l'expéditeur et du suivi de vue existant (Redis + TTL, ADR-003).
+export type MessageContentType = "TEXT" | "SNAP_PHOTO" | "SNAP_PHOTO_VIDEO";
+
+export interface Message {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  contentType: MessageContentType;
+  createdAt: string;
+}

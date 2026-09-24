@@ -15,3 +15,11 @@ model User {
   premiumUntil      DateTime?
   createdAt         DateTime  @default(now())
 }
+
+model Message {
+  id            String   @id @default(uuid())
+  senderId      String
+  recipientId   String
+  contentType   String   // "TEXT" | "SNAP_PHOTO" | "SNAP_PHOTO_VIDEO" — voir ADR-009
+  createdAt     DateTime @default(now())
+}
