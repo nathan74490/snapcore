@@ -10,7 +10,7 @@ export interface User {
   email?: string;               // copie de lecture ; Firebase reste la source de vérité pour la connexion, tout changement passe par Firebase avant mise à jour ici (voir ADR-014, ADR-015)
   subscriptionTier: SubscriptionTier;
   premiumUntil?: string;
-  deletionRequestedAt?: string; // renseigné dès la demande de suppression de compte ; bloque connexion/actions même avant la fin du job de suppression (voir ADR-019)
+  deletionRequestedAt?: string; // renseigné dès la demande de suppression de compte ; bloque connexion/actions même avant la fin du job de suppression (voir ADR-019). Champ interne : à exclure de toute réponse représentant le profil PUBLIC d'un autre utilisateur (recherche, profil consulté, liste d'amis) — pertinent uniquement pour l'utilisateur lui-même et le backend.
 }
 
 // Types de contenu d'un message de chat, pour le rendu des icônes/couleurs
