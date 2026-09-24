@@ -11,7 +11,7 @@ Collecter le numéro de téléphone et l'email pendant l'onboarding, comme dans 
 
 ## Alternatives
 - Vérification par code maison, avec envoi réel désactivé derrière un drapeau (`OTP_DELIVERY_ENABLED=false`), le code étant renvoyé directement dans la réponse de l'API pour que le testeur puisse le saisir : reproduit plus fidèlement l'expérience Snapchat (étape de saisie du code), mais réimplémente un mécanisme complet (génération de code, stockage à expiration, service d'envoi théorique) que Firebase Authentication couvre déjà gratuitement pour l'email.
-- Vérifier aussi le numéro de téléphone (Firebase "Phone Auth") : écarté, cette vérification est facturée par SMS dès le premier message envoyé sur le plan gratuit, contrairement à la vérification d'email.
+- Vérifier aussi le numéro de téléphone (Firebase "Phone Auth") : écarté — l'envoi de SMS de vérification n'est disponible sur aucun plan gratuit Firebase, il faut passer au plan payant à l'usage (Blaze) pour l'activer, contrairement à la vérification d'email qui reste gratuite sur le plan gratuit (Spark).
 
 ## Conséquences
 ### Positives
@@ -21,6 +21,10 @@ Collecter le numéro de téléphone et l'email pendant l'onboarding, comme dans 
 ### Négatives
 - Le numéro de téléphone n'est jamais confirmé comme appartenant réellement à l'utilisateur (pas de protection anti-bot ni de garantie de récupération de compte par SMS) — acceptable ici puisque l'app n'est jamais exposée à de vrais utilisateurs inconnus.
 - L'email peut rester non confirmé indéfiniment puisque rien ne l'impose ; le statut de vérification reste donc purement informatif en V1.
+
+## Historique
+- Version initiale : aucune vérification, ni email ni téléphone.
+- Révision (adoption de Firebase Authentication, ADR-015) : l'email est désormais vérifié gratuitement via Firebase, sans bloquer l'accès ; le téléphone reste non vérifié.
 
 ## Liens
 - ADR liés : ADR-015

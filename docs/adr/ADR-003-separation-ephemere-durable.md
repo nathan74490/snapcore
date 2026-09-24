@@ -14,7 +14,7 @@ Stocker toute donnée à durée de vie limitée dans Redis avec une expiration (
 
 ## Conséquences
 ### Positives
-- Expiration automatique et fiable (TTL natif Redis), sans job de nettoyage à maintenir.
+- Expiration automatique et fiable (TTL natif Redis) pour les données réellement volatiles, sans scan périodique à maintenir. Cela n'exclut pas qu'un contenu individuel programme son propre job de purge ponctuel à une échéance connue (voir ADR-017 pour les médias) — la distinction est entre "scanner régulièrement pour trouver ce qui a expiré" (évité) et "planifier une action précise à une date connue" (complémentaire, pas contradictoire).
 - Performance élevée pour les données consultées très fréquemment.
 
 ### Négatives

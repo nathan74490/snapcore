@@ -13,12 +13,13 @@ Liste des Architecture Decision Records du projet.
 | [ADR-007](./ADR-007-snapcoreplus-revenuecat-stripe.md) | SnapCore+ : RevenueCat + Stripe (mode test) comme moyen de paiement | Proposé |
 | [ADR-008](./ADR-008-analytics-posthog.md) | PostHog (cloud) comme outil d'analytics, instrumenté côté app et côté backend | Proposé |
 | [ADR-009](./ADR-009-statut-messages-couleurs.md) | Modèle de message complet et statut (couleurs/icônes façon Snapchat) | Proposé |
-| [ADR-010](./ADR-010-onboarding-sans-verification.md) | Onboarding : téléphone et email collectés, sans système de vérification par code | Proposé |
+| [ADR-010](./ADR-010-onboarding-sans-verification.md) | Onboarding : téléphone et email collectés, email vérifié via Firebase, téléphone non vérifié | Proposé |
 | [ADR-011](./ADR-011-camera-capture-cameraX.md) | Écran caméra : capture CameraX, geste tap/appui maintenu, nettoyage local après upload | Proposé |
 | [ADR-012](./ADR-012-gestion-amis.md) | Gestion des amis : recherche par pseudo en V1, Snapcode + meilleur ami + flammes en V2 | Proposé |
 | [ADR-013](./ADR-013-story-model.md) | Story : un STORY_ITEM par snap ajouté, expiration et vues réutilisant les mécanismes existants | Proposé |
 | [ADR-014](./ADR-014-profil-modifiable.md) | Profil simple avec photo, entièrement modifiable (y compris le pseudo) | Proposé |
 | [ADR-015](./ADR-015-authentification-firebase.md) | Authentification : Firebase Authentication (email/mot de passe) avec vérification d'email | Proposé |
-| [ADR-016](./ADR-016-stockage-medias-r2.md) | Stockage des médias : Cloudflare R2 + upload direct par URL pré-signée + CDN | Proposé |
-| [ADR-017](./ADR-017-purge-medias-bullmq.md) | Purge automatique des médias expirés : job BullMQ | Proposé |
-| [ADR-018](./ADR-018-notifications-push-fcm.md) | Notifications push : Firebase Cloud Messaging | Proposé |
+| [ADR-016](./ADR-016-stockage-medias-r2.md) | Stockage des médias : Cloudflare R2, CDN public pour le profil uniquement, URL pré-signées pour les snaps et stories | Proposé |
+| [ADR-017](./ADR-017-purge-medias-bullmq.md) | Purge automatique des messages et médias expirés : job BullMQ | Proposé |
+| [ADR-018](./ADR-018-notifications-push-fcm.md) | Notifications push : Firebase Cloud Messaging, suivi des tokens et de la présence | Proposé |
+| [ADR-019](./ADR-019-suppression-compte-cascade.md) | Suppression de compte : cascade sur les données liées | Proposé |
