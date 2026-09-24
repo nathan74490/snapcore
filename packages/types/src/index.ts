@@ -36,3 +36,17 @@ export interface Friendship {
   createdAt: string;
   respondedAt?: string;
 }
+
+// Un élément de story = un snap publié en story (voir ADR-013).
+// Expiration à createdAt + 24h (job BullMQ de purge déjà prévu).
+// Vues suivies dans Redis (Set avec TTL), pas en base — même principe qu'un snap privé (ADR-003).
+export type StoryContentType = "PHOTO" | "VIDEO";
+
+export interface StoryItem {
+  id: string;
+  authorId: string;
+  mediaUrl: string;
+  contentType: StoryContentType;
+  createdAt: string;
+  expiresAt: string;
+}

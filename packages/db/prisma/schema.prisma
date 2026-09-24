@@ -36,3 +36,12 @@ model Friendship {
 
   @@unique([requesterId, addresseeId])
 }
+
+model StoryItem {
+  id            String   @id @default(uuid())
+  authorId      String
+  mediaUrl      String
+  contentType   String   // "PHOTO" | "VIDEO" — voir ADR-013
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime // createdAt + 24h ; déclenche le job BullMQ de purge existant
+}
