@@ -41,6 +41,7 @@ model User {
   subscriptionTier  SubscriptionTier @default(free)
   premiumUntil      DateTime?
   createdAt         DateTime  @default(now())
+  deletionRequestedAt DateTime? // renseigné au déclenchement de la suppression de compte ; bloque connexion/actions dès cet instant, avant même la fin du job de suppression (ADR-019)
 
   sentMessages         Message[]     @relation("MessageSender")
   receivedMessages     Message[]     @relation("MessageRecipient")
@@ -62,7 +63,8 @@ model Message {
   mediaKey          String?            // clé d'objet R2 (jamais une URL), renseignée uniquement si contentType est un type de Snap ; vidée par la purge (ADR-009, ADR-016, ADR-017)
   createdAt         DateTime           @default(now())
   openedAt          DateTime?          // horodatage durable de la 1re ouverture ; null = jamais ouvert (ADR-009)
-  scheduledPurgeAt  DateTime?          // uniquement pour les Snaps : createdAt + 30j par défaut, ramené à openedAt + 24h à l'ouverture ; repoussé à premiumUntil si abonnement SnapCore+ actif ; toujours null pour un message TEXT (ADR-017)
+  scheduledPurgeAt  DateTime?          // uniquement pour les Snaps : createdAt + 30j par défaut, ramené à openedAt + 24h à l'ouverture, mis à jour à CHAQUE reprogrammation ; repoussé à premiumUntil + 24h si abonnement SnapCore+ actif ; toujours null pour un message TEXT (ADR-017)
+  retainedNotifiedAt DateTime?         // renseigné au premier envoi de la notification "Snap conservé" à l'expéditeur, pour qu'elle ne parte qu'une seule fois même si la purge est évitée à plusieurs reprises (ADR-009)
 
   @@index([senderId])
   @@index([recipientId])

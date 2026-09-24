@@ -14,7 +14,7 @@ Stocker toute donnée à durée de vie limitée dans Redis avec une expiration (
 
 ## Conséquences
 ### Positives
-- Expiration automatique et fiable (TTL natif Redis) pour les données réellement volatiles, sans scan périodique à maintenir. Cela n'exclut pas qu'un contenu individuel programme son propre job de purge ponctuel à une échéance connue (voir ADR-017 pour les médias) — la distinction est entre "scanner régulièrement pour trouver ce qui a expiré" (évité) et "planifier une action précise à une date connue" (complémentaire, pas contradictoire).
+- Expiration automatique et fiable (TTL natif Redis) pour les données réellement volatiles, sans dépendre d'un scan comme mécanisme principal. Ce qui est évité ici, c'est de s'appuyer *uniquement* sur un balayage périodique pour détecter ce qui a expiré (la solution "tout en PostgreSQL + cron" écartée en Alternatives) ; cela n'exclut pas qu'un contenu individuel programme sa propre action de purge à une échéance connue, avec un balayage de rattrapage en filet de sécurité secondaire (voir ADR-017 pour les médias) — la distinction est entre "scanner comme mécanisme principal" (évité) et "planifier une action précise, avec un balayage de secours peu fréquent en complément" (complémentaire, pas contradictoire).
 - Performance élevée pour les données consultées très fréquemment.
 
 ### Négatives
@@ -23,6 +23,7 @@ Stocker toute donnée à durée de vie limitée dans Redis avec une expiration (
 
 ## Historique
 - Révision 1 : correction de l'exemple de donnée éphémère (le statut de vue d'un snap n'est plus sur Redis mais sur la ligne Message en Postgres, voir ADR-009).
+- Révision 2 : clarification de ce qui est réellement évité (le scan comme mécanisme *principal*) pour lever la contradiction apparente avec le balayage de rattrapage secondaire ajouté par ADR-017.
 
 ## Liens
 - ADR liés : ADR-009

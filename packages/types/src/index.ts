@@ -10,6 +10,7 @@ export interface User {
   email?: string;               // copie de lecture ; Firebase reste la source de vérité pour la connexion, tout changement passe par Firebase avant mise à jour ici (voir ADR-014, ADR-015)
   subscriptionTier: SubscriptionTier;
   premiumUntil?: string;
+  deletionRequestedAt?: string; // renseigné dès la demande de suppression de compte ; bloque connexion/actions même avant la fin du job de suppression (voir ADR-019)
 }
 
 // Types de contenu d'un message de chat, pour le rendu des icônes/couleurs
@@ -30,6 +31,7 @@ export interface Message {
   mediaKey?: string;    // clé d'objet R2 (voir ADR-016), jamais une URL directe ; uniquement si contentType est un type de Snap ; vidée après purge sauf abonnement actif (voir ADR-009, ADR-017)
   createdAt: string;
   openedAt?: string;    // horodatage durable de la 1re ouverture ; absent = jamais ouvert (voir ADR-009)
+  retainedNotifiedAt?: string; // renseigné au premier envoi de la notification "Snap conservé" à l'expéditeur, pour qu'elle ne parte qu'une fois (voir ADR-009)
 }
 
 // Relation d'amitié entre deux utilisateurs (voir ADR-012).
@@ -43,7 +45,8 @@ export interface Friendship {
   addresseeId: string;
   status: FriendshipStatus;
   // BLOCKED masque le profil/contenu et interdit la messagerie dans les deux sens ;
-  // seul blockedByUser peut débloquer ; un blocage mutuel est un no-op documenté (ADR-012 v3).
+  // seul blockedByUser peut débloquer ; un blocage mutuel est un no-op apparent mais pas rigoureusement
+  // symétrique, et débloquer un ex-ami ne restaure pas l'amitié précédente (voir ADR-012).
   blockedBy?: string;   // ID de l'utilisateur à l'origine du blocage, uniquement si status = "BLOCKED" (voir ADR-012)
   requestedAt: string;  // renommé depuis createdAt (ADR-012 v3)
   respondedAt?: string;

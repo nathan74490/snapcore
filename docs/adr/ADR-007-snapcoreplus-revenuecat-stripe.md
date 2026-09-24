@@ -21,6 +21,10 @@ Utiliser RevenueCat pour orchestrer l'abonnement, avec Stripe (en mode test) com
 ### Négatives
 - Paiement via une page web Stripe (Checkout) plutôt que la boîte de dialogue native Android qu'un vrai utilisateur Play Store verrait — moins fidèle sur ce point précis à une vraie app Android publiée.
 - Le choix de basculer vers Google Play Billing reste ouvert et sera tranché plus tard si besoin.
+- **Le webhook RevenueCat (renouvellement, annulation) peut arriver avec un léger délai** par rapport à l'événement réel côté Stripe — comme tout webhook, sa livraison n'est ni instantanée ni garantie à la seconde près. C'est cette caractéristique qui justifie la marge de sécurité de 24h ajoutée par ADR-017 avant de considérer un abonnement comme réellement expiré (sans quoi un renouvellement traité avec retard ferait purger à tort un Snap que l'utilisateur vient de payer pour garder).
+
+## Historique
+- Révision 1 : ajout de la remarque sur le délai de livraison du webhook RevenueCat, en réponse à une référence introduite par ADR-017 qui pointait vers cet ADR sans qu'il documente le phénomène.
 
 ## Liens
-- ADR liés : aucun
+- ADR liés : ADR-017
