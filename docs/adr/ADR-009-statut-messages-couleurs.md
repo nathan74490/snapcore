@@ -10,7 +10,7 @@ SnapCore doit reproduire exactement le système d'icônes colorées de Snapchat 
 - Flèche bleue pleine : nouveau Chat (texte) reçu, non lu. Flèche bleue contour : Chat envoyé, ouvert/lu.
 - Gris : Snap ouvert puis expiré (plus disponible).
 
-Une révision précédente appliquait une règle unique d'expiration (24h après ouverture) à tous les types de contenu, y compris le texte. C'est incorrect pour ce projet : **le texte d'un Chat doit être conservé indéfiniment**, en base de données (jamais dans un cache), pour rester accessible même après un changement de téléphone — seul le contenu média d'un Snap (photo/vidéo) est éphémère.
+**Le texte d'un Chat doit être conservé indéfiniment**, en base de données (jamais dans un cache), pour rester accessible même après un changement de téléphone — seul le contenu média d'un Snap (photo/vidéo) est éphémère (ADR-017). Envoyer un message suppose une relation d'amitié acceptée entre les deux comptes (ADR-012).
 
 ## Décision
 - Champ `contentType` (`TEXT` | `SNAP_PHOTO` | `SNAP_PHOTO_VIDEO`) sur MESSAGE, qui détermine la couleur (bleu / rouge / violet) et la forme (flèche pour `TEXT`, carré pour les deux types de Snap).
@@ -44,7 +44,7 @@ Une révision précédente appliquait une règle unique d'expiration (24h après
 - La fenêtre de grâce de 5 minutes signifie qu'un destinataire non abonné peut techniquement redemander l'URL plusieurs fois dans ce court intervalle après la première ouverture — accepté comme nécessaire pour couvrir les échecs de téléchargement, la fenêtre étant trop courte pour constituer un vrai contournement de la règle "vue unique".
 
 ## Historique
-- Version initiale : statut basé sur une clé Redis avec TTL (ADR-003), sans champ `content`/`mediaKey`.
+- Version initiale : statut basé sur une clé Redis avec TTL (ADR-003), sans champ `content`/`mediaKey`, sans distinction entre types de contenu (une révision intermédiaire a un temps appliqué une règle unique de 24h à tous les types y compris le texte, avant d'être corrigée en Révision 2).
 - Révision 1 (revue technique) : ajout de `content`/`mediaKey`, remplacement du mécanisme Redis par `openedAt` + règle fixe de 24h appliquée uniformément à tous les types.
 - Révision 2 (clarification du lead développeur) : le texte (`TEXT`) devient permanent et n'expire jamais ; seul le Snap (photo/vidéo) reste éphémère, avec des règles propres définies par ADR-017 (y compris l'exception d'abonnement SnapCore+).
 - Révision 3 (revue technique) : un Snap conservé par abonnement peut être revu librement par le destinataire, et l'expéditeur est notifié quand son Snap est ainsi conservé.
@@ -52,4 +52,4 @@ Une révision précédente appliquait une règle unique d'expiration (24h après
 - Révision 5 (revue technique) : ajout d'une mise à jour atomique de `openedAt` et d'une fenêtre de grâce de 5 minutes après ouverture, pour éliminer la course entre requêtes concurrentes et permettre de redemander l'URL après un échec de téléchargement ; précision de la durée de vie courte (~1 minute) de l'URL pré-signée et de l'absence de mise en cache disque côté app.
 
 ## Liens
-- ADR liés : ADR-016, ADR-017
+- ADR liés : ADR-012, ADR-016, ADR-017

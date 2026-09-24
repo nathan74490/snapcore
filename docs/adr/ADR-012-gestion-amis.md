@@ -6,7 +6,7 @@ Proposé
 ## Contexte
 SnapCore doit permettre d'ajouter des amis, d'accepter ou refuser une demande, et de bloquer un utilisateur. Le vrai Snapchat propose plusieurs façons d'ajouter un ami (pseudo, Snapcode/QR, contacts téléphoniques) et des mécaniques sociales avancées (meilleur ami, flammes/streaks). Pour rester réaliste sans surcharger le premier lot de fonctionnalités, une partie de ces mécaniques est repoussée à une V2.
 
-Une révision précédente a introduit la paire triée (`pairLow`/`pairHigh`) pour éliminer la condition de course sur les demandes symétriques, mais a laissé disparaître l'effet concret d'un blocage (masquer profil et contenus dans les deux sens, interdire l'envoi de messages), sans préciser qui peut débloquer, ni ce qui se passe si les deux utilisateurs se bloquent mutuellement.
+L'effet d'une relation d'amitié (ou de son absence) sur la messagerie doit être précisé : qui peut envoyer un message à qui, ce que fait un blocage, qui peut débloquer, et ce que devient l'historique de conversation dans chaque cas.
 
 ## Décision
 **V1 :**
@@ -21,6 +21,7 @@ Une révision précédente a introduit la paire triée (`pairLow`/`pairHigh`) po
 - **Débloquer** : la ligne FRIENDSHIP est supprimée — **y compris si les deux utilisateurs étaient amis (`ACCEPTED`) avant le blocage** : débloquer ne restaure pas l'amitié précédente, les deux utilisateurs redeviennent des inconnus l'un pour l'autre et devraient repasser par une nouvelle demande d'ami s'ils souhaitent redevenir amis.
 - **Nouvelle demande sur une ligne `BLOCKED`** : si un utilisateur bloqué (ou celui qui a bloqué) tente d'envoyer une nouvelle demande d'ami sur une paire déjà `BLOCKED`, la demande est **refusée**, sans mettre à jour la ligne (contrairement au cas `DECLINED` ci-dessus). Autant que possible côté API, la réponse ne distingue pas ce refus d'un échec générique (par exemple le même message d'erreur que pour un pseudo introuvable), pour ne pas révéler à l'utilisateur bloqué qu'il l'est.
 - **Bloquer un utilisateur qui n'est pas encore ami** : une ligne est créée directement avec `status = BLOCKED`.
+- **Règle d'envoi de message/snap, jamais posée explicitement jusqu'ici** : envoyer un `Message` (texte ou Snap, ADR-009) à un utilisateur n'est possible **que si une ligne `FRIENDSHIP` `ACCEPTED` existe entre les deux comptes** au moment de l'envoi. Ce n'est pas une conséquence implicite d'un autre choix : c'est la règle qui conditionne l'endpoint d'envoi (il vérifie le statut de la paire avant d'accepter le message), la liste des conversations (qui ne propose de démarrer une conversation qu'avec un ami accepté), et le comportement après un déblocage/re-demande (tant que le statut n'est pas revenu à `ACCEPTED`, l'envoi reste refusé même si l'ancien historique de conversation, lui, redevient visible une fois `ACCEPTED` retrouvé). `PENDING`, `DECLINED` et `BLOCKED` refusent tous l'envoi — `BLOCKED` avec le comportement de non-divulgation déjà décrit ci-dessus, les deux autres avec une erreur ordinaire ("vous devez être amis pour envoyer un message").
 - Ajout d'ami uniquement par recherche de pseudo (pas de Snapcode/QR, pas de découverte via contacts).
 - Notification de demande/acceptation via Socket.io si le destinataire est connecté, sinon push FCM (ADR-018).
 
@@ -36,6 +37,7 @@ Une révision précédente a introduit la paire triée (`pairLow`/`pairHigh`) po
 ### Positives
 - Modèle de données simple et suffisant pour la V1, avec des garanties d'intégrité au niveau base (paire unique, pas d'auto-ajout, cohérence `pairLow`/`pairHigh`).
 - Comportement du blocage entièrement défini : effet, qui peut débloquer, cas du blocage mutuel.
+- La règle "qui peut écrire à qui" est désormais explicite et unique (statut `ACCEPTED` requis), au lieu d'être seulement déductible d'un autre comportement documenté ailleurs (ADR-009).
 
 ### Négatives
 - Aucune protection contre un utilisateur qui multiplie les demandes après un refus répété — acceptable ici, l'app n'étant jamais exposée à de vrais utilisateurs malveillants.
@@ -48,6 +50,7 @@ Une révision précédente a introduit la paire triée (`pairLow`/`pairHigh`) po
 - Révision 2 (revue technique) : effet concret du blocage explicité (profils/contenus masqués, messages interdits, dans les deux sens), règle de déblocage (seul le bloqueur), comportement du blocage mutuel, contraintes `CHECK` pour l'auto-ajout et la cohérence de paire, renommage `createdAt` → `requestedAt`.
 - Révision 3 (revue technique) : correction de la casse dans la contrainte `CHECK` (`"requesterId"`, pas `requester_id`, pour matcher les colonnes générées par Prisma) ; reconnaissance que le blocage mutuel n'est pas rigoureusement équivalent à un blocage symétrique (ajout en Conséquences négatives) ; règle explicite du `requesterId` lors d'une relance après refus (inversé si c'est l'autre personne qui relance) ; rejet explicite (sans révéler le blocage) d'une nouvelle demande sur une ligne `BLOCKED` ; précision que débloquer un ex-ami ne restaure pas l'amitié précédente.
 - Révision 4 (revue technique) : ajout de l'endpoint "mes utilisateurs bloqués" (sans lui le bloqueur ne pourrait pas retrouver un profil qu'il a lui-même masqué pour débloquer) ; précision que l'historique de conversation n'est jamais supprimé par un blocage, seulement masqué tant que la ligne reste `BLOCKED` ; correction d'une coquille dans les conséquences négatives ("A→B" mal formulé).
+- Révision 5 (revue technique) : ajout de la règle explicite "envoi de message possible seulement si `FRIENDSHIP` `ACCEPTED`" — jusqu'ici seulement déductible d'une remarque sur l'historique de conversation, sans jamais avoir été posée comme règle conditionnant l'endpoint d'envoi ; section Contexte allégée (l'historique des révisions est désormais uniquement dans cette section).
 
 ## Liens
-- ADR liés : ADR-018
+- ADR liés : ADR-009, ADR-018
