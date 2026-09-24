@@ -8,34 +8,38 @@ SnapCore doit reproduire exactement le système d'icônes colorées de Snapchat 
 - Carré rouge plein : nouveau Snap photo reçu, non ouvert. Carré rouge contour : Snap photo envoyé, ouvert par le destinataire.
 - Carré violet plein : nouveau Snap photo + vidéo/son reçu, non ouvert. Carré violet contour : Snap photo + vidéo/son envoyé, ouvert.
 - Flèche bleue pleine : nouveau Chat (texte) reçu, non lu. Flèche bleue contour : Chat envoyé, ouvert/lu.
-- Gris : Snap ou Chat ouvert puis expiré (plus disponible).
+- Gris : Snap ouvert puis expiré (plus disponible).
+
+Une révision précédente appliquait une règle unique d'expiration (24h après ouverture) à tous les types de contenu, y compris le texte. C'est incorrect pour ce projet : **le texte d'un Chat doit être conservé indéfiniment**, en base de données (jamais dans un cache), pour rester accessible même après un changement de téléphone — seul le contenu média d'un Snap (photo/vidéo) est éphémère.
 
 ## Décision
 - Champ `contentType` (`TEXT` | `SNAP_PHOTO` | `SNAP_PHOTO_VIDEO`) sur MESSAGE, qui détermine la couleur (bleu / rouge / violet) et la forme (flèche pour `TEXT`, carré pour les deux types de Snap).
 - Contenu du message : `content` (texte, uniquement si `contentType = TEXT`) ou `mediaKey` (clé d'objet R2, uniquement si `contentType` est un des deux types de Snap — voir ADR-016) — un seul des deux est renseigné selon le type.
+- **`content` (texte) n'expire jamais et n'est jamais purgé** : stocké durablement en PostgreSQL (jamais en cache), accessible sur n'importe quel appareil tant que le compte existe. La flèche bleue reste pleine (non lu) ou en contour (lu) selon `openedAt`, mais ne devient **jamais grise** — il n'y a pas de notion d'expiration pour un Chat texte.
+- **`mediaKey` (Snap photo/vidéo) reste éphémère**, selon les règles détaillées dans ADR-017 (purge à l'ouverture + 24h, sauf abonnement SnapCore+ actif qui conserve le média indéfiniment ; purge à 30 jours si jamais ouvert). Une fois le média purgé, l'icône passe au gris.
 - Sens (envoyé/reçu) : déduit en comparant l'expéditeur à l'utilisateur connecté — aucun champ supplémentaire nécessaire.
-- Statut (non ouvert / ouvert / expiré) : `openedAt` (nullable, PostgreSQL, mis à jour une seule fois à la première ouverture) est la **seule** source de vérité — `null` = jamais ouvert, une valeur = ouvert à cet instant. L'état "gris/expiré" se calcule côté client, simplement : `openedAt` renseigné ET `maintenant > openedAt + 24h`. **Redis n'intervient plus du tout dans ce calcul** : il n'y avait rien à y gagner (la donnée est déjà en base, durable) et cela évitait mal l'ambiguïté d'une clé absente. Cette règle de 24h s'applique uniformément aux Snaps et aux Chats texte, par simplification (un seul mécanisme pour tout `MESSAGE`, plutôt que des durées différentes par type de contenu).
+- Statut (non ouvert / ouvert) : `openedAt` (nullable, PostgreSQL, mis à jour une seule fois à la première ouverture) est la source de vérité, pour les deux types de contenu. Pour un Snap, l'état "gris" s'ajoute lorsque le média a été purgé (`mediaKey` devenu `null` après avoir été renseigné) — pas seulement à partir d'un délai calculé côté client, puisque la purge peut être repoussée indéfiniment par un abonnement actif (ADR-017).
 - Le rendu (couleur, forme, plein/contour/gris) reste entièrement calculé côté application mobile ; aucun calcul côté serveur.
-- Le cycle de vie complet (quand le contenu est réellement supprimé du stockage, pas seulement affiché en gris) est défini par ADR-017.
 
 ## Alternatives
 - Un champ `displayColor` calculé et stocké côté serveur : évite un calcul côté client, mais duplique une information déjà déductible d'autres champs.
-- Statut porté par une clé Redis avec TTL (version initiale de cet ADR) : réutilisait une infrastructure déjà en place, mais rendait indiscernables "jamais ouvert" et "expiré" (les deux se traduisant par une clé absente), et n'apportait aucun bénéfice réel une fois `openedAt` introduit en base.
-- Durées de rétention différentes par type de contenu (ex. les Chats texte n'expirent jamais, seuls les Snaps expirent) : plus fidèle au vrai Snapchat, mais ajoute une branche de logique pour un gain d'authenticité jugé secondaire par rapport à la simplicité d'une règle unique.
+- Statut porté par une clé Redis avec TTL (version initiale de cet ADR) : réutilisait une infrastructure déjà en place, mais rendait indiscernables "jamais ouvert" et "expiré", et n'apportait aucun bénéfice une fois `openedAt` introduit en base.
+- Règle unique de 24h après ouverture appliquée à tous les types de contenu, y compris le texte (révision intermédiaire) : plus simple à documenter, mais contraire à l'exigence explicite que les Chats texte restent accessibles indéfiniment.
 
 ## Conséquences
 ### Positives
 - Reproduit fidèlement le système d'icônes de Snapchat, avec un modèle de données complet (contenu inclus).
-- Statut sans ambiguïté, sans dépendance à Redis : un seul champ (`openedAt`) et une durée fixe (24h) suffisent.
-- Règle unique et simple à documenter, appliquée à tous les types de contenu.
+- Le texte d'une conversation ne disparaît jamais, même après un changement d'appareil (stocké en base, pas en cache local).
+- Le statut "gris" d'un Snap reflète l'état réel du média (purgé ou non), cohérent même si la purge est repoussée par un abonnement.
 
 ### Négatives
-- Les Chats texte expirent au même rythme que les Snaps (24h après ouverture), ce qui est moins fidèle au vrai Snapchat où le texte peut être conservé plus longtemps — accepté comme simplification du V1.
-- La logique d'affichage (couleur/forme selon type + sens + statut) reste répartie dans le code client, à documenter clairement.
+- Deux logiques de statut différentes selon le type de contenu (texte : jamais gris ; Snap : gris une fois purgé) à documenter clairement côté client pour ne pas les confondre.
+- L'icône "gris" d'un Snap dépend de l'état réel du média en base (`mediaKey` null) plutôt que d'un simple calcul de délai côté client — nécessite que le client dispose de cette information à jour (rafraîchissement de la conversation après une purge, notifiée par le canal temps réel ou au prochain chargement).
 
 ## Historique
 - Version initiale : statut basé sur une clé Redis avec TTL (ADR-003), sans champ `content`/`mediaKey`.
-- Révision (revue technique) : ajout de `content`/`mediaKey`, remplacement du mécanisme Redis par `openedAt` (durable), retrait de la dépendance à ADR-003 pour le statut.
+- Révision 1 (revue technique) : ajout de `content`/`mediaKey`, remplacement du mécanisme Redis par `openedAt` + règle fixe de 24h appliquée uniformément à tous les types.
+- Révision 2 (clarification du lead développeur) : le texte (`TEXT`) devient permanent et n'expire jamais ; seul le Snap (photo/vidéo) reste éphémère, avec des règles propres définies par ADR-017 (y compris l'exception d'abonnement SnapCore+).
 
 ## Liens
 - ADR liés : ADR-016, ADR-017

@@ -58,16 +58,16 @@ model Message {
   recipientId       String
   recipient         User               @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
   contentType       MessageContentType // voir ADR-009
-  content           String?            // texte du chat, renseigné uniquement si contentType = TEXT, vidé par la purge (ADR-009, ADR-017)
-  mediaKey          String?            // clé d'objet R2 (jamais une URL), renseignée uniquement si contentType est un type de Snap, vidée par la purge (ADR-009, ADR-016, ADR-017)
+  content           String?            // texte du chat, renseigné uniquement si contentType = TEXT ; PERMANENT, jamais purgé (ADR-009)
+  mediaKey          String?            // clé d'objet R2 (jamais une URL), renseignée uniquement si contentType est un type de Snap ; vidée par la purge (ADR-009, ADR-016, ADR-017)
   createdAt         DateTime           @default(now())
   openedAt          DateTime?          // horodatage durable de la 1re ouverture ; null = jamais ouvert (ADR-009)
-  scheduledPurgeAt  DateTime           // createdAt + 30j par défaut ; ramené à openedAt + 24h dès l'ouverture si plus tôt (ADR-017)
+  scheduledPurgeAt  DateTime?          // uniquement pour les Snaps : createdAt + 30j par défaut, ramené à openedAt + 24h à l'ouverture ; repoussé à premiumUntil si abonnement SnapCore+ actif ; toujours null pour un message TEXT (ADR-017)
 
   @@index([senderId])
   @@index([recipientId])
   @@index([senderId, recipientId, createdAt]) // affichage d'une conversation
-  @@index([scheduledPurgeAt])                 // sélection des messages à purger
+  @@index([scheduledPurgeAt])                 // sélection des Snaps à purger
 }
 
 model Friendship {

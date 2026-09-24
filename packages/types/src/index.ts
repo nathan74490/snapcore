@@ -14,8 +14,11 @@ export interface User {
 
 // Types de contenu d'un message de chat, pour le rendu des icônes/couleurs
 // façon Snapchat (voir ADR-009). Le sens (envoyé/reçu) se déduit côté client
-// à partir de l'expéditeur ; le statut (non ouvert / ouvert / expiré) se
-// déduit uniquement d'`openedAt` + 24h, sans dépendance à Redis (voir ADR-009).
+// à partir de l'expéditeur ; le statut se déduit d'`openedAt`.
+// TEXT est permanent (jamais purgé, jamais gris). Un Snap (SNAP_PHOTO /
+// SNAP_PHOTO_VIDEO) est éphémère : purgé 24h après ouverture (ou 30j si
+// jamais ouvert), sauf abonnement SnapCore+ actif qui le conserve
+// indéfiniment (voir ADR-009, ADR-017).
 export type MessageContentType = "TEXT" | "SNAP_PHOTO" | "SNAP_PHOTO_VIDEO";
 
 export interface Message {
@@ -23,8 +26,8 @@ export interface Message {
   senderId: string;
   recipientId: string;
   contentType: MessageContentType;
-  content?: string;    // texte du chat, uniquement si contentType = "TEXT" ; vidé après purge (voir ADR-009, ADR-017)
-  mediaKey?: string;    // clé d'objet R2 (voir ADR-016), jamais une URL directe ; uniquement si contentType est un type de Snap ; vidée après purge (voir ADR-009, ADR-017)
+  content?: string;    // texte du chat, uniquement si contentType = "TEXT" ; PERMANENT, jamais purgé (voir ADR-009)
+  mediaKey?: string;    // clé d'objet R2 (voir ADR-016), jamais une URL directe ; uniquement si contentType est un type de Snap ; vidée après purge sauf abonnement actif (voir ADR-009, ADR-017)
   createdAt: string;
   openedAt?: string;    // horodatage durable de la 1re ouverture ; absent = jamais ouvert (voir ADR-009)
 }
