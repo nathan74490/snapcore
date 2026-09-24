@@ -4,6 +4,8 @@ export type SubscriptionTier = "free" | "premium";
 export interface User {
   id: string;
   username: string;
+  phoneNumber?: string; // collecté à l'onboarding, jamais vérifié (voir ADR-010)
+  email?: string;       // collecté à l'onboarding, jamais vérifié (voir ADR-010)
   subscriptionTier: SubscriptionTier;
   premiumUntil?: string;
 }
