@@ -67,3 +67,9 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | DELETE | `/friendships/:userId` | Retirer un ami | 012 |
 | POST | `/blocks/:userId` | Bloquer | 012 |
 | DELETE | `/blocks/:userId` | Débloquer (seul le bloqueur) | 012 |
+| GET | `/conversations` | Conversations avec mes amis + dernier message | 009, 012 |
+| GET | `/conversations/:friendId/messages?before=&limit=` | Historique (plus récent d'abord) | 009 |
+| POST | `/conversations/:friendId/messages/text` | Chat texte permanent `{ content }` | 009 |
+| POST | `/conversations/:friendId/messages/snap` | Snap `{ uploadId, contentType }` (upload `SNAP_PHOTO` / `SNAP_VIDEO`) | 009, 016 |
+| POST | `/conversations/:friendId/read` | Marque les Chats reçus comme lus | 009 |
+| POST | `/messages/:messageId/view` | Ouvre un Snap : URL ~1 min, vue unique, grâce 5 min, SnapCore+ | 009 |

@@ -1,6 +1,7 @@
 import {
   CopyObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -47,6 +48,12 @@ export class R2ObjectStorage implements ObjectStorage {
     return getSignedUrl(this.client, command, {
       expiresIn: input.expiresInSeconds,
       signableHeaders: new Set(["content-type", "content-length"]),
+    });
+  }
+
+  presignDownload(key: string, expiresInSeconds: number): Promise<string> {
+    return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.config.privateBucket, Key: key }), {
+      expiresIn: expiresInSeconds,
     });
   }
 

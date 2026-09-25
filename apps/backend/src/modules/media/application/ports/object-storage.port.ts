@@ -24,6 +24,9 @@ export interface ObjectStorage {
     expiresInSeconds: number;
   }): Promise<string>;
 
+  /** URL de GET signée vers un objet de la zone privée, à durée de vie courte (ADR-009). */
+  presignDownload(key: string, expiresInSeconds: number): Promise<string>;
+
   /** Métadonnées d'un objet de la zone privée, null s'il n'existe pas. */
   head(key: string): Promise<ObjectMetadata | null>;
 

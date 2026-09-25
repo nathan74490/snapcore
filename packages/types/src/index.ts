@@ -101,3 +101,28 @@ export interface FriendshipListItem {
   respondedAt?: string;
   user: PublicUserProfile;
 }
+
+// Message tel qu'exposé par l'API (voir ADR-009). La clé R2 n'est jamais exposée :
+// `mediaPurged` suffit au client pour afficher l'icône grise d'un Snap expiré.
+export interface MessageView {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  contentType: MessageContentType;
+  content?: string;      // uniquement pour TEXT
+  createdAt: string;
+  openedAt?: string;
+  mediaPurged: boolean;  // toujours false pour TEXT
+}
+
+// Une ligne de la liste de conversations : uniquement les amis ACCEPTED (voir ADR-012).
+export interface ConversationSummary {
+  friend: PublicUserProfile;
+  lastMessage?: MessageView;
+}
+
+// URL de lecture d'un Snap, à durée de vie courte (~1 min), jamais mise en cache disque (voir ADR-009).
+export interface SnapViewUrl {
+  url: string;
+  expiresAt: string;
+}

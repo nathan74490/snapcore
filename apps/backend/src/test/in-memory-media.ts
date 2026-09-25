@@ -24,6 +24,10 @@ export class InMemoryObjectStorage implements ObjectStorage {
     return `https://r2.test/${input.key}?signed`;
   }
 
+  async presignDownload(key: string, expiresInSeconds: number) {
+    return `https://r2.test/${key}?get&expires=${expiresInSeconds}`;
+  }
+
   /** Simule le PUT de l'app sur l'URL signée. */
   simulateUpload(key: string, size: number, contentType: string): void {
     this.objects.set(id({ area: "private", key }), { size, contentType, etag: `"v${++this.version}"` });

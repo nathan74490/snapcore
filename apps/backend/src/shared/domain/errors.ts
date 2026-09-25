@@ -12,6 +12,8 @@ export class ConflictError extends DomainError {}
 export class ForbiddenError extends DomainError {}
 export class ValidationError extends DomainError {}
 export class UnauthenticatedError extends DomainError {}
+// La ressource a existé mais n'est plus disponible (ex. Snap purgé).
+export class GoneError extends DomainError {}
 
 // Levée par un adaptateur de persistance quand une contrainte d'unicité est violée.
 // `field` désigne le champ fautif (ex. "username", "email", "pair").

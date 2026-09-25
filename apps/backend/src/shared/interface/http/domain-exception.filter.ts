@@ -4,6 +4,7 @@ import {
   ConflictError,
   DomainError,
   ForbiddenError,
+  GoneError,
   NotFoundError,
   UnauthenticatedError,
   UniqueViolationError,
@@ -17,6 +18,7 @@ const STATUS_BY_ERROR: Array<[new (...args: never[]) => DomainError, HttpStatus]
   [ForbiddenError, HttpStatus.FORBIDDEN],
   [ValidationError, HttpStatus.BAD_REQUEST],
   [UnauthenticatedError, HttpStatus.UNAUTHORIZED],
+  [GoneError, HttpStatus.GONE],
 ];
 
 @Catch(DomainError)
