@@ -1,5 +1,5 @@
 [versions]
-agp = "9.1.0" # dernière version supportée par Android Studio 2025.3.3 (lastStableBuildVersion)
+agp = "9.4.1"
 kotlin = "2.4.20"
 googleServices = "4.5.0"
 composeBom = "2026.09.00"
