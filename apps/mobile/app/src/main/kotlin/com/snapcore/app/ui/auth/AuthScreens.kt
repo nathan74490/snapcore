@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.Session
 import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.components.SnapTextField
+import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
 
@@ -45,6 +46,7 @@ fun StartScreen(onSession: (Session) -> Unit) {
     val vm = containerViewModel { StartViewModel(it.sessionResolver) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state) { (state as? StartState.Resolved)?.let { onSession(it.session) } }
+    StatusBarIcons(dark = true) // fond jaune : icônes sombres, quel que soit le thème du téléphone
 
     Box(Modifier.fillMaxSize().background(SnapColors.Yellow), contentAlignment = Alignment.Center) {
         when (val s = state) {
@@ -69,6 +71,7 @@ private fun Logo() {
 
 @Composable
 fun WelcomeScreen(onLogin: () -> Unit, onSignUp: () -> Unit) {
+    StatusBarIcons(dark = true)
     Column(
         modifier = Modifier.fillMaxSize().background(SnapColors.Yellow).safeDrawingPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,

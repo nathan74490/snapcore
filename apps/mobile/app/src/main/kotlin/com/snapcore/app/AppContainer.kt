@@ -3,12 +3,17 @@ package com.snapcore.app
 import android.content.Context
 import com.google.firebase.auth.FirebaseAuth
 import com.snapcore.app.data.ApiAccountService
+import com.snapcore.app.data.ApiFriendsService
+import com.snapcore.app.data.ApiSnapService
 import com.snapcore.app.data.DataStorePendingRegistrationStore
 import com.snapcore.app.data.FirebaseAuthService
+import com.snapcore.app.data.R2MediaUploader
 import com.snapcore.app.data.api.FirebaseTokenInterceptor
 import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AuthService
+import com.snapcore.app.domain.FriendsService
+import com.snapcore.app.domain.MediaPublisher
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.SessionResolver
 import kotlinx.serialization.json.Json
@@ -17,6 +22,8 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.io.File
+import java.util.concurrent.TimeUnit
 
 // Injection de dépendances manuelle : un seul graphe d'objets, créé au démarrage de l'app.
 class AppContainer(context: Context) {
@@ -42,4 +49,17 @@ class AppContainer(context: Context) {
     val accounts: AccountService = ApiAccountService(api)
     val pendingRegistration: PendingRegistrationStore = DataStorePendingRegistrationStore(context.applicationContext)
     val sessionResolver = SessionResolver(auth, accounts, pendingRegistration)
+
+    // Client dédié aux PUT vers R2 : sans jeton Firebase (l'URL est déjà signée), délais adaptés
+    // à l'envoi d'une vidéo de 60 s (jusqu'à ~60 Mo, ADR-011).
+    private val storageClient = OkHttpClient.Builder()
+        .writeTimeout(2, TimeUnit.MINUTES)
+        .readTimeout(1, TimeUnit.MINUTES)
+        .build()
+
+    val friends: FriendsService = ApiFriendsService(api)
+    val mediaPublisher = MediaPublisher(R2MediaUploader(api, storageClient), ApiSnapService(api))
+
+    /** Médias capturés : cache privé de l'app, jamais la galerie (ADR-011). */
+    val capturesDir: File = File(context.cacheDir, "captures").apply { mkdirs() }
 }

@@ -6,6 +6,8 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.Path
+import retrofit2.http.Query
 
 // Contrat de l'API REST du backend (apps/backend/README.md). Chaque appel porte l'ID token
 // Firebase de l'utilisateur, ajouté par FirebaseTokenInterceptor (ADR-015).
@@ -24,6 +26,39 @@ interface SnapCoreApi {
 
     @DELETE("me")
     suspend fun deleteAccount()
+
+    // --- Médias (ADR-016) ---
+    @POST("media/uploads")
+    suspend fun requestUpload(@Body body: UploadRequest): UploadInstructions
+
+    // --- Snaps et stories (ADR-009, ADR-013) ---
+    @POST("conversations/{friendId}/messages/snap")
+    suspend fun sendSnap(@Path("friendId") friendId: String, @Body body: SendSnapRequest): MessageDto
+
+    @POST("stories")
+    suspend fun publishStory(@Body body: PublishStoryRequest): OwnStoryItemDto
+
+    // --- Amis (ADR-012) ---
+    @GET("friendships")
+    suspend fun friends(): List<FriendshipItemDto>
+
+    @GET("friendships/requests/incoming")
+    suspend fun incomingRequests(): List<FriendshipItemDto>
+
+    @GET("friendships/requests/outgoing")
+    suspend fun outgoingRequests(): List<FriendshipItemDto>
+
+    @GET("users/search")
+    suspend fun searchUser(@Query("username") username: String): UserSearchResultDto
+
+    @POST("friendships/requests")
+    suspend fun sendFriendRequest(@Body body: FriendRequestBody): FriendshipItemDto
+
+    @POST("friendships/requests/{id}/accept")
+    suspend fun acceptFriendRequest(@Path("id") friendshipId: String): FriendshipItemDto
+
+    @POST("friendships/requests/{id}/decline")
+    suspend fun declineFriendRequest(@Path("id") friendshipId: String)
 }
 
 // Miroir de `User` dans packages/types (le compte vu par lui-même).
@@ -48,3 +83,46 @@ data class UpdateProfileRequest(val username: String? = null, val phoneNumber: S
 // Corps d'erreur renvoyé par DomainExceptionFilter côté backend.
 @Serializable
 data class ApiErrorBody(val statusCode: Int, val error: String? = null, val message: String? = null)
+
+@Serializable
+data class UploadRequest(val purpose: String, val contentType: String, val contentLength: Long)
+
+// En-têtes signés dans l'URL : à renvoyer tels quels lors du PUT, sinon R2 refuse l'envoi (403).
+@Serializable
+data class UploadInstructions(
+    val uploadId: String,
+    val uploadUrl: String,
+    val method: String,
+    val headers: Map<String, String>,
+    val expiresAt: String,
+)
+
+@Serializable
+data class SendSnapRequest(val uploadId: String, val contentType: String)
+
+@Serializable
+data class PublishStoryRequest(val uploadId: String, val contentType: String)
+
+@Serializable
+data class MessageDto(val id: String, val contentType: String, val createdAt: String)
+
+@Serializable
+data class OwnStoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewCount: Int)
+
+@Serializable
+data class PublicProfileDto(val id: String, val username: String, val profilePhotoUrl: String? = null)
+
+@Serializable
+data class FriendshipItemDto(
+    val friendshipId: String,
+    val status: String,
+    val requestedAt: String,
+    val respondedAt: String? = null,
+    val user: PublicProfileDto,
+)
+
+@Serializable
+data class UserSearchResultDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val relation: String)
+
+@Serializable
+data class FriendRequestBody(val username: String)
