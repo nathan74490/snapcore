@@ -82,3 +82,15 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
+
+// Redirige le port 3000 de l'appareil connecté vers le backend local (voir API_BASE_URL) à chaque
+// build de debug, y compris depuis le bouton ▶ d'Android Studio. Nécessaire car un redémarrage
+// d'adb (ouverture d'Android Studio, rebranchement du câble) efface cette redirection.
+val adbReverse = tasks.register<Exec>("adbReverse") {
+    val adb = androidComponents.sdkComponents.adb
+    executable(adb.get().asFile)
+    args("reverse", "tcp:3000", "tcp:3000")
+    // Aucun appareil branché (build CI, émulateur éteint) : ne bloque pas le build.
+    isIgnoreExitValue = true
+}
+tasks.matching { it.name == "preDebugBuild" }.configureEach { dependsOn(adbReverse) }
