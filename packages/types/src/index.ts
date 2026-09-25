@@ -74,3 +74,30 @@ export interface DeviceToken {
   token: string;
   updatedAt: string;
 }
+
+// Profil d'un AUTRE utilisateur tel qu'exposé par l'API (recherche, liste d'amis, demandes).
+// Ne contient jamais phoneNumber, email ni deletionRequestedAt (voir ADR-014, ADR-019).
+export interface PublicUserProfile {
+  id: string;
+  username: string;
+  profilePhotoUrl?: string;
+}
+
+// Relation vue depuis l'utilisateur courant, pour l'affichage d'un résultat de recherche.
+// DECLINED est volontairement présenté comme "NONE" (un refus n'est pas révélé), et un
+// utilisateur BLOCKED n'apparaît jamais dans une recherche (voir ADR-012).
+export type FriendshipRelation = "NONE" | "OUTGOING_REQUEST" | "INCOMING_REQUEST" | "FRIENDS";
+
+export interface UserSearchResult extends PublicUserProfile {
+  relation: FriendshipRelation;
+}
+
+// Une ligne de liste (amis, demandes reçues/envoyées, utilisateurs bloqués) : la relation
+// et l'autre utilisateur de la paire (voir ADR-012).
+export interface FriendshipListItem {
+  friendshipId: string;
+  status: FriendshipStatus;
+  requestedAt: string;
+  respondedAt?: string;
+  user: PublicUserProfile;
+}

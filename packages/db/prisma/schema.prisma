@@ -94,7 +94,7 @@ model Friendship {
 
   @@unique([pairLow, pairHigh])
   @@index([addresseeId])
-  // Contraintes CHECK à ajouter via une migration SQL brute (non exprimables en DSL Prisma, ADR-012 v3) :
+  // Contraintes CHECK ajoutées en SQL brut dans la migration initiale (non exprimables en DSL Prisma, ADR-012 v3) :
   //   CHECK ("requesterId" <> "addresseeId")                                   -- interdit l'auto-ajout
   //   CHECK ("pairLow" = LEAST("requesterId", "addresseeId")
   //          AND "pairHigh" = GREATEST("requesterId", "addresseeId"))          -- cohérence de la paire triée
