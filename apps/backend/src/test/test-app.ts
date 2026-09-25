@@ -10,14 +10,16 @@ import { OBJECT_STORAGE } from "../modules/media/application/ports/object-storag
 import { UPLOAD_TICKET_STORE } from "../modules/media/application/ports/upload-ticket.store";
 import { MESSAGE_REPOSITORY } from "../modules/messages/application/ports/message.repository";
 import { SNAP_PURGE_SCHEDULER } from "../modules/messages/application/ports/snap-purge.scheduler";
-import { PurgeWorker } from "../modules/messages/infrastructure/bullmq/purge.worker";
-import { PURGE_QUEUE } from "../modules/messages/infrastructure/bullmq/purge-queue";
 import { DEVICE_TOKEN_REPOSITORY, PRESENCE_TRACKER, PUSH_SENDER } from "../modules/notifications/application/ports";
+import { PurgeWorker } from "../modules/purge/infrastructure/purge.worker";
+import { PURGE_QUEUE } from "../modules/purge/infrastructure/purge-queue";
+import { STORY_PURGE_SCHEDULER, STORY_REPOSITORY, STORY_VIEW_STORE } from "../modules/stories/application/ports";
 import { FakeIdentityProvider } from "./fakes";
 import { InMemoryFriendshipRepository } from "./in-memory-friendship.repository";
 import { InMemoryObjectStorage, InMemoryUploadTicketStore } from "./in-memory-media";
 import { InMemoryMessageRepository, RecordingPurgeScheduler } from "./in-memory-messages";
 import { InMemoryDeviceTokens, InMemoryPresence, RecordingPush } from "./in-memory-notifications";
+import { InMemoryStoryRepository, InMemoryStoryViews, RecordingStoryPurgeScheduler } from "./in-memory-stories";
 import { InMemoryUserRepository } from "./in-memory-user.repository";
 
 // État partagé entre instances : deux applications construites avec le même `TestWorld`
@@ -32,9 +34,11 @@ export class TestWorld {
   readonly devices = new InMemoryDeviceTokens();
   readonly push = new RecordingPush();
   readonly presence = new InMemoryPresence();
+  readonly stories = new InMemoryStoryRepository();
+  readonly storyViews = new InMemoryStoryViews();
 }
 
-// Application Nest complète, adaptateurs externes (Postgres, Firebase, R2, BullMQ, FCM) remplacés.
+// Application Nest complète, adaptateurs externes (Postgres, Firebase, R2, Redis, BullMQ, FCM) remplacés.
 // `realPresence` garde la présence Redis réelle (tests d'intégration multi-instance).
 export async function createTestApp(
   world: TestWorld,
@@ -59,6 +63,12 @@ export async function createTestApp(
     .useValue({})
     .overrideProvider(SNAP_PURGE_SCHEDULER)
     .useValue(new RecordingPurgeScheduler())
+    .overrideProvider(STORY_REPOSITORY)
+    .useValue(world.stories)
+    .overrideProvider(STORY_VIEW_STORE)
+    .useValue(world.storyViews)
+    .overrideProvider(STORY_PURGE_SCHEDULER)
+    .useValue(new RecordingStoryPurgeScheduler())
     .overrideProvider(PurgeWorker)
     .useValue({})
     .overrideProvider(PUSH_SENDER)

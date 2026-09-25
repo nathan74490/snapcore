@@ -1,9 +1,14 @@
 import { Logger, type OnApplicationShutdown, type OnModuleInit } from "@nestjs/common";
 import { DelayedError, Worker, type ConnectionOptions, type Job, type Queue } from "bullmq";
-import type { SnapPurgeUseCases } from "../../application/snap-purge-use-cases";
-import { PURGE_MESSAGE_JOB, PURGE_SWEEP_JOB, SWEEP_EVERY_MS, type PurgeMessageJobData } from "./purge-queue";
+import { PURGE_JOB_NAME, PURGE_SWEEP_JOB, SWEEP_EVERY_MS, type PurgeJobData } from "./purge-queue";
 
-// Consomme la file de purge : jobs purge-message-<id> et balayage horaire de rattrapage.
+// Ce qu'un contexte (messages, stories) doit fournir au worker pour une cible de purge.
+export interface PurgeHandler {
+  run(targetId: string): Promise<{ kind: "done" } | { kind: "delay"; until: Date }>;
+  sweepOverdue(): Promise<unknown>;
+}
+
+// Consomme la file de purge : jobs purge-message-<id>, purge-story-<id> et balayage horaire.
 export class PurgeWorker implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(PurgeWorker.name);
   private worker?: Worker;
@@ -11,7 +16,7 @@ export class PurgeWorker implements OnModuleInit, OnApplicationShutdown {
   constructor(
     private readonly queue: Queue,
     private readonly connection: ConnectionOptions,
-    private readonly useCases: SnapPurgeUseCases,
+    private readonly handlers: { message: PurgeHandler; story: PurgeHandler },
     private readonly enabled: boolean,
   ) {}
 
@@ -41,10 +46,17 @@ export class PurgeWorker implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async process(job: Job, token?: string): Promise<unknown> {
-    if (job.name === PURGE_SWEEP_JOB) return this.useCases.sweepOverdue();
-    if (job.name !== PURGE_MESSAGE_JOB) throw new Error(`Job inconnu : ${job.name}`);
+    if (job.name === PURGE_SWEEP_JOB) {
+      return {
+        message: await this.handlers.message.sweepOverdue(),
+        story: await this.handlers.story.sweepOverdue(),
+      };
+    }
+    const handler =
+      job.name === PURGE_JOB_NAME.message ? this.handlers.message : job.name === PURGE_JOB_NAME.story ? this.handlers.story : null;
+    if (!handler) throw new Error(`Job inconnu : ${job.name}`);
 
-    const outcome = await this.useCases.runPurgeJob((job.data as PurgeMessageJobData).messageId);
+    const outcome = await handler.run((job.data as PurgeJobData).targetId);
     if (outcome.kind === "delay") {
       // Un job en cours ne peut être ni supprimé ni réajouté : on le re-diffère lui-même
       // (timestamp ABSOLU) puis DelayedError signale à BullMQ qu'il reprendra plus tard.

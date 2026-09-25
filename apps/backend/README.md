@@ -37,9 +37,10 @@ Multi-instance via l'adaptateur Redis de Socket.io ; présence partagée dans Re
 
 ## Jobs (BullMQ)
 
-Le backend embarque le worker de purge des Snaps (ADR-017, `docs/impl/purge-bullmq.md`) :
-jobs `purge-message-<id>` programmés à l'envoi (+30 j) et rapprochés à l'ouverture (+24 h),
-exception SnapCore+ vérifiée à l'exécution, balayage de rattrapage toutes les heures.
+Le backend embarque le worker de purge des médias (module `purge`, ADR-017, `docs/impl/purge-bullmq.md`) :
+jobs `purge-message-<id>` programmés à l'envoi d'un Snap (+30 j) et rapprochés à l'ouverture (+24 h),
+exception SnapCore+ vérifiée à l'exécution ; jobs `purge-story-<id>` à l'expiration d'un élément de story
+(média, ligne et vues supprimés) ; balayage de rattrapage toutes les heures pour les deux.
 `PURGE_WORKER_ENABLED=false` démarre une instance API sans worker.
 
 ## Organisation
@@ -90,5 +91,11 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | POST | `/conversations/:friendId/messages/snap` | Snap `{ uploadId, contentType }` (upload `SNAP_PHOTO` / `SNAP_VIDEO`) | 009, 016 |
 | POST | `/conversations/:friendId/read` | Marque les Chats reçus comme lus | 009 |
 | POST | `/messages/:messageId/view` | Ouvre un Snap : URL ~1 min, vue unique, grâce 5 min, SnapCore+ | 009 |
+| GET | `/stories` | Stories de mes amis (non vues d'abord) | 013 |
+| GET | `/stories/me` | Ma story + nombre de vues par élément | 013 |
+| POST | `/stories` | Publie un élément `{ uploadId, contentType }` (upload `STORY_PHOTO` / `STORY_VIDEO`) | 013, 016 |
+| POST | `/stories/:storyId/view` | URL de lecture ~1 min, enregistre la vue | 013 |
+| GET | `/stories/:storyId/viewers` | Qui a vu mon élément (auteur uniquement) | 013 |
+| DELETE | `/stories/:storyId` | Retire un élément avant expiration | 013 |
 | POST | `/devices` | Enregistre le token FCM de l'appareil `{ token }` (upsert) | 018 |
 | DELETE | `/devices/:token` | Au logout : retire le token de l'appareil | 018 |

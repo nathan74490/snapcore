@@ -126,3 +126,28 @@ export interface SnapViewUrl {
   url: string;
   expiresAt: string;
 }
+
+// Élément de story tel qu'exposé à un ami : la clé R2 n'est jamais exposée (voir ADR-013, ADR-016).
+export interface StoryItemView {
+  id: string;
+  contentType: StoryContentType;
+  createdAt: string;
+  expiresAt: string;
+  viewed: boolean;          // l'utilisateur courant l'a déjà vu
+}
+
+// Story d'un ami : ses éléments encore visibles, du plus ancien au plus récent.
+export interface StoryFeedEntry {
+  author: PublicUserProfile;
+  items: StoryItemView[];
+  hasUnviewed: boolean;
+}
+
+// Élément de ma propre story, avec le nombre de vues (voir ADR-013).
+export interface OwnStoryItemView {
+  id: string;
+  contentType: StoryContentType;
+  createdAt: string;
+  expiresAt: string;
+  viewCount: number;
+}

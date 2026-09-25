@@ -1,14 +1,17 @@
 import { Queue, Worker } from "bullmq";
 import { randomUUID } from "node:crypto";
-import { systemClock } from "../../../../shared/domain/clock";
-import { InMemoryObjectStorage, silentLogger } from "../../../../test/in-memory-media";
-import { InMemoryMessageRepository, RecordingMessageNotifier } from "../../../../test/in-memory-messages";
-import { InMemoryUserRepository } from "../../../../test/in-memory-user.repository";
-import type { UserAccount } from "../../../identity/domain/user";
-import { SnapPurgeUseCases } from "../../application/snap-purge-use-cases";
-import { BullMqSnapPurgeScheduler } from "./bullmq-snap-purge.scheduler";
+import { systemClock } from "../../../shared/domain/clock";
+import { InMemoryObjectStorage, silentLogger } from "../../../test/in-memory-media";
+import { InMemoryMessageRepository, RecordingMessageNotifier } from "../../../test/in-memory-messages";
+import { InMemoryUserRepository } from "../../../test/in-memory-user.repository";
+import type { UserAccount } from "../../identity/domain/user";
+import { SnapPurgeUseCases } from "../../messages/application/snap-purge-use-cases";
+import { BullMqPurgeScheduler } from "./bullmq-purge.scheduler";
 import { PurgeWorker } from "./purge.worker";
-import { bullmqConnection, PURGE_MESSAGE_JOB, purgeMessageJobId } from "./purge-queue";
+import { bullmqConnection, PURGE_JOB_NAME, purgeJobId } from "./purge-queue";
+
+const PURGE_MESSAGE_JOB = PURGE_JOB_NAME.message;
+const purgeMessageJobId = (id: string) => purgeJobId("message", id);
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -17,7 +20,7 @@ const DAY = 24 * 60 * 60 * 1000;
 describe("Purge BullMQ (Redis réel)", () => {
   const connection = bullmqConnection(process.env.REDIS_URL ?? "redis://localhost:6379");
   const queue = new Queue(`it-media-purge-${randomUUID().slice(0, 8)}`, { connection });
-  const scheduler = new BullMqSnapPurgeScheduler(queue, systemClock);
+  const scheduler = new BullMqPurgeScheduler(queue, systemClock, "message");
   let users: InMemoryUserRepository;
   let messages: InMemoryMessageRepository;
   let storage: InMemoryObjectStorage;
@@ -56,7 +59,13 @@ describe("Purge BullMQ (Redis réel)", () => {
       silentLogger,
     );
     // File dédiée, fermée par le worker à l'arrêt : on lui en donne une propre.
-    worker = new PurgeWorker(new Queue(queue.name, { connection }), connection, useCases, true);
+    const unused = { run: async () => ({ kind: "done" as const }), sweepOverdue: async () => undefined };
+    worker = new PurgeWorker(
+      new Queue(queue.name, { connection }),
+      connection,
+      { message: { run: (id) => useCases.runPurgeJob(id), sweepOverdue: () => useCases.sweepOverdue() }, story: unused },
+      true,
+    );
     return worker.onModuleInit();
   }
 
@@ -139,7 +148,7 @@ describe("Purge BullMQ (Redis réel)", () => {
   it("rattrapage : un job en échec conservé est relancé (retry), pas réajouté", async () => {
     const id = randomUUID();
     const jobId = purgeMessageJobId(id);
-    await queue.add(PURGE_MESSAGE_JOB, { messageId: id }, { jobId, attempts: 1, removeOnFail: { count: 50 } });
+    await queue.add(PURGE_MESSAGE_JOB, { targetId: id }, { jobId, attempts: 1, removeOnFail: { count: 50 } });
     const failing = new Worker(queue.name, async () => {
       throw new Error("R2 indisponible");
     }, { connection });
@@ -147,7 +156,7 @@ describe("Purge BullMQ (Redis réel)", () => {
     await failing.close();
 
     // Un add aveugle serait ignoré sans erreur : c'est exactement le piège évité.
-    await queue.add(PURGE_MESSAGE_JOB, { messageId: id }, { jobId });
+    await queue.add(PURGE_MESSAGE_JOB, { targetId: id }, { jobId });
     expect(await (await queue.getJob(jobId))!.getState()).toBe("failed");
 
     await expect(scheduler.recover(id)).resolves.toBe("retried");
