@@ -7,6 +7,7 @@ import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.AccountRules
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AuthService
+import com.snapcore.app.domain.DeviceRegistry
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.UserFacingException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ class ProfileViewModel(
     private val auth: AuthService,
     private val accounts: AccountService,
     private val pending: PendingRegistrationStore,
+    private val devices: DeviceRegistry,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ProfileState())
     val state: StateFlow<ProfileState> = _state.asStateFlow()
@@ -97,9 +99,14 @@ class ProfileViewModel(
 
     fun consumeMessage() = _state.update { it.copy(message = null) }
 
+    // Retire d'abord le token FCM de l'appareil (tant que la session permet encore d'appeler l'API) :
+    // un appareil déconnecté ne doit plus recevoir de push pour ce compte (ADR-018).
     fun signOut() {
-        auth.signOut()
-        _state.update { it.copy(signedOut = true) }
+        viewModelScope.launch {
+            runCatching { devices.unregisterCurrentDevice() }
+            auth.signOut()
+            _state.update { it.copy(signedOut = true) }
+        }
     }
 
     fun askDeletion() = _state.update { it.copy(confirmDeletion = true) }

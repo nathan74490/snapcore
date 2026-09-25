@@ -21,6 +21,8 @@ import com.snapcore.app.domain.MediaPublisher
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.SessionResolver
 import com.snapcore.app.domain.StoryService
+import com.snapcore.app.push.FcmDeviceRegistry
+import com.snapcore.app.push.PushDetailsResolver
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -68,6 +70,10 @@ class AppContainer(context: Context) {
 
     val chat: ChatService = ApiChatService(api)
     val stories: StoryService = ApiStoryService(api)
+
+    // Notifications push (ADR-018).
+    val devices = FcmDeviceRegistry(api, firebaseAuth)
+    val pushDetails = PushDetailsResolver(api)
 
     // Passerelle temps réel (ADR-006), authentifiée avec l'ID token Firebase courant.
     val realtime = RealtimeClient(httpClient, BuildConfig.API_BASE_URL) {

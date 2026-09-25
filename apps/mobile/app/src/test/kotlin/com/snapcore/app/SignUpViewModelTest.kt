@@ -106,7 +106,7 @@ class SignUpViewModelTest {
         auth.signedIn = true
         accounts.account = com.snapcore.app.domain.Account("id", "nathan", null, null, null, false)
         accounts.takenUsernames += "alice"
-        val profile = ProfileViewModel(auth, accounts, pending)
+        val profile = ProfileViewModel(auth, accounts, pending, FakeDevices())
         advanceUntilIdle()
 
         profile.startEditing(EditableField.USERNAME)
@@ -126,7 +126,7 @@ class SignUpViewModelTest {
     fun `suppression de compte, appel backend puis déconnexion Firebase`() = runTest(dispatcher) {
         auth.signedIn = true
         accounts.account = com.snapcore.app.domain.Account("id", "nathan", null, null, null, false)
-        val profile = ProfileViewModel(auth, accounts, pending)
+        val profile = ProfileViewModel(auth, accounts, pending, FakeDevices())
         advanceUntilIdle()
 
         profile.askDeletion()

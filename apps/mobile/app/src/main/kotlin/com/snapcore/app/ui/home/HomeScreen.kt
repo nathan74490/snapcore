@@ -20,10 +20,6 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,9 +36,11 @@ import com.snapcore.app.ui.stories.StoriesScreen
 
 private data class Tab(val label: String, val icon: ImageVector)
 
-private const val CHAT_TAB = 0
-private const val CAMERA_TAB = 1
-private const val STORIES_TAB = 2
+// Onglets de l'accueil ; l'état est remonté dans la navigation pour qu'une notification puisse
+// ouvrir directement le Chat.
+const val CHAT_TAB = 0
+const val CAMERA_TAB = 1
+const val STORIES_TAB = 2
 
 private val TABS = listOf(
     Tab("Chat", Icons.Filled.ChatBubble),
@@ -56,6 +54,8 @@ private val TABS = listOf(
 @Composable
 fun HomeScreen(
     account: Account,
+    selected: Int,
+    onSelect: (Int) -> Unit,
     onOpenProfile: () -> Unit,
     onOpenFriends: () -> Unit,
     onCaptured: (CapturedMedia) -> Unit,
@@ -63,7 +63,6 @@ fun HomeScreen(
     onOpenMyStory: () -> Unit,
     onPlayStory: (FriendStory) -> Unit,
 ) {
-    var selected by rememberSaveable { mutableIntStateOf(CAMERA_TAB) }
     val onCamera = selected == CAMERA_TAB
     Scaffold(
         topBar = {
@@ -80,7 +79,7 @@ fun HomeScreen(
                 TABS.forEachIndexed { index, tab ->
                     NavigationBarItem(
                         selected = index == selected,
-                        onClick = { selected = index },
+                        onClick = { onSelect(index) },
                         icon = { Icon(tab.icon, contentDescription = tab.label) },
                         label = { Text(tab.label) },
                     )

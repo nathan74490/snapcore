@@ -1,8 +1,16 @@
 package com.snapcore.app.ui
 
+import android.Manifest
+import android.os.Build
+import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +28,7 @@ import androidx.navigation.toRoute
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.Friend
+import com.snapcore.app.domain.LaunchTarget
 import com.snapcore.app.domain.MediaKind
 import com.snapcore.app.domain.Session
 import com.snapcore.app.ui.auth.CompleteRegistrationScreen
@@ -31,6 +40,9 @@ import com.snapcore.app.ui.camera.PreviewScreen
 import com.snapcore.app.ui.camera.SendToScreen
 import com.snapcore.app.ui.chat.ConversationScreen
 import com.snapcore.app.ui.friends.FriendsScreen
+import com.snapcore.app.push.Notifications
+import com.snapcore.app.ui.home.CAMERA_TAB
+import com.snapcore.app.ui.home.CHAT_TAB
 import com.snapcore.app.ui.home.HomeScreen
 import com.snapcore.app.ui.profile.ProfileScreen
 import com.snapcore.app.ui.stories.MyStoryScreen
@@ -59,10 +71,15 @@ private fun PreviewRoute.media() = CapturedMedia(File(path), kind)
 private fun SendToRoute.media() = CapturedMedia(File(path), kind)
 
 @Composable
-fun SnapCoreNavHost(navController: NavHostController = rememberNavController()) {
+fun SnapCoreNavHost(
+    launchTarget: LaunchTarget?,
+    onLaunchTargetHandled: () -> Unit,
+    navController: NavHostController = rememberNavController(),
+) {
     val context = LocalContext.current
     // Compte courant partagé entre l'accueil et le profil (mis à jour après une modification).
     var account by remember { mutableStateOf<Account?>(null) }
+    var homeTab by rememberSaveable { mutableIntStateOf(CAMERA_TAB) }
 
     // Après résolution de la session, on remplace toute la pile : pas de retour vers l'onboarding.
     fun go(session: Session) {
@@ -83,7 +100,23 @@ fun SnapCoreNavHost(navController: NavHostController = rememberNavController()) 
 
     // Temps réel actif tant qu'un compte est connecté et que l'app est au premier plan (ADR-006) ;
     // en arrière-plan, ce sont les notifications push qui prennent le relais (ADR-018).
-    if (account != null) RealtimeWhileForeground()
+    if (account != null) {
+        RealtimeWhileForeground()
+        PushRegistration(account!!.id)
+    }
+
+    // Notification touchée : ouvre l'écran concerné une fois la session prête.
+    LaunchedEffect(launchTarget, account) {
+        if (launchTarget == null || account == null) return@LaunchedEffect
+        when (launchTarget) {
+            LaunchTarget.CHAT -> {
+                homeTab = CHAT_TAB
+                navController.popBackStack(HomeRoute, inclusive = false)
+            }
+            LaunchTarget.FRIENDS -> navController.navigate(FriendsRoute)
+        }
+        onLaunchTargetHandled()
+    }
 
     NavHost(navController, startDestination = StartRoute) {
         composable<StartRoute> { StartScreen(onSession = ::go) }
@@ -104,6 +137,8 @@ fun SnapCoreNavHost(navController: NavHostController = rememberNavController()) 
             } else {
                 HomeScreen(
                     account = current,
+                    selected = homeTab,
+                    onSelect = { homeTab = it },
                     onOpenProfile = { navController.navigate(ProfileRoute) },
                     onOpenFriends = { navController.navigate(FriendsRoute) },
                     onCaptured = { media -> navController.navigate(PreviewRoute(media.file.absolutePath, media.kind)) },
@@ -176,6 +211,22 @@ private fun RealtimeWhileForeground() {
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             realtime.stop()
+        }
+    }
+}
+
+// Enregistre le token FCM de l'appareil pour ce compte (ADR-018) et demande la permission
+// d'afficher des notifications, obligatoire depuis Android 13.
+@Composable
+private fun PushRegistration(accountId: String) {
+    val container = appContainer()
+    val context = LocalContext.current
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(accountId) {
+        runCatching { container.devices.registerCurrentDevice() }
+            .onFailure { Log.w("SnapCorePush", "Enregistrement de l'appareil impossible", it) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifications.canNotify(context)) {
+            permission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }

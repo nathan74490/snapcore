@@ -64,7 +64,6 @@ fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> U
 @Composable
 private fun ConversationRow(conversation: Conversation, myId: String, onClick: () -> Unit) {
     val last = conversation.lastMessage
-    val status = last?.let { statusOf(it, myId) }
     // Un message reçu non ouvert met la conversation en gras, comme dans Snapchat.
     val unread = last != null && !last.isFrom(myId) && last.openedAt == null && !last.mediaPurged
     Row(
@@ -76,7 +75,8 @@ private fun ConversationRow(conversation: Conversation, myId: String, onClick: (
         Column(Modifier.weight(1f)) {
             Text(conversation.friend.username, style = MaterialTheme.typography.titleMedium, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (status != null && last != null) {
+                if (last != null) {
+                    val status = statusOf(last, myId)
                     StatusIcon(status)
                     Text(
                         "${status.label} · ${relativeTime(last.createdAt)}",

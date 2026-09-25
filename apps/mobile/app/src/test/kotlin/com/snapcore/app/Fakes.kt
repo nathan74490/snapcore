@@ -4,6 +4,7 @@ import com.snapcore.app.data.api.ApiException
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AuthService
+import com.snapcore.app.domain.DeviceRegistry
 import com.snapcore.app.domain.PendingRegistration
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.UserFacingException
@@ -78,5 +79,16 @@ class FakePending : PendingRegistrationStore {
     }
     override suspend fun clear() {
         value = null
+    }
+}
+
+class FakeDevices : DeviceRegistry {
+    var registered = 0
+    var unregistered = 0
+    override suspend fun registerCurrentDevice() {
+        registered++
+    }
+    override suspend fun unregisterCurrentDevice() {
+        unregistered++
     }
 }

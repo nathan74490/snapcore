@@ -49,7 +49,7 @@ import com.snapcore.app.ui.theme.SnapColors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(onBack: () -> Unit, onSignedOut: () -> Unit, onAccountChanged: (com.snapcore.app.domain.Account) -> Unit) {
-    val vm = containerViewModel { ProfileViewModel(it.auth, it.accounts, it.pendingRegistration) }
+    val vm = containerViewModel { ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.signedOut) { if (state.signedOut) onSignedOut() }

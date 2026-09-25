@@ -70,6 +70,13 @@ interface SnapCoreApi {
     @DELETE("stories/{storyId}")
     suspend fun deleteStory(@Path("storyId") storyId: String)
 
+    // --- Appareils (ADR-018) ---
+    @POST("devices")
+    suspend fun registerDevice(@Body body: DeviceTokenRequest)
+
+    @DELETE("devices/{token}")
+    suspend fun unregisterDevice(@Path("token") token: String)
+
     // --- Amis (ADR-012) ---
     @GET("friendships")
     suspend fun friends(): List<FriendshipItemDto>
@@ -186,3 +193,6 @@ data class StoryItemDto(val id: String, val contentType: String, val createdAt: 
 
 @Serializable
 data class StoryFeedEntryDto(val author: PublicProfileDto, val items: List<StoryItemDto>, val hasUnviewed: Boolean)
+
+@Serializable
+data class DeviceTokenRequest(val token: String)
