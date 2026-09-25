@@ -20,8 +20,9 @@ android {
 
     buildTypes {
         debug {
-            // 10.0.2.2 = la machine hôte vue depuis l'émulateur Android (backend local, port 3000).
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:3000/\"")
+            // Backend local joint via "adb reverse tcp:3000 tcp:3000" : le port 3000 du téléphone (ou de
+            // l'émulateur) est redirigé vers celui du PC par le câble USB, sans configuration réseau.
+            buildConfigField("String", "API_BASE_URL", "\"http://127.0.0.1:3000/\"")
         }
         release {
             isMinifyEnabled = false
