@@ -1,0 +1,4 @@
+# Scripts shell : toujours LF, sinon ils ne s'exécutent pas sous Linux/macOS.
+*.sh text eol=lf
+apps/mobile/gradlew text eol=lf
+*.bat text eol=crlf
