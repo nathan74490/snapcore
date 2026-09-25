@@ -19,3 +19,5 @@ firebase-service-account.json
 
 # Config Firebase de l'app Android (contient la clé API du projet)
 google-services.json
+*.tsbuildinfo
+next-env.d.ts
