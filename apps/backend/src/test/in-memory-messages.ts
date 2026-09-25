@@ -7,7 +7,7 @@ export class InMemoryMessageRepository implements MessageRepository {
   readonly rows = new Map<string, Message>();
 
   async create(message: NewMessage): Promise<Message> {
-    const row: Message = { ...message, openedAt: null, retainedNotifiedAt: null };
+    const row: Message = { ...message, openedAt: null, retainedNotifiedAt: null, moderatedAt: null };
     this.rows.set(row.id, row);
     return { ...row };
   }
@@ -73,6 +73,15 @@ export class InMemoryMessageRepository implements MessageRepository {
       .map((m) => m.id);
   }
 
+  async redact(id: string, moderation: { moderatorId: string; reason: string; at: Date }) {
+    const row = this.rows.get(id);
+    if (!row || row.moderatedAt) return false;
+    Object.assign(row, { content: null, mediaKey: null, moderatedAt: moderation.at });
+    this.moderations.set(id, moderation);
+    return true;
+  }
+  readonly moderations = new Map<string, { moderatorId: string; reason: string; at: Date }>();
+
   private between(userA: string, userB: string): Message[] {
     return [...this.rows.values()]
       .filter(
@@ -98,6 +107,10 @@ export class RecordingPurgeScheduler implements SnapPurgeScheduler {
   async recover(messageId: string) {
     this.recovered.push(messageId);
     return this.recoverOutcome;
+  }
+  readonly cancelled: string[] = [];
+  async cancel(messageId: string) {
+    this.cancelled.push(messageId);
   }
 }
 

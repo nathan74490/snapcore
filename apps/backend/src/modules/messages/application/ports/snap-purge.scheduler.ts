@@ -14,4 +14,9 @@ export interface SnapPurgeScheduler {
    * disparu, ne fait rien s'il est en attente ou en cours. Ne purge jamais directement.
    */
   recover(messageId: string): Promise<"retried" | "re-added" | "untouched">;
+  /**
+   * Retire le job devenu inutile (contenu déjà traité par la modération, ADR-021). Sans effet s'il
+   * n'existe pas ; laissé en place s'il est en cours d'exécution (le handler ne trouvera rien à faire).
+   */
+  cancel(targetId: string): Promise<void>;
 }

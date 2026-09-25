@@ -61,4 +61,8 @@ export class RecordingStoryPurgeScheduler implements StoryPurgeScheduler {
     this.recovered.push(storyId);
     return "untouched" as const;
   }
+  readonly cancelled: string[] = [];
+  async cancel(storyId: string) {
+    this.cancelled.push(storyId);
+  }
 }

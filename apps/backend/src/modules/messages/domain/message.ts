@@ -13,6 +13,8 @@ export interface Message {
   openedAt: Date | null;
   scheduledPurgeAt: Date | null;
   retainedNotifiedAt: Date | null;
+  /** Contenu rédigé par un modérateur (ADR-021) : content ou mediaKey vidé, ligne conservée. */
+  moderatedAt: Date | null;
 }
 
 export type SnapContentType = Exclude<MessageContentType, "TEXT">;

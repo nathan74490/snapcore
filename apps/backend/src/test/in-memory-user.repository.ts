@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { UniqueViolationError } from "../shared/domain/errors";
 import type { NewUser, ProfilePatch, UserRepository } from "../modules/identity/application/ports/user.repository";
-import type { UserAccount } from "../modules/identity/domain/user";
+import { isActive, type UserAccount } from "../modules/identity/domain/user";
 
 const UNIQUE_FIELDS = ["username", "firebaseUid", "email", "phoneNumber"] as const;
 
@@ -30,6 +30,7 @@ export class InMemoryUserRepository implements UserRepository {
       premiumUntil: null,
       createdAt: new Date(),
       deletionRequestedAt: null,
+      moderationStatus: "ACTIVE",
       ...user,
     };
     this.assertUnique(row);
@@ -48,7 +49,7 @@ export class InMemoryUserRepository implements UserRepository {
 
   async replaceProfilePhoto(id: string, expectedUrl: string | null, newUrl: string | null) {
     const current = this.rows.get(id);
-    if (!current || current.deletionRequestedAt || current.profilePhotoUrl !== expectedUrl) return null;
+    if (!current || !isActive(current) || current.profilePhotoUrl !== expectedUrl) return null;
     const next = { ...current, profilePhotoUrl: newUrl };
     this.rows.set(id, next);
     return { ...next };
@@ -63,7 +64,7 @@ export class InMemoryUserRepository implements UserRepository {
   }
 
   private active(predicate: (u: UserAccount) => boolean): UserAccount | null {
-    const found = [...this.rows.values()].find((u) => predicate(u) && u.deletionRequestedAt === null);
+    const found = [...this.rows.values()].find((u) => predicate(u) && isActive(u));
     return found ? { ...found } : null;
   }
 

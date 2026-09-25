@@ -5,13 +5,18 @@ import { InMemoryUserRepository } from "./test/in-memory-user.repository";
 import { createTestApp, TestWorld } from "./test/test-app";
 
 // Application Nest complète, avec les adaptateurs externes (Postgres, Firebase, R2, Redis, BullMQ, FCM) remplacés.
+const ADMIN_SECRET = "s".repeat(40);
+const MODERATOR_ID = "5f0c8d2e-2b7a-4c1e-9d3f-6a8b1c2d3e4f";
+
 describe("API HTTP", () => {
   let app: INestApplication;
   let identity: FakeIdentityProvider;
   let users: InMemoryUserRepository;
+  let world: TestWorld;
 
   beforeEach(async () => {
-    const world = new TestWorld();
+    process.env.ADMIN_API_SECRET = ADMIN_SECRET;
+    world = new TestWorld();
     identity = world.identity;
     users = world.users;
     app = await createTestApp(world);
@@ -29,6 +34,25 @@ describe("API HTTP", () => {
     expect(res.status).toBe(200);
     return { token, id: res.body.id as string };
   };
+
+  it("API admin : refusée sans secret ou avec un mauvais secret ; une suspension coupe l'accès (403)", async () => {
+    const { token, id } = await register("uid-1", "nathan");
+    const http = request(app.getHttpServer());
+    world.moderation.moderators.add(MODERATOR_ID);
+    const body = { moderatorId: MODERATOR_ID, reason: "Spam" };
+
+    await http.post(`/admin/users/${id}/suspend`).send(body).expect(401);
+    await http.post(`/admin/users/${id}/suspend`).set("x-admin-secret", "mauvais").send(body).expect(401);
+    // Un jeton Firebase valide ne donne pas accès à l'API admin (ADR-021).
+    await http.post(`/admin/users/${id}/suspend`).set("Authorization", `Bearer ${token}`).send(body).expect(401);
+
+    await http.post(`/admin/users/${id}/suspend`).set("x-admin-secret", ADMIN_SECRET).send(body).expect(204);
+    const me = await http.get("/me").set("Authorization", `Bearer ${token}`).expect(403);
+    expect(me.body.message).toBe("Ce compte est suspendu");
+
+    await http.post(`/admin/users/${id}/reactivate`).set("x-admin-secret", ADMIN_SECRET).send({ moderatorId: MODERATOR_ID }).expect(204);
+    await http.get("/me").set("Authorization", `Bearer ${token}`).expect(200);
+  });
 
   it("GET /health est public", async () => {
     await request(app.getHttpServer()).get("/health").expect(200, { status: "ok" });

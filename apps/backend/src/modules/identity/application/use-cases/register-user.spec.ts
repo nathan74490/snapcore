@@ -1,4 +1,4 @@
-import { ConflictError, NotFoundError, UnauthenticatedError, ValidationError } from "../../../../shared/domain/errors";
+import { ConflictError, ForbiddenError, NotFoundError, UnauthenticatedError, ValidationError } from "../../../../shared/domain/errors";
 import { FakeIdentityProvider } from "../../../../test/fakes";
 import { InMemoryUserRepository } from "../../../../test/in-memory-user.repository";
 import { RegisterUser } from "./register-user";
@@ -52,6 +52,14 @@ describe("RegisterUser", () => {
     users.rows.get(user.id)!.deletionRequestedAt = new Date();
 
     await expect(registerUser.execute({ idToken, username: "nathan" })).rejects.toThrow(NotFoundError);
+  });
+
+  it("refuse un compte suspendu par la modération avec un message explicite (ADR-021)", async () => {
+    const idToken = identity.addAccount("uid-1");
+    const user = await registerUser.execute({ idToken, username: "nathan" });
+    users.rows.get(user.id)!.moderationStatus = "SUSPENDED";
+
+    await expect(registerUser.execute({ idToken, username: "nathan" })).rejects.toThrow(new ForbiddenError("Ce compte est suspendu"));
   });
 
   it("renvoie un conflit si le pseudo est déjà pris, sans tenir compte de la casse", async () => {

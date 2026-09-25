@@ -1,10 +1,11 @@
-import { NotFoundError, UniqueViolationError } from "../../../../shared/domain/errors";
+import { ForbiddenError, NotFoundError, UniqueViolationError } from "../../../../shared/domain/errors";
 import { parsePhoneNumber } from "../../domain/phone-number";
 import type { UserAccount } from "../../domain/user";
 import { parseUsername } from "../../domain/username";
 import type { IdentityProvider } from "../ports/identity-provider.port";
 import type { UserRepository } from "../ports/user.repository";
 import { toProfileConflict } from "../unique-violation-messages";
+import { SUSPENDED_MESSAGE } from "./resolve-current-user";
 
 export interface RegisterUserInput {
   idToken: string;
@@ -53,6 +54,7 @@ export class RegisterUser {
   // l'appel est donc idempotent pour un compte actif.
   private alreadyRegistered(user: UserAccount): UserAccount {
     if (user.deletionRequestedAt) throw new NotFoundError("Compte introuvable");
+    if (user.moderationStatus === "SUSPENDED") throw new ForbiddenError(SUSPENDED_MESSAGE);
     return user;
   }
 }

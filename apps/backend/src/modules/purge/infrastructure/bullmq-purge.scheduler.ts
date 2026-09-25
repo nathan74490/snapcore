@@ -51,6 +51,12 @@ export class BullMqPurgeScheduler implements SnapPurgeScheduler, StoryPurgeSched
     return "untouched";
   }
 
+  async cancel(targetId: string): Promise<void> {
+    const job = await this.queue.getJob(purgeJobId(this.kind, targetId));
+    if (!job || (await job.getState()) === "active") return;
+    await job.remove();
+  }
+
   private add(targetId: string, delay: number) {
     // 1er argument = NOM du job ; l'identifiant déterministe passe par jobId (sinon BullMQ en
     // génère un aléatoire sans erreur, voir docs/impl/purge-bullmq.md).

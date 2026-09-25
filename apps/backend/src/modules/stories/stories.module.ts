@@ -64,6 +64,6 @@ import { StoriesController } from "./interface/stories.controller";
         ),
     },
   ],
-  exports: [StoryUseCases, STORY_REPOSITORY],
+  exports: [StoryUseCases, STORY_REPOSITORY, STORY_VIEW_STORE],
 })
 export class StoriesModule {}

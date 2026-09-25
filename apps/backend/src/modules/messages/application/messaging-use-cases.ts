@@ -209,5 +209,7 @@ export function presentMessage(message: Message): MessageView {
     ...(message.openedAt ? { openedAt: message.openedAt.toISOString() } : {}),
     // Gris = Snap dont le média a été purgé ; un Chat texte n'est jamais gris (ADR-009).
     mediaPurged: isSnap(message) && message.mediaKey === null,
+    // Rédigé par la modération (ADR-021) : le client affiche "retiré" plutôt qu'une bulle vide.
+    moderated: message.moderatedAt !== null,
   };
 }

@@ -1,11 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import type { User as UserRow } from "@snapcore/db";
 import { PrismaService } from "../../../shared/infrastructure/prisma/prisma.service";
+import { ACTIVE_USER_WHERE } from "../../../shared/infrastructure/prisma/active-user";
 import { rethrowUniqueViolation } from "../../../shared/infrastructure/prisma/prisma-errors";
 import type { NewUser, ProfilePatch, UserRepository } from "../application/ports/user.repository";
 import type { UserAccount } from "../domain/user";
 
-const ACTIVE = { deletionRequestedAt: null };
+const ACTIVE = ACTIVE_USER_WHERE;
 
 @Injectable()
 export class PrismaUserRepository implements UserRepository {

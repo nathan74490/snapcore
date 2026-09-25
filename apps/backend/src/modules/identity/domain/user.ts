@@ -1,4 +1,4 @@
-import type { PublicUserProfile, SubscriptionTier } from "@snapcore/types";
+import type { ModerationStatus, PublicUserProfile, SubscriptionTier } from "@snapcore/types";
 
 export interface UserAccount {
   id: string;
@@ -11,6 +11,12 @@ export interface UserAccount {
   premiumUntil: Date | null;
   createdAt: Date;
   deletionRequestedAt: Date | null;
+  moderationStatus: ModerationStatus;
+}
+
+// Équivalent domaine de ACTIVE_USER_WHERE (ADR-019, ADR-021) : ni en suppression, ni suspendu.
+export function isActive(user: Pick<UserAccount, "deletionRequestedAt" | "moderationStatus">): boolean {
+  return user.deletionRequestedAt === null && user.moderationStatus === "ACTIVE";
 }
 
 // Abonnement SnapCore+ actif à l'instant `now` (ADR-007). Sans marge : la marge de 24h

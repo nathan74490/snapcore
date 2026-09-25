@@ -15,8 +15,8 @@ export interface ProfilePatch {
   email?: string | null;
 }
 
-// Filtre de suppression centralisé (ADR-019) : toutes les méthodes `findActive*`
-// ignorent un compte dont `deletionRequestedAt` est renseigné. Seules les méthodes
+// Filtre centralisé (ADR-019, ADR-021) : toutes les méthodes `findActive*` ignorent un compte en cours
+// de suppression ou suspendu par la modération (ACTIVE_USER_WHERE). Seules les méthodes
 // explicitement nommées `...IncludingDeleted` le renvoient.
 export interface UserRepository {
   findActiveById(id: string): Promise<UserAccount | null>;

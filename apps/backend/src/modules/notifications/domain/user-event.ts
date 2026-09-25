@@ -7,7 +7,9 @@ export type UserEvent =
   | { type: "snap.opened"; messageId: string }
   | { type: "texts.read"; readerId: string }
   | { type: "snap.retained"; messageId: string }
-  | { type: "snap.expired"; messageId: string };
+  | { type: "snap.expired"; messageId: string }
+  // Contenu retiré par un modérateur (ADR-021) : mise à jour d'affichage, jamais de push.
+  | { type: "message.moderated"; messageId: string };
 
 export type UserEventType = UserEvent["type"];
 

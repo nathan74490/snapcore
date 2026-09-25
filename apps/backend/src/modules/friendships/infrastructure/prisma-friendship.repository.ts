@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { FriendshipStatus } from "@snapcore/types";
 import type { Friendship as FriendshipRow, Prisma, User as UserRow } from "@snapcore/db";
 import { PrismaService } from "../../../shared/infrastructure/prisma/prisma.service";
+import { ACTIVE_USER_WHERE } from "../../../shared/infrastructure/prisma/active-user";
 import { rethrowUniqueViolation } from "../../../shared/infrastructure/prisma/prisma-errors";
 import { toPublicProfile } from "../../identity/domain/user";
 import type {
@@ -12,7 +13,7 @@ import type {
 } from "../application/ports/friendship.repository";
 import { sortedPair, type Friendship } from "../domain/friendship";
 
-const ACTIVE_USER = { deletionRequestedAt: null };
+const ACTIVE_USER = ACTIVE_USER_WHERE;
 
 @Injectable()
 export class PrismaFriendshipRepository implements FriendshipRepository {

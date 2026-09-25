@@ -123,6 +123,7 @@ export interface MessageView {
   createdAt: string;
   openedAt?: string;
   mediaPurged: boolean;  // toujours false pour TEXT
+  moderated: boolean;    // contenu retiré par un modérateur (voir ADR-021)
 }
 
 // Une ligne de la liste de conversations : uniquement les amis ACCEPTED (voir ADR-012).

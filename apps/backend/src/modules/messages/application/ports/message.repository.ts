@@ -2,7 +2,7 @@ import type { Message } from "../../domain/message";
 
 export const MESSAGE_REPOSITORY = Symbol("MessageRepository");
 
-export type NewMessage = Omit<Message, "openedAt" | "retainedNotifiedAt">;
+export type NewMessage = Omit<Message, "openedAt" | "retainedNotifiedAt" | "moderatedAt">;
 
 export interface MessageRepository {
   /** L'identifiant est fourni par l'appelant : la clé R2 d'un Snap en dépend (messages/<id>). */
@@ -38,4 +38,11 @@ export interface MessageRepository {
 
   /** Snaps dont la purge est échue mais dont le média existe encore (balayage de rattrapage, ADR-017). */
   findOverdueSnapIds(now: Date, limit: number): Promise<string[]>;
+
+  /**
+   * Rédaction par un modérateur (ADR-021) : content et mediaKey vidés, ligne conservée pour la
+   * conversation de l'autre participant, trace de la modération sur la ligne.
+   * @returns false si le message n'existe pas ou a déjà été rédigé.
+   */
+  redact(id: string, moderation: { moderatorId: string; reason: string; at: Date }): Promise<boolean>;
 }

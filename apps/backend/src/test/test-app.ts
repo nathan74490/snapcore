@@ -16,11 +16,13 @@ import { DEVICE_TOKEN_REPOSITORY, PRESENCE_TRACKER, PUSH_SENDER } from "../modul
 import { PurgeWorker } from "../modules/purge/infrastructure/purge.worker";
 import { PURGE_QUEUE } from "../modules/purge/infrastructure/purge-queue";
 import { STORY_PURGE_SCHEDULER, STORY_REPOSITORY, STORY_VIEW_STORE } from "../modules/stories/application/ports";
+import { MODERATION_REPOSITORY } from "../modules/moderation/application/ports";
 import { FakeIdentityProvider } from "./fakes";
 import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "./in-memory-account-deletion";
 import { InMemoryFriendshipRepository } from "./in-memory-friendship.repository";
 import { InMemoryObjectStorage, InMemoryUploadTicketStore } from "./in-memory-media";
 import { InMemoryMessageRepository, RecordingPurgeScheduler } from "./in-memory-messages";
+import { InMemoryModerationRepository } from "./in-memory-moderation";
 import { InMemoryDeviceTokens, InMemoryPresence, RecordingPush } from "./in-memory-notifications";
 import { InMemoryStoryRepository, InMemoryStoryViews, RecordingStoryPurgeScheduler } from "./in-memory-stories";
 import { InMemoryUserRepository } from "./in-memory-user.repository";
@@ -41,6 +43,7 @@ export class TestWorld {
   readonly storyViews = new InMemoryStoryViews();
   readonly accountDeletion = new InMemoryAccountDeletionRepository(this.users, this.messages, this.stories, this.friendships);
   readonly deletionQueue = new RecordingDeletionQueue();
+  readonly moderation = new InMemoryModerationRepository(this.users);
 }
 
 // Application Nest complète, adaptateurs externes (Postgres, Firebase, R2, Redis, BullMQ, FCM) remplacés.
@@ -84,6 +87,8 @@ export async function createTestApp(
     .useValue(world.deletionQueue)
     .overrideProvider(AccountDeletionWorker)
     .useValue({})
+    .overrideProvider(MODERATION_REPOSITORY)
+    .useValue(world.moderation)
     .overrideProvider(PUSH_SENDER)
     .useValue(world.push)
     .overrideProvider(DEVICE_TOKEN_REPOSITORY)

@@ -186,10 +186,7 @@ model Report {
 
   @@index([status])
   @@index([targetUserId])
-  // Contrainte CHECK ajoutée en SQL brut dans la migration initiale (non exprimable en DSL Prisma, ADR-021) :
-  //   CHECK (
-  //     (targetType = 'USER' AND "targetUserId" IS NOT NULL AND "targetMessageId" IS NULL AND "targetStoryItemId" IS NULL) OR
-  //     (targetType = 'MESSAGE' AND "targetMessageId" IS NOT NULL AND "targetUserId" IS NULL AND "targetStoryItemId" IS NULL) OR
-  //     (targetType = 'STORY_ITEM' AND "targetStoryItemId" IS NOT NULL AND "targetUserId" IS NULL AND "targetMessageId" IS NULL)
-  //   )                                                                          -- exclusivité entre les trois clés selon targetType
+  // Contrainte CHECK "Report_single_target_check" en SQL brut (migration 20260925150000_moderation,
+  // non exprimable en DSL Prisma, ADR-021) : seule la clé correspondant à targetType peut être renseignée,
+  // et elle peut devenir NULL quand le contenu visé disparaît (onDelete: SetNull ci-dessus).
 }

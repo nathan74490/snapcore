@@ -76,6 +76,20 @@ export class PrismaMessageRepository implements MessageRepository {
     return count === 1;
   }
 
+  async redact(id: string, moderation: { moderatorId: string; reason: string; at: Date }): Promise<boolean> {
+    const { count } = await this.prisma.message.updateMany({
+      where: { id, moderatedAt: null },
+      data: {
+        content: null,
+        mediaKey: null,
+        moderatedAt: moderation.at,
+        moderatedById: moderation.moderatorId,
+        moderationReason: moderation.reason,
+      },
+    });
+    return count === 1;
+  }
+
   async findOverdueSnapIds(now: Date, limit: number): Promise<string[]> {
     // Utilise @@index([scheduledPurgeAt]) : c'est la raison d'être de cet index (ADR-017).
     const rows = await this.prisma.message.findMany({
@@ -100,5 +114,6 @@ function toMessage(row: MessageRow): Message {
     openedAt: row.openedAt,
     scheduledPurgeAt: row.scheduledPurgeAt,
     retainedNotifiedAt: row.retainedNotifiedAt,
+    moderatedAt: row.moderatedAt,
   };
 }

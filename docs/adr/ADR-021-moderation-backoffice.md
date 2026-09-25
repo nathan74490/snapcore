@@ -50,6 +50,7 @@ Le backoffice a besoin d'actions de modération concrètes, aucune n'étant enco
 
 ## Historique
 - Version initiale.
+- Révision 1 (implémentation) : la contrainte `CHECK` de `Report` n'impose plus que la clé de la cible reste renseignée — seulement que les **deux autres** soient nulles. Le schéma met `onDelete: SetNull` sur `targetMessageId`/`targetStoryItemId` : exiger une clé non nulle faisait échouer la purge d'une story signalée à 24h (ADR-013) et la cascade de suppression d'un compte dont un message est signalé (ADR-019). Le signalement reste dans l'historique, cible à `NULL` une fois le contenu disparu. Colonnes citées entre guillemets doubles (`"targetType"`), comme pour `Friendship` (ADR-012). Vérifié par test d'intégration sur PostgreSQL. Un compte suspendu reçoit un refus explicite (403 « Ce compte est suspendu ») plutôt qu'un « compte introuvable », pour que l'app ne le prenne pas pour une inscription interrompue (ADR-015).
 
 ## Liens
 - ADR liés : ADR-004, ADR-009, ADR-012, ADR-016, ADR-017, ADR-019, ADR-020

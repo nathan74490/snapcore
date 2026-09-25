@@ -25,6 +25,20 @@ Les cas d'usage sont testés sans base ni Firebase, avec les dépôts en mémoir
 (qui reproduisent les contraintes d'unicité et `CHECK` du schéma). `app.http.spec.ts` monte
 l'application Nest complète avec ces mêmes doublures.
 
+## API admin (backoffice, ADR-021)
+
+Routes `/admin/...` appelées **uniquement par le serveur du backoffice**, avec l'en-tête `x-admin-secret`
+(valeur de `ADMIN_API_SECRET`, 32 caractères minimum ; sans elle, l'API admin est fermée). Aucun jeton
+Firebase n'y donne accès. Corps : `{ moderatorId, reason }` (ou `{ moderatorId }`, `{ moderatorId, status }`).
+
+| Méthode | Route | Effet |
+|---|---|---|
+| POST | `/admin/users/:userId/suspend` | Suspension réversible : invisible des autres, connexion refusée (403), temps réel coupé |
+| POST | `/admin/users/:userId/reactivate` | Réactivation |
+| POST | `/admin/messages/:messageId/redact` | Rédaction : texte ou média vidé (objet R2 supprimé), job de purge retiré, ligne conservée |
+| DELETE | `/admin/stories/:storyItemId` | Suppression d'un élément de story (média, ligne, vues, job de purge) |
+| POST | `/admin/reports/:reportId/close` | Signalement `RESOLVED` ou `DISMISSED` |
+
 ## Temps réel (Socket.io)
 
 Connexion : `io(URL, { auth: { token: <ID token Firebase> } })`. Le serveur émet `ready` une fois
@@ -101,5 +115,6 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | POST | `/stories/:storyId/view` | URL de lecture ~1 min, enregistre la vue | 013 |
 | GET | `/stories/:storyId/viewers` | Qui a vu mon élément (auteur uniquement) | 013 |
 | DELETE | `/stories/:storyId` | Retire un élément avant expiration | 013 |
+| POST | `/reports` | Signale un compte, un message reçu ou une story visible `{ targetType, targetId, reason }` | 021 |
 | POST | `/devices` | Enregistre le token FCM de l'appareil `{ token }` (upsert) | 018 |
 | DELETE | `/devices/:token` | Au logout : retire le token de l'appareil | 018 |
