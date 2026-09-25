@@ -18,7 +18,7 @@ service du projet Firebase) ou `GOOGLE_APPLICATION_CREDENTIALS`.
 
 ```bash
 npm test -w @snapcore/backend                    # unitaires, sans infra
-npm run test:integration -w @snapcore/backend    # contre le Postgres de docker compose (vide les tables !)
+npm run test:integration -w @snapcore/backend    # base snapcore_test (créée et migrée au lancement)
 ```
 
 Les cas d'usage sont testés sans base ni Firebase, avec les dépôts en mémoire de `src/test/`
