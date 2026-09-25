@@ -17,6 +17,8 @@ export interface PresenceTracker {
 // Diffusion temps réel vers toutes les connexions de l'utilisateur, sur toutes les instances.
 export interface RealtimeChannel {
   emitToUser(userId: string, event: UserEvent): Promise<void>;
+  /** Ferme toutes les connexions de l'utilisateur, sur toutes les instances (suppression de compte). */
+  disconnectUser(userId: string): Promise<void>;
 }
 
 export interface PushSender {

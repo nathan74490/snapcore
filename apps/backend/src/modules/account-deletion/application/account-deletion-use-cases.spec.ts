@@ -1,0 +1,203 @@
+import { randomUUID } from "node:crypto";
+import { FakeIdentityProvider, FixedClock } from "../../../test/fakes";
+import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "../../../test/in-memory-account-deletion";
+import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
+import { InMemoryObjectStorage, silentLogger } from "../../../test/in-memory-media";
+import { InMemoryMessageRepository } from "../../../test/in-memory-messages";
+import { RecordingRealtime } from "../../../test/in-memory-notifications";
+import { InMemoryStoryRepository } from "../../../test/in-memory-stories";
+import { InMemoryUserRepository } from "../../../test/in-memory-user.repository";
+import type { UserAccount } from "../../identity/domain/user";
+import type { StoredObject } from "../../media/application/ports/object-storage.port";
+import { PublicMediaUrls } from "../../media/domain/public-media-urls";
+import { AccountDeletionUseCases } from "./account-deletion-use-cases";
+import type { DeletionJobContext, SubscriptionCanceller } from "./ports";
+
+describe("AccountDeletionUseCases (ADR-019)", () => {
+  const urls = new PublicMediaUrls("https://cdn.snapcore.test");
+  let users: InMemoryUserRepository;
+  let messages: InMemoryMessageRepository;
+  let stories: InMemoryStoryRepository;
+  let friendships: InMemoryFriendshipRepository;
+  let accounts: InMemoryAccountDeletionRepository;
+  let queue: RecordingDeletionQueue;
+  let identity: FakeIdentityProvider;
+  let storage: InMemoryObjectStorage;
+  let realtime: RecordingRealtime;
+  let steps: string[];
+  let useCases: AccountDeletionUseCases;
+  let alice: UserAccount;
+  let bob: UserAccount;
+
+  beforeEach(async () => {
+    users = new InMemoryUserRepository();
+    messages = new InMemoryMessageRepository();
+    stories = new InMemoryStoryRepository();
+    friendships = new InMemoryFriendshipRepository(users);
+    accounts = new InMemoryAccountDeletionRepository(users, messages, stories, friendships);
+    queue = new RecordingDeletionQueue();
+    identity = new FakeIdentityProvider();
+    storage = new InMemoryObjectStorage();
+    realtime = new RecordingRealtime();
+    steps = [];
+    const subscriptions: SubscriptionCanceller = { cancelFor: async () => void steps.push("abonnement") };
+    const deleteAccount = identity.deleteAccount.bind(identity);
+    identity.deleteAccount = async (uid) => {
+      steps.push("firebase");
+      await deleteAccount(uid);
+    };
+    useCases = new AccountDeletionUseCases(
+      accounts,
+      queue,
+      identity,
+      subscriptions,
+      storage,
+      urls,
+      realtime,
+      new FixedClock(),
+      silentLogger,
+    );
+    alice = await users.seed("alice", { profilePhotoUrl: urls.urlFor("profiles/alice/photo") });
+    bob = await users.seed("bob");
+  });
+
+  // Données d'Alice : un Snap envoyé, un Snap reçu (déjà purgé), un Chat texte, une story, sa photo.
+  async function seedAliceData() {
+    const snap = async (from: UserAccount, to: UserAccount, mediaKey: string | null) => {
+      const id = randomUUID();
+      if (mediaKey) storage.simulateUpload(mediaKey, 10, "image/jpeg");
+      await messages.create({
+        id,
+        senderId: from.id,
+        recipientId: to.id,
+        contentType: mediaKey ? "SNAP_PHOTO" : "TEXT",
+        content: mediaKey ? null : "salut",
+        mediaKey,
+        createdAt: new Date(),
+        scheduledPurgeAt: null,
+      });
+    };
+    await snap(alice, bob, "messages/sent");
+    await snap(bob, alice, "messages/received");
+    await snap(alice, bob, null);
+    storage.simulateUpload("stories/s1", 10, "image/jpeg");
+    await stories.create({
+      id: "s1",
+      authorId: alice.id,
+      mediaKey: "stories/s1",
+      contentType: "PHOTO",
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 1000),
+    });
+  }
+
+  function jobContext() {
+    const context: DeletionJobContext & { persisted: StoredObject[][] } = {
+      data: { userId: alice.id, firebaseUid: alice.firebaseUid },
+      persisted: [],
+      persistCollected: async (objects) => {
+        steps.push("clés persistées");
+        context.persisted.push(objects);
+        context.data = { ...context.data, collected: objects };
+      },
+    };
+    return context;
+  }
+
+  it("la demande bloque le compte immédiatement, met le job en file et coupe le temps réel", async () => {
+    await useCases.request(alice);
+
+    expect(users.rows.get(alice.id)!.deletionRequestedAt).not.toBeNull();
+    expect(await users.findActiveById(alice.id)).toBeNull(); // inexistant pour tous
+    expect(queue.enqueued).toEqual([{ userId: alice.id, firebaseUid: alice.firebaseUid }]);
+    expect(realtime.disconnected).toEqual([alice.id]);
+  });
+
+  it("exécute les étapes dans l'ordre : abonnement → Firebase → base (clés avant suppression) → R2", async () => {
+    await seedAliceData();
+    await useCases.request(alice);
+    const originalDelete = storage.delete.bind(storage);
+    storage.delete = async (object) => {
+      steps.push(`r2:${object.key}`);
+      await originalDelete(object);
+    };
+
+    await expect(useCases.runJob(jobContext())).resolves.toEqual({ kind: "deleted", removedObjects: 4 });
+
+    expect(steps).toEqual([
+      "abonnement",
+      "firebase",
+      "clés persistées",
+      "r2:messages/sent",
+      "r2:messages/received",
+      "r2:stories/s1",
+      "r2:profiles/alice/photo",
+    ]);
+    expect(users.rows.has(alice.id)).toBe(false);
+    expect(messages.rows.size).toBe(0); // cascade, y compris les messages reçus
+    expect(identity.deletedAccounts.has(alice.firebaseUid)).toBe(true);
+  });
+
+  it("relève aussi la photo de profil dans le bucket public", async () => {
+    await useCases.request(alice);
+    const context = jobContext();
+
+    await useCases.runJob(context);
+
+    expect(context.persisted[0]).toContainEqual({ area: "public", key: "profiles/alice/photo" });
+  });
+
+  it("refuse de supprimer un compte dont la suppression n'a pas été demandée", async () => {
+    await expect(useCases.runJob(jobContext())).resolves.toEqual({ kind: "aborted", reason: "not-requested" });
+    expect(users.rows.has(alice.id)).toBe(true);
+    expect(steps).toEqual([]);
+  });
+
+  it("échec de Firebase : rien d'irréversible, le rejeu reprend depuis le début", async () => {
+    await seedAliceData();
+    await useCases.request(alice);
+    identity.deleteAccount = async () => {
+      throw new Error("Firebase indisponible");
+    };
+
+    await expect(useCases.runJob(jobContext())).rejects.toThrow("Firebase indisponible");
+    expect(users.rows.has(alice.id)).toBe(true);
+    expect(storage.has({ area: "private", key: "messages/sent" })).toBe(true);
+  });
+
+  it("transaction annulée après la persistance des clés : le rejeu relit la base, rien n'est perdu", async () => {
+    await seedAliceData();
+    await useCases.request(alice);
+    accounts.failNextDelete = true;
+    const context = jobContext();
+
+    await expect(useCases.runJob(context)).rejects.toThrow("transaction annulée");
+    expect(users.rows.has(alice.id)).toBe(true);
+
+    await useCases.runJob(context);
+    expect(users.rows.has(alice.id)).toBe(false);
+    expect(storage.has({ area: "private", key: "messages/sent" })).toBe(false);
+  });
+
+  it("échec de R2 après la suppression en base : le rejeu supprime les objets grâce aux clés du job", async () => {
+    await seedAliceData();
+    await useCases.request(alice);
+    const context = jobContext();
+    storage.failNextDelete = true;
+
+    await expect(useCases.runJob(context)).rejects.toThrow("R2 indisponible");
+    expect(users.rows.has(alice.id)).toBe(false); // étape (c) déjà faite
+
+    steps = [];
+    await expect(useCases.runJob(context)).resolves.toEqual({ kind: "deleted", removedObjects: 4 });
+    expect(steps).toEqual([]); // ni abonnement ni Firebase rejoués : la ligne n'existe plus
+    expect([...storage.objects.keys()]).toEqual([]);
+  });
+
+  it("le rattrapage remet en file les comptes marqués dont la ligne existe encore", async () => {
+    await accounts.markDeletionRequested(bob.id, new Date());
+
+    await expect(useCases.sweepPending()).resolves.toEqual({ requeued: 1 });
+    expect(queue.enqueued).toEqual([{ userId: bob.id, firebaseUid: bob.firebaseUid }]);
+  });
+});

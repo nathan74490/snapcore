@@ -30,12 +30,23 @@ export class FirebaseIdentityProvider implements IdentityProvider {
       const record = await getAuth(this.app).getUser(firebaseUid);
       return record.email ?? null;
     } catch (error) {
-      if (isFirebaseAuthError(error) && error.code === "auth/user-not-found") {
-        throw new UnauthenticatedError("Session invalide ou expirée");
-      }
+      if (isUserNotFound(error)) throw new UnauthenticatedError("Session invalide ou expirée");
       throw error;
     }
   }
+
+  async deleteAccount(firebaseUid: string): Promise<void> {
+    try {
+      await getAuth(this.app).deleteUser(firebaseUid);
+    } catch (error) {
+      // Déjà supprimé lors d'une tentative précédente du job : succès (ADR-019).
+      if (!isUserNotFound(error)) throw error;
+    }
+  }
+}
+
+export function isUserNotFound(error: unknown): boolean {
+  return isFirebaseAuthError(error) && error.code === "auth/user-not-found";
 }
 
 function isFirebaseAuthError(error: unknown): error is { code: string } {

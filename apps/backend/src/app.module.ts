@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { HealthController } from "./health.controller";
+import { AccountDeletionModule } from "./modules/account-deletion/account-deletion.module";
 import { FriendshipsModule } from "./modules/friendships/friendships.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { MessagesModule } from "./modules/messages/messages.module";
@@ -19,6 +20,7 @@ import { SharedModule } from "./shared/shared.module";
     MessagesModule,
     StoriesModule,
     PurgeWorkerModule,
+    AccountDeletionModule,
   ],
   controllers: [HealthController],
 })

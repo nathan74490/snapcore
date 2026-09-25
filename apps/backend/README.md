@@ -41,7 +41,10 @@ Le backend embarque le worker de purge des médias (module `purge`, ADR-017, `do
 jobs `purge-message-<id>` programmés à l'envoi d'un Snap (+30 j) et rapprochés à l'ouverture (+24 h),
 exception SnapCore+ vérifiée à l'exécution ; jobs `purge-story-<id>` à l'expiration d'un élément de story
 (média, ligne et vues supprimés) ; balayage de rattrapage toutes les heures pour les deux.
-`PURGE_WORKER_ENABLED=false` démarre une instance API sans worker.
+Suppression de compte (ADR-019) : file `account-deletion`, job `delete-account-<userId>` idempotent
+(abonnement → Firebase → PostgreSQL sous `FOR UPDATE` → R2), réessais quasi illimités avec backoff
+plafonné à 30 min, alerte (log ERROR) au-delà de 24h d'échec, rattrapage horaire.
+`PURGE_WORKER_ENABLED=false` démarre une instance API sans aucun worker.
 
 ## Organisation
 
@@ -74,6 +77,7 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | POST | `/media/uploads` | URL de PUT signée vers `tmp/` `{ purpose, contentType, contentLength }` | 016 |
 | PUT | `/me/photo` | Confirme un upload `PROFILE_PHOTO` `{ uploadId }` | 014, 016 |
 | DELETE | `/me/photo` | Retire la photo de profil | 014, 016 |
+| DELETE | `/me` | Supprime mon compte (202 : bloqué immédiatement, suppression en arrière-plan) | 019 |
 | GET | `/users/search?username=` | Recherche par pseudo exact + relation | 012 |
 | GET | `/friendships` | Mes amis | 012 |
 | GET | `/friendships/requests/incoming` | Demandes reçues | 012 |

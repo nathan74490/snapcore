@@ -2,6 +2,8 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../app.module";
 import { configureApp } from "../app.setup";
+import { ACCOUNT_DELETION_REPOSITORY, DELETION_JOB_QUEUE } from "../modules/account-deletion/application/ports";
+import { ACCOUNT_DELETION_QUEUE, AccountDeletionWorker } from "../modules/account-deletion/infrastructure/bullmq-deletion";
 import { FRIENDSHIP_REPOSITORY } from "../modules/friendships/application/ports/friendship.repository";
 import { IDENTITY_PROVIDER } from "../modules/identity/application/ports/identity-provider.port";
 import { USER_REPOSITORY } from "../modules/identity/application/ports/user.repository";
@@ -15,6 +17,7 @@ import { PurgeWorker } from "../modules/purge/infrastructure/purge.worker";
 import { PURGE_QUEUE } from "../modules/purge/infrastructure/purge-queue";
 import { STORY_PURGE_SCHEDULER, STORY_REPOSITORY, STORY_VIEW_STORE } from "../modules/stories/application/ports";
 import { FakeIdentityProvider } from "./fakes";
+import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "./in-memory-account-deletion";
 import { InMemoryFriendshipRepository } from "./in-memory-friendship.repository";
 import { InMemoryObjectStorage, InMemoryUploadTicketStore } from "./in-memory-media";
 import { InMemoryMessageRepository, RecordingPurgeScheduler } from "./in-memory-messages";
@@ -36,6 +39,8 @@ export class TestWorld {
   readonly presence = new InMemoryPresence();
   readonly stories = new InMemoryStoryRepository();
   readonly storyViews = new InMemoryStoryViews();
+  readonly accountDeletion = new InMemoryAccountDeletionRepository(this.users, this.messages, this.stories, this.friendships);
+  readonly deletionQueue = new RecordingDeletionQueue();
 }
 
 // Application Nest complète, adaptateurs externes (Postgres, Firebase, R2, Redis, BullMQ, FCM) remplacés.
@@ -70,6 +75,14 @@ export async function createTestApp(
     .overrideProvider(STORY_PURGE_SCHEDULER)
     .useValue(new RecordingStoryPurgeScheduler())
     .overrideProvider(PurgeWorker)
+    .useValue({})
+    .overrideProvider(ACCOUNT_DELETION_REPOSITORY)
+    .useValue(world.accountDeletion)
+    .overrideProvider(ACCOUNT_DELETION_QUEUE)
+    .useValue({})
+    .overrideProvider(DELETION_JOB_QUEUE)
+    .useValue(world.deletionQueue)
+    .overrideProvider(AccountDeletionWorker)
     .useValue({})
     .overrideProvider(PUSH_SENDER)
     .useValue(world.push)

@@ -25,7 +25,8 @@ export class FakeIdentityProvider implements IdentityProvider {
     return `token-${firebaseUid}`;
   }
 
-  deleteAccount(firebaseUid: string): void {
+  // Le corps s'exécute immédiatement : les tests peuvent l'appeler sans await.
+  async deleteAccount(firebaseUid: string): Promise<void> {
     this.deletedAccounts.add(firebaseUid);
   }
 

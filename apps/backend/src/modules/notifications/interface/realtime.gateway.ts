@@ -72,4 +72,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     // Via l'adaptateur Redis, atteint les connexions de l'utilisateur sur toutes les instances.
     this.server.to(userRoom(userId)).emit(event.type, event);
   }
+
+  async disconnectUser(userId: string): Promise<void> {
+    this.server.in(userRoom(userId)).disconnectSockets(true);
+  }
 }

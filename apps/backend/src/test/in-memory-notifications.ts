@@ -22,6 +22,10 @@ export class InMemoryPresence implements PresenceTracker {
 
 export class RecordingRealtime implements RealtimeChannel {
   readonly emitted: Array<{ userId: string; event: UserEvent }> = [];
+  readonly disconnected: string[] = [];
+  async disconnectUser(userId: string) {
+    this.disconnected.push(userId);
+  }
   async emitToUser(userId: string, event: UserEvent) {
     this.emitted.push({ userId, event });
   }

@@ -17,4 +17,7 @@ export interface IdentityProvider {
 
   /** Email actuel du compte côté Firebase (source de vérité, ADR-014). */
   getCurrentEmail(firebaseUid: string): Promise<string | null>;
+
+  /** Supprime le compte Firebase. Idempotent : un compte déjà supprimé n'est pas une erreur (ADR-019). */
+  deleteAccount(firebaseUid: string): Promise<void>;
 }

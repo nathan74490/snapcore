@@ -53,6 +53,6 @@ import { RealtimeGateway } from "./interface/realtime.gateway";
       useFactory: (devices: DeviceTokenRepository) => new DeviceTokenUseCases(devices),
     },
   ],
-  exports: [UserEventPublisher],
+  exports: [UserEventPublisher, REALTIME_CHANNEL],
 })
 export class NotificationsModule {}
