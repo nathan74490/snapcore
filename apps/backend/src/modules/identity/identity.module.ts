@@ -1,6 +1,11 @@
-import { Module } from "@nestjs/common";
+import { Logger, Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import type { App } from "firebase-admin/app";
+import { OBJECT_STORAGE, type ObjectStorage } from "../media/application/ports/object-storage.port";
+import { UploadPromoter } from "../media/application/upload-promoter";
+import { PublicMediaUrls } from "../media/domain/public-media-urls";
+import { MediaModule } from "../media/media.module";
+import { ProfilePhotoUseCases } from "./application/use-cases/profile-photo";
 import { IDENTITY_PROVIDER, type IdentityProvider } from "./application/ports/identity-provider.port";
 import { USER_REPOSITORY, type UserRepository } from "./application/ports/user.repository";
 import { RegisterUser } from "./application/use-cases/register-user";
@@ -17,8 +22,15 @@ import { MeController } from "./interface/http/me.controller";
 // Les cas d'usage restent de simples classes TypeScript (aucun décorateur Nest) :
 // le câblage ports → adaptateurs est fait ici, en périphérie (ADR-002).
 @Module({
+  imports: [MediaModule],
   controllers: [AuthController, MeController],
   providers: [
+    {
+      provide: ProfilePhotoUseCases,
+      inject: [USER_REPOSITORY, UploadPromoter, OBJECT_STORAGE, PublicMediaUrls],
+      useFactory: (users: UserRepository, promoter: UploadPromoter, storage: ObjectStorage, urls: PublicMediaUrls) =>
+        new ProfilePhotoUseCases(users, promoter, storage, urls, new Logger(ProfilePhotoUseCases.name)),
+    },
     firebaseAppProvider,
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
     {

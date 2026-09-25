@@ -46,6 +46,14 @@ export class InMemoryUserRepository implements UserRepository {
     return { ...next };
   }
 
+  async replaceProfilePhoto(id: string, expectedUrl: string | null, newUrl: string | null) {
+    const current = this.rows.get(id);
+    if (!current || current.deletionRequestedAt || current.profilePhotoUrl !== expectedUrl) return null;
+    const next = { ...current, profilePhotoUrl: newUrl };
+    this.rows.set(id, next);
+    return { ...next };
+  }
+
   /** Raccourci de test : crée directement un compte actif. */
   async seed(username: string, overrides: Partial<UserAccount> = {}): Promise<UserAccount> {
     const user = await this.create({ username, firebaseUid: `uid-${username}`, email: null, phoneNumber: null });

@@ -53,6 +53,9 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | GET | `/me` | Mon profil | 014 |
 | PATCH | `/me` | Modifier pseudo / téléphone (409 si pris) | 014 |
 | POST | `/me/email/sync` | Recopie l'email confirmé côté Firebase | 014 |
+| POST | `/media/uploads` | URL de PUT signée vers `tmp/` `{ purpose, contentType, contentLength }` | 016 |
+| PUT | `/me/photo` | Confirme un upload `PROFILE_PHOTO` `{ uploadId }` | 014, 016 |
+| DELETE | `/me/photo` | Retire la photo de profil | 014, 016 |
 | GET | `/users/search?username=` | Recherche par pseudo exact + relation | 012 |
 | GET | `/friendships` | Mes amis | 012 |
 | GET | `/friendships/requests/incoming` | Demandes reçues | 012 |

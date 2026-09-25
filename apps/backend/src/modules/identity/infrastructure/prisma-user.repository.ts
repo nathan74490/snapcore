@@ -36,6 +36,14 @@ export class PrismaUserRepository implements UserRepository {
     const row = await this.prisma.user.update({ where: { id }, data: patch }).catch(rethrowUniqueViolation);
     return toAccount(row)!;
   }
+
+  async replaceProfilePhoto(id: string, expectedUrl: string | null, newUrl: string | null): Promise<UserAccount | null> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { id, profilePhotoUrl: expectedUrl, ...ACTIVE },
+      data: { profilePhotoUrl: newUrl },
+    });
+    return count === 0 ? null : this.findActiveById(id);
+  }
 }
 
 function toAccount(row: UserRow | null): UserAccount | null {

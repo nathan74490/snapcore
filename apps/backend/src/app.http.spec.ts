@@ -8,11 +8,14 @@ import { FRIENDSHIP_REPOSITORY } from "./modules/friendships/application/ports/f
 import { IDENTITY_PROVIDER } from "./modules/identity/application/ports/identity-provider.port";
 import { USER_REPOSITORY } from "./modules/identity/application/ports/user.repository";
 import { FIREBASE_APP } from "./modules/identity/infrastructure/firebase-app.provider";
+import { OBJECT_STORAGE } from "./modules/media/application/ports/object-storage.port";
+import { UPLOAD_TICKET_STORE } from "./modules/media/application/ports/upload-ticket.store";
+import { InMemoryObjectStorage, InMemoryUploadTicketStore } from "./test/in-memory-media";
 import { FakeIdentityProvider, RecordingFriendshipNotifier } from "./test/fakes";
 import { InMemoryFriendshipRepository } from "./test/in-memory-friendship.repository";
 import { InMemoryUserRepository } from "./test/in-memory-user.repository";
 
-// Application Nest complète, avec les adaptateurs externes (Postgres, Firebase) remplacés.
+// Application Nest complète, avec les adaptateurs externes (Postgres, Firebase, R2, Redis) remplacés.
 describe("API HTTP", () => {
   let app: INestApplication;
   let identity: FakeIdentityProvider;
@@ -30,6 +33,10 @@ describe("API HTTP", () => {
       .useValue(users)
       .overrideProvider(FRIENDSHIP_REPOSITORY)
       .useValue(new InMemoryFriendshipRepository(users))
+      .overrideProvider(OBJECT_STORAGE)
+      .useValue(new InMemoryObjectStorage())
+      .overrideProvider(UPLOAD_TICKET_STORE)
+      .useValue(new InMemoryUploadTicketStore())
       .overrideProvider(FRIENDSHIP_NOTIFIER)
       .useValue(new RecordingFriendshipNotifier())
       .compile();
