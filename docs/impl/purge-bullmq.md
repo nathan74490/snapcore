@@ -3,7 +3,7 @@
 Ce document couvre la mécanique BullMQ concrète qui met en œuvre les décisions d'ADR-017 (identifiants déterministes, jamais de suppression/réajout naïf, le balayage de rattrapage passe toujours par le même job normal). Contrairement à l'ADR, ce document est attendu comme changeant avec les versions de BullMQ effectivement installées — à revérifier avant implémentation et à chaque montée de version majeure, plutôt que de figer des noms d'API dans une décision d'architecture.
 
 ## Identifiants de job
-`purge:message:<messageId>` / `purge:story:<storyItemId>`, jamais un identifiant aléatoire. Ajouter un job dont l'identifiant existe déjà dans la file est silencieusement ignoré par BullMQ (aucune erreur), y compris si le job existant est déjà terminé ou en échec mais toujours conservé dans Redis — d'où les points ci-dessous.
+`purge-message-<messageId>` / `purge-story-<storyItemId>` (séparateur `-`, pas `:` — certaines versions récentes de BullMQ utilisent `:` en interne pour construire leurs clés Redis et pourraient refuser un `jobId` personnalisé qui en contient ; à confirmer dans la doc de la version installée avant implémentation), jamais un identifiant aléatoire. Ajouter un job dont l'identifiant existe déjà dans la file est silencieusement ignoré par BullMQ (aucune erreur), y compris si le job existant est déjà terminé ou en échec mais toujours conservé dans Redis — d'où les points ci-dessous.
 
 **Attention à la signature de `queue.add`** : le premier argument est le **nom** du job (une catégorie, ex. `'purge'`), pas son identifiant. L'identifiant déterministe se passe dans les options, via `jobId` :
 
