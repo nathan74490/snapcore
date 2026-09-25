@@ -17,18 +17,24 @@ import { SnapPurgeUseCases } from "./application/snap-purge-use-cases";
 import { BullMqSnapPurgeScheduler } from "./infrastructure/bullmq/bullmq-snap-purge.scheduler";
 import { PurgeWorker } from "./infrastructure/bullmq/purge.worker";
 import { bullmqConnection, PURGE_QUEUE } from "./infrastructure/bullmq/purge-queue";
-import { LoggingMessageNotifier } from "./infrastructure/logging-message.notifier";
+import { UserEventPublisher } from "../notifications/application/user-event-publisher";
+import { NotificationsModule } from "../notifications/notifications.module";
+import { EventMessageNotifier } from "./infrastructure/event-message.notifier";
 import { PrismaMessageRepository } from "./infrastructure/prisma-message.repository";
 import { MessagesController } from "./interface/http/messages.controller";
 
 const redisUrl = (config: ConfigService) => config.get("REDIS_URL", "redis://localhost:6379");
 
 @Module({
-  imports: [IdentityModule, FriendshipsModule, MediaModule],
+  imports: [IdentityModule, FriendshipsModule, MediaModule, NotificationsModule],
   controllers: [MessagesController],
   providers: [
     { provide: MESSAGE_REPOSITORY, useClass: PrismaMessageRepository },
-    { provide: MESSAGE_NOTIFIER, useClass: LoggingMessageNotifier },
+    {
+      provide: MESSAGE_NOTIFIER,
+      inject: [UserEventPublisher],
+      useFactory: (events: UserEventPublisher) => new EventMessageNotifier(events),
+    },
     {
       provide: PURGE_QUEUE,
       inject: [ConfigService],

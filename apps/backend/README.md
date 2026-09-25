@@ -25,6 +25,16 @@ Les cas d'usage sont testés sans base ni Firebase, avec les dépôts en mémoir
 (qui reproduisent les contraintes d'unicité et `CHECK` du schéma). `app.http.spec.ts` monte
 l'application Nest complète avec ces mêmes doublures.
 
+## Temps réel (Socket.io)
+
+Connexion : `io(URL, { auth: { token: <ID token Firebase> } })`. Le serveur émet `ready` une fois
+l'utilisateur authentifié (compte actif requis), puis chaque événement sous son type :
+`friend_request.received`, `friend_request.accepted`, `message.received`, `snap.opened`,
+`texts.read`, `snap.retained`, `snap.expired`. Contenu minimal (type + identifiants) : le client
+va chercher le détail via l'API et **resynchronise tout à chaque reconnexion** (ADR-006).
+Hors ligne, les événements importants partent en push FCM (message data, mêmes champs, ADR-018).
+Multi-instance via l'adaptateur Redis de Socket.io ; présence partagée dans Redis.
+
 ## Jobs (BullMQ)
 
 Le backend embarque le worker de purge des Snaps (ADR-017, `docs/impl/purge-bullmq.md`) :
@@ -80,3 +90,5 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | POST | `/conversations/:friendId/messages/snap` | Snap `{ uploadId, contentType }` (upload `SNAP_PHOTO` / `SNAP_VIDEO`) | 009, 016 |
 | POST | `/conversations/:friendId/read` | Marque les Chats reçus comme lus | 009 |
 | POST | `/messages/:messageId/view` | Ouvre un Snap : URL ~1 min, vue unique, grâce 5 min, SnapCore+ | 009 |
+| POST | `/devices` | Enregistre le token FCM de l'appareil `{ token }` (upsert) | 018 |
+| DELETE | `/devices/:token` | Au logout : retire le token de l'appareil | 018 |

@@ -61,6 +61,6 @@ import { MeController } from "./interface/http/me.controller";
     },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
-  exports: [USER_REPOSITORY],
+  exports: [USER_REPOSITORY, IDENTITY_PROVIDER, ResolveCurrentUser, FIREBASE_APP],
 })
 export class IdentityModule {}
