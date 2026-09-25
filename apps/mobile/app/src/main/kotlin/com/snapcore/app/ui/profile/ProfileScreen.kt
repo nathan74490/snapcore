@@ -1,6 +1,11 @@
 package com.snapcore.app.ui.profile
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,11 +20,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,9 +43,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -49,7 +61,7 @@ import com.snapcore.app.ui.theme.SnapColors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(onBack: () -> Unit, onSignedOut: () -> Unit, onAccountChanged: (com.snapcore.app.domain.Account) -> Unit) {
-    val vm = containerViewModel { ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices) }
+    val vm = containerViewModel { ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.signedOut) { if (state.signedOut) onSignedOut() }
@@ -82,7 +94,13 @@ fun ProfileScreen(onBack: () -> Unit, onSignedOut: () -> Unit, onAccountChanged:
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Avatar(account.username, account.profilePhotoUrl, size = 112.dp)
+            EditableAvatar(
+                username = account.username,
+                photoUrl = account.profilePhotoUrl,
+                busy = state.photoBusy,
+                onPicked = vm::changePhoto,
+                onRemove = vm::removePhoto,
+            )
             Text(account.username, style = MaterialTheme.typography.headlineMedium)
             if (account.isPremium) Text("SnapCore+", color = SnapColors.SnapPurple)
             Spacer(Modifier.height(16.dp))
@@ -153,5 +171,49 @@ private fun ProfileRow(label: String, value: String, onEdit: (() -> Unit)? = nul
         }
         trailing()
         if (onEdit != null) Icon(Icons.Filled.Edit, contentDescription = "Modifier $label", tint = SnapColors.Grey)
+    }
+}
+
+// Avatar du profil : un appui propose de choisir une photo (sélecteur de photos Android, aucune
+// permission requise : l'app n'accède qu'à l'image choisie) ou de revenir à l'avatar par défaut.
+@Composable
+private fun EditableAvatar(
+    username: String,
+    photoUrl: String?,
+    busy: Boolean,
+    onPicked: (String) -> Unit,
+    onRemove: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri?.let { onPicked(it.toString()) }
+    }
+    Box {
+        Box(Modifier.clickable(enabled = !busy) { menuOpen = true }, contentAlignment = Alignment.Center) {
+            Avatar(username, photoUrl, size = 112.dp)
+            if (busy) CircularProgressIndicator(color = Color.White)
+        }
+        Box(
+            Modifier.align(Alignment.BottomEnd).size(32.dp).background(SnapColors.Yellow, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Filled.CameraAlt, contentDescription = "Changer la photo", tint = SnapColors.Black, modifier = Modifier.size(18.dp)) }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text("Choisir une photo") },
+                onClick = {
+                    menuOpen = false
+                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+            )
+            if (photoUrl != null) {
+                DropdownMenuItem(
+                    text = { Text("Retirer la photo") },
+                    onClick = {
+                        menuOpen = false
+                        onRemove()
+                    },
+                )
+            }
+        }
     }
 }

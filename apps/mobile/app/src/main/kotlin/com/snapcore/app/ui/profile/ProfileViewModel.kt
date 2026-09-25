@@ -8,6 +8,8 @@ import com.snapcore.app.domain.AccountRules
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.DeviceRegistry
+import com.snapcore.app.domain.MediaUploader
+import com.snapcore.app.domain.ProfilePhotoPreparer
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.UserFacingException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +30,7 @@ data class ProfileState(
     val saving: Boolean = false,
     val message: String? = null,
     val confirmDeletion: Boolean = false,
+    val photoBusy: Boolean = false,
     /** L'utilisateur a quitté son compte (déconnexion ou suppression) : retour à l'accueil. */
     val signedOut: Boolean = false,
 )
@@ -37,6 +40,8 @@ class ProfileViewModel(
     private val accounts: AccountService,
     private val pending: PendingRegistrationStore,
     private val devices: DeviceRegistry,
+    private val uploader: MediaUploader,
+    private val photoPreparer: ProfilePhotoPreparer,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ProfileState())
     val state: StateFlow<ProfileState> = _state.asStateFlow()
@@ -86,6 +91,36 @@ class ProfileViewModel(
             } catch (e: ApiException) {
                 _state.update { it.copy(saving = false, draftError = e.message) }
             }
+        }
+    }
+
+    // Photo de profil : 512×512 préparée sur le téléphone, upload R2 pré-signé puis confirmation
+    // (ADR-014, ADR-016). Le backend supprime lui-même l'ancienne image.
+    fun changePhoto(source: String) {
+        _state.update { it.copy(photoBusy = true) }
+        viewModelScope.launch {
+            val prepared = runCatching { photoPreparer.prepare(source) }.getOrElse {
+                _state.update { s -> s.copy(photoBusy = false, message = "Photo illisible") }
+                return@launch
+            }
+            try {
+                val uploadId = uploader.upload(prepared, "image/jpeg", "PROFILE_PHOTO")
+                val updated = accounts.setProfilePhoto(uploadId)
+                _state.update { it.copy(account = updated, photoBusy = false, message = "Photo de profil mise à jour") }
+            } catch (e: Exception) {
+                _state.update { it.copy(photoBusy = false, message = e.message ?: "Envoi impossible") }
+            } finally {
+                prepared.delete()
+            }
+        }
+    }
+
+    fun removePhoto() {
+        _state.update { it.copy(photoBusy = true) }
+        viewModelScope.launch {
+            runCatching { accounts.removeProfilePhoto() }
+                .onSuccess { updated -> _state.update { it.copy(account = updated, photoBusy = false) } }
+                .onFailure { e -> _state.update { it.copy(photoBusy = false, message = e.message) } }
         }
     }
 

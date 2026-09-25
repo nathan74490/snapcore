@@ -7,7 +7,9 @@ import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.DeviceRegistry
 import com.snapcore.app.domain.PendingRegistration
 import com.snapcore.app.domain.PendingRegistrationStore
+import com.snapcore.app.domain.ProfilePhotoPreparer
 import com.snapcore.app.domain.UserFacingException
+import java.io.File
 
 class FakeAuth : AuthService {
     var signedIn = false
@@ -69,6 +71,14 @@ class FakeAccounts : AccountService {
     override suspend fun deleteAccount() {
         deleted = true
     }
+
+    val confirmedUploads = mutableListOf<String>()
+    override suspend fun setProfilePhoto(uploadId: String): Account {
+        confirmedUploads += uploadId
+        return account!!.copy(profilePhotoUrl = "https://cdn.test/profiles/$uploadId").also { account = it }
+    }
+
+    override suspend fun removeProfilePhoto(): Account = account!!.copy(profilePhotoUrl = null).also { account = it }
 }
 
 class FakePending : PendingRegistrationStore {
@@ -90,5 +100,14 @@ class FakeDevices : DeviceRegistry {
     }
     override suspend fun unregisterCurrentDevice() {
         unregistered++
+    }
+}
+
+class FakePhotoPreparer : ProfilePhotoPreparer {
+    val prepared = mutableListOf<File>()
+    var fail = false
+    override suspend fun prepare(source: String): File {
+        if (fail) error("image illisible")
+        return File.createTempFile("profile", ".jpg").apply { writeText("jpeg") }.also { prepared += it }
     }
 }

@@ -6,6 +6,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -26,6 +27,13 @@ interface SnapCoreApi {
 
     @DELETE("me")
     suspend fun deleteAccount()
+
+    // Confirme un upload PROFILE_PHOTO (ADR-014, ADR-016).
+    @PUT("me/photo")
+    suspend fun setProfilePhoto(@Body body: ConfirmUploadRequest): UserDto
+
+    @DELETE("me/photo")
+    suspend fun removeProfilePhoto(): UserDto
 
     // --- Médias (ADR-016) ---
     @POST("media/uploads")
@@ -196,3 +204,6 @@ data class StoryFeedEntryDto(val author: PublicProfileDto, val items: List<Story
 
 @Serializable
 data class DeviceTokenRequest(val token: String)
+
+@Serializable
+data class ConfirmUploadRequest(val uploadId: String)

@@ -1,5 +1,6 @@
 package com.snapcore.app.data
 
+import com.snapcore.app.data.api.ConfirmUploadRequest
 import com.snapcore.app.data.api.RegisterRequest
 import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.data.api.UpdateProfileRequest
@@ -19,6 +20,10 @@ class ApiAccountService(private val api: SnapCoreApi) : AccountService {
         apiCall { api.updateProfile(UpdateProfileRequest(username, phoneNumber)) }.toAccount()
 
     override suspend fun deleteAccount() = apiCall { api.deleteAccount() }
+
+    override suspend fun setProfilePhoto(uploadId: String) = apiCall { api.setProfilePhoto(ConfirmUploadRequest(uploadId)) }.toAccount()
+
+    override suspend fun removeProfilePhoto() = apiCall { api.removeProfilePhoto() }.toAccount()
 }
 
 private fun UserDto.toAccount() = Account(

@@ -7,6 +7,7 @@ import com.snapcore.app.data.ApiChatService
 import com.snapcore.app.data.ApiFriendsService
 import com.snapcore.app.data.ApiSnapService
 import com.snapcore.app.data.ApiStoryService
+import com.snapcore.app.data.BitmapProfilePhotoPreparer
 import com.snapcore.app.data.DataStorePendingRegistrationStore
 import com.snapcore.app.data.FirebaseAuthService
 import com.snapcore.app.data.R2MediaUploader
@@ -18,6 +19,8 @@ import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.ChatService
 import com.snapcore.app.domain.FriendsService
 import com.snapcore.app.domain.MediaPublisher
+import com.snapcore.app.domain.MediaUploader
+import com.snapcore.app.domain.ProfilePhotoPreparer
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.SessionResolver
 import com.snapcore.app.domain.StoryService
@@ -66,7 +69,8 @@ class AppContainer(context: Context) {
         .build()
 
     val friends: FriendsService = ApiFriendsService(api)
-    val mediaPublisher = MediaPublisher(R2MediaUploader(api, storageClient), ApiSnapService(api))
+    val mediaUploader: MediaUploader = R2MediaUploader(api, storageClient)
+    val mediaPublisher = MediaPublisher(mediaUploader, ApiSnapService(api))
 
     val chat: ChatService = ApiChatService(api)
     val stories: StoryService = ApiStoryService(api)
@@ -82,4 +86,6 @@ class AppContainer(context: Context) {
 
     /** Médias capturés : cache privé de l'app, jamais la galerie (ADR-011). */
     val capturesDir: File = File(context.cacheDir, "captures").apply { mkdirs() }
+
+    val profilePhotoPreparer: ProfilePhotoPreparer = BitmapProfilePhotoPreparer(context.applicationContext, capturesDir)
 }
