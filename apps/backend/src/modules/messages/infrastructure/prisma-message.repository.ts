@@ -63,6 +63,29 @@ export class PrismaMessageRepository implements MessageRepository {
       ORDER BY "otherId", m."createdAt" DESC, m.id DESC`;
     return new Map(rows.map((row) => [row.otherId, toMessage(row)]));
   }
+
+  async clearMedia(id: string): Promise<void> {
+    await this.prisma.message.update({ where: { id }, data: { mediaKey: null } });
+  }
+
+  async markRetainedNotified(id: string, at: Date): Promise<boolean> {
+    const { count } = await this.prisma.message.updateMany({
+      where: { id, retainedNotifiedAt: null },
+      data: { retainedNotifiedAt: at },
+    });
+    return count === 1;
+  }
+
+  async findOverdueSnapIds(now: Date, limit: number): Promise<string[]> {
+    // Utilise @@index([scheduledPurgeAt]) : c'est la raison d'être de cet index (ADR-017).
+    const rows = await this.prisma.message.findMany({
+      where: { scheduledPurgeAt: { lte: now }, mediaKey: { not: null }, contentType: { not: "TEXT" } },
+      orderBy: { scheduledPurgeAt: "asc" },
+      take: limit,
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
 }
 
 function toMessage(row: MessageRow): Message {

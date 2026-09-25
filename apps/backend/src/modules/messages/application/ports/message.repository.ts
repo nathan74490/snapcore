@@ -26,4 +26,16 @@ export interface MessageRepository {
 
   /** Dernier message échangé avec chacun des `otherUserIds` (absent si aucun message). */
   findLastMessagesWith(userId: string, otherUserIds: string[]): Promise<Map<string, Message>>;
+
+  /** Vide `mediaKey` après suppression du média : la ligne Message n'est jamais supprimée (ADR-017). */
+  clearMedia(id: string): Promise<void>;
+
+  /**
+   * Renseigne `retainedNotifiedAt` s'il est encore vide (mise à jour conditionnelle).
+   * @returns true si CET appel l'a renseigné : la notification "Snap conservé" ne part qu'une fois (ADR-009).
+   */
+  markRetainedNotified(id: string, at: Date): Promise<boolean>;
+
+  /** Snaps dont la purge est échue mais dont le média existe encore (balayage de rattrapage, ADR-017). */
+  findOverdueSnapIds(now: Date, limit: number): Promise<string[]>;
 }

@@ -2,6 +2,14 @@
 
 Ce document couvre la mécanique BullMQ concrète qui met en œuvre les décisions d'ADR-017 (identifiants déterministes, jamais de suppression/réajout naïf, le balayage de rattrapage passe toujours par le même job normal). Contrairement à l'ADR, ce document est attendu comme changeant avec les versions de BullMQ effectivement installées — à revérifier avant implémentation et à chaque montée de version majeure, plutôt que de figer des noms d'API dans une décision d'architecture.
 
+## Vérifié sur bullmq 5.81.5 (implémentation initiale)
+Chaque point de ce document est couvert par `apps/backend/src/modules/messages/infrastructure/bullmq/purge-bullmq.int-spec.ts`, qui tourne contre un vrai Redis : à relancer après toute montée de version (`npm run test:integration -w @snapcore/backend`).
+- Un `jobId` contenant `:` est refusé (`Custom Id cannot contain :`) : le séparateur `-` est bien nécessaire.
+- `changeDelay` prend un délai relatif et lève `JobNotInState` si le job n'est pas `delayed` : l'adaptateur vérifie l'état avant l'appel.
+- Un `queue.add` sur l'identifiant d'un job en échec conservé est bien ignoré sans erreur ; `job.retry()` le remet en `waiting`.
+- **Garde-fou ajouté à l'implémentation** : le handler relit `scheduledPurgeAt` en base et, s'il est encore dans le futur (job réajouté par le balayage ou exécuté en avance), re-diffère le job à cette date au lieu de purger. La base reste ainsi la seule source de vérité de l'échéance, quel que soit l'état de la file.
+- Le balayage horaire est un *job scheduler* (`queue.upsertJobScheduler("purge-sweep", { every: 3600000 })`), idempotent : un redémarrage ne crée pas de second balayage.
+
 ## Identifiants de job
 `purge-message-<messageId>` / `purge-story-<storyItemId>` (séparateur `-`, pas `:` — certaines versions récentes de BullMQ utilisent `:` en interne pour construire leurs clés Redis et pourraient refuser un `jobId` personnalisé qui en contient ; à confirmer dans la doc de la version installée avant implémentation), jamais un identifiant aléatoire. Ajouter un job dont l'identifiant existe déjà dans la file est silencieusement ignoré par BullMQ (aucune erreur), y compris si le job existant est déjà terminé ou en échec mais toujours conservé dans Redis — d'où les points ci-dessous.
 

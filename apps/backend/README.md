@@ -25,6 +25,13 @@ Les cas d'usage sont testés sans base ni Firebase, avec les dépôts en mémoir
 (qui reproduisent les contraintes d'unicité et `CHECK` du schéma). `app.http.spec.ts` monte
 l'application Nest complète avec ces mêmes doublures.
 
+## Jobs (BullMQ)
+
+Le backend embarque le worker de purge des Snaps (ADR-017, `docs/impl/purge-bullmq.md`) :
+jobs `purge-message-<id>` programmés à l'envoi (+30 j) et rapprochés à l'ouverture (+24 h),
+exception SnapCore+ vérifiée à l'exécution, balayage de rattrapage toutes les heures.
+`PURGE_WORKER_ENABLED=false` démarre une instance API sans worker.
+
 ## Organisation
 
 ```

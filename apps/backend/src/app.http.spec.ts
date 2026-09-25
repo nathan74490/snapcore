@@ -8,6 +8,11 @@ import { FRIENDSHIP_REPOSITORY } from "./modules/friendships/application/ports/f
 import { IDENTITY_PROVIDER } from "./modules/identity/application/ports/identity-provider.port";
 import { USER_REPOSITORY } from "./modules/identity/application/ports/user.repository";
 import { FIREBASE_APP } from "./modules/identity/infrastructure/firebase-app.provider";
+import { MESSAGE_REPOSITORY } from "./modules/messages/application/ports/message.repository";
+import { SNAP_PURGE_SCHEDULER } from "./modules/messages/application/ports/snap-purge.scheduler";
+import { PurgeWorker } from "./modules/messages/infrastructure/bullmq/purge.worker";
+import { PURGE_QUEUE } from "./modules/messages/infrastructure/bullmq/purge-queue";
+import { InMemoryMessageRepository, RecordingPurgeScheduler } from "./test/in-memory-messages";
 import { OBJECT_STORAGE } from "./modules/media/application/ports/object-storage.port";
 import { UPLOAD_TICKET_STORE } from "./modules/media/application/ports/upload-ticket.store";
 import { InMemoryObjectStorage, InMemoryUploadTicketStore } from "./test/in-memory-media";
@@ -15,7 +20,7 @@ import { FakeIdentityProvider, RecordingFriendshipNotifier } from "./test/fakes"
 import { InMemoryFriendshipRepository } from "./test/in-memory-friendship.repository";
 import { InMemoryUserRepository } from "./test/in-memory-user.repository";
 
-// Application Nest complète, avec les adaptateurs externes (Postgres, Firebase, R2, Redis) remplacés.
+// Application Nest complète, avec les adaptateurs externes (Postgres, Firebase, R2, Redis, BullMQ) remplacés.
 describe("API HTTP", () => {
   let app: INestApplication;
   let identity: FakeIdentityProvider;
@@ -37,6 +42,14 @@ describe("API HTTP", () => {
       .useValue(new InMemoryObjectStorage())
       .overrideProvider(UPLOAD_TICKET_STORE)
       .useValue(new InMemoryUploadTicketStore())
+      .overrideProvider(MESSAGE_REPOSITORY)
+      .useValue(new InMemoryMessageRepository())
+      .overrideProvider(PURGE_QUEUE)
+      .useValue({})
+      .overrideProvider(SNAP_PURGE_SCHEDULER)
+      .useValue(new RecordingPurgeScheduler())
+      .overrideProvider(PurgeWorker)
+      .useValue({})
       .overrideProvider(FRIENDSHIP_NOTIFIER)
       .useValue(new RecordingFriendshipNotifier())
       .compile();

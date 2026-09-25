@@ -54,6 +54,25 @@ export class InMemoryMessageRepository implements MessageRepository {
     return result;
   }
 
+  async clearMedia(id: string) {
+    this.rows.get(id)!.mediaKey = null;
+  }
+
+  async markRetainedNotified(id: string, at: Date) {
+    const row = this.rows.get(id);
+    if (!row || row.retainedNotifiedAt) return false;
+    row.retainedNotifiedAt = at;
+    return true;
+  }
+
+  async findOverdueSnapIds(now: Date, limit: number) {
+    return [...this.rows.values()]
+      .filter((m) => m.contentType !== "TEXT" && m.mediaKey !== null && m.scheduledPurgeAt && m.scheduledPurgeAt <= now)
+      .sort((a, b) => a.scheduledPurgeAt!.getTime() - b.scheduledPurgeAt!.getTime())
+      .slice(0, limit)
+      .map((m) => m.id);
+  }
+
   private between(userA: string, userB: string): Message[] {
     return [...this.rows.values()]
       .filter(
@@ -67,12 +86,18 @@ export class InMemoryMessageRepository implements MessageRepository {
 
 export class RecordingPurgeScheduler implements SnapPurgeScheduler {
   readonly calls: Array<{ op: "schedule" | "reschedule"; messageId: string; at: Date }> = [];
+  readonly recovered: string[] = [];
+  recoverOutcome: "retried" | "re-added" | "untouched" = "untouched";
 
   async schedule(messageId: string, at: Date) {
     this.calls.push({ op: "schedule", messageId, at });
   }
   async reschedule(messageId: string, at: Date) {
     this.calls.push({ op: "reschedule", messageId, at });
+  }
+  async recover(messageId: string) {
+    this.recovered.push(messageId);
+    return this.recoverOutcome;
   }
 }
 
@@ -87,5 +112,11 @@ export class RecordingMessageNotifier implements MessageNotifier {
   }
   async textsRead(senderId: string) {
     this.events.push(`read→${senderId}`);
+  }
+  async snapRetained(senderId: string) {
+    this.events.push(`retained→${senderId}`);
+  }
+  async snapExpired(participantIds: [string, string]) {
+    this.events.push(`expired→${participantIds.join(",")}`);
   }
 }
