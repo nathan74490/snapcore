@@ -6,6 +6,7 @@ import com.snapcore.app.data.ApiAccountService
 import com.snapcore.app.data.ApiChatService
 import com.snapcore.app.data.ApiFriendsService
 import com.snapcore.app.data.ApiSnapService
+import com.snapcore.app.data.ApiStoryService
 import com.snapcore.app.data.DataStorePendingRegistrationStore
 import com.snapcore.app.data.FirebaseAuthService
 import com.snapcore.app.data.R2MediaUploader
@@ -19,6 +20,7 @@ import com.snapcore.app.domain.FriendsService
 import com.snapcore.app.domain.MediaPublisher
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.SessionResolver
+import com.snapcore.app.domain.StoryService
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -65,6 +67,7 @@ class AppContainer(context: Context) {
     val mediaPublisher = MediaPublisher(R2MediaUploader(api, storageClient), ApiSnapService(api))
 
     val chat: ChatService = ApiChatService(api)
+    val stories: StoryService = ApiStoryService(api)
 
     // Passerelle temps réel (ADR-006), authentifiée avec l'ID token Firebase courant.
     val realtime = RealtimeClient(httpClient, BuildConfig.API_BASE_URL) {

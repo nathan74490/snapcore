@@ -33,6 +33,8 @@ import com.snapcore.app.ui.chat.ConversationScreen
 import com.snapcore.app.ui.friends.FriendsScreen
 import com.snapcore.app.ui.home.HomeScreen
 import com.snapcore.app.ui.profile.ProfileScreen
+import com.snapcore.app.ui.stories.MyStoryScreen
+import com.snapcore.app.ui.stories.StoryPlayerScreen
 import kotlinx.serialization.Serializable
 import java.io.File
 
@@ -44,6 +46,9 @@ import java.io.File
 @Serializable private object HomeRoute
 @Serializable private object ProfileRoute
 @Serializable private object FriendsRoute
+@Serializable private object MyStoryRoute
+// authorId = null : sa propre story.
+@Serializable private data class StoryPlayerRoute(val title: String, val authorId: String?, val startItemId: String? = null)
 @Serializable private data class ConversationRoute(val friendId: String, val username: String, val photoUrl: String?)
 
 // Le média capturé transite par son chemin dans le cache privé de l'app (ADR-011).
@@ -103,6 +108,8 @@ fun SnapCoreNavHost(navController: NavHostController = rememberNavController()) 
                     onOpenFriends = { navController.navigate(FriendsRoute) },
                     onCaptured = { media -> navController.navigate(PreviewRoute(media.file.absolutePath, media.kind)) },
                     onOpenConversation = { f -> navController.navigate(ConversationRoute(f.id, f.username, f.photoUrl)) },
+                    onOpenMyStory = { navController.navigate(MyStoryRoute) },
+                    onPlayStory = { story -> navController.navigate(StoryPlayerRoute(story.author.username, story.author.id)) },
                 )
             }
         }
@@ -130,6 +137,16 @@ fun SnapCoreNavHost(navController: NavHostController = rememberNavController()) 
             val me = account
             if (me == null) StartScreen(onSession = ::go)
             else ConversationScreen(Friend(route.friendId, route.username, route.photoUrl), me.id, onBack = navController::popBackStack)
+        }
+        composable<MyStoryRoute> {
+            MyStoryScreen(
+                onBack = navController::popBackStack,
+                onPlay = { item -> navController.navigate(StoryPlayerRoute("Ma story", authorId = null, startItemId = item.id)) },
+            )
+        }
+        composable<StoryPlayerRoute> { entry ->
+            val route = entry.toRoute<StoryPlayerRoute>()
+            StoryPlayerScreen(route.title, route.authorId, route.startItemId, onClose = navController::popBackStack)
         }
         composable<FriendsRoute> { FriendsScreen(onBack = navController::popBackStack) }
         composable<ProfileRoute> {

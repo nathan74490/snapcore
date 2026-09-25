@@ -54,6 +54,22 @@ interface SnapCoreApi {
     @POST("messages/{messageId}/view")
     suspend fun viewSnap(@Path("messageId") messageId: String): SnapViewUrlDto
 
+    // --- Stories (ADR-013) ---
+    @GET("stories")
+    suspend fun storyFeed(): List<StoryFeedEntryDto>
+
+    @GET("stories/me")
+    suspend fun myStory(): List<OwnStoryItemDto>
+
+    @POST("stories/{storyId}/view")
+    suspend fun viewStory(@Path("storyId") storyId: String): SnapViewUrlDto
+
+    @GET("stories/{storyId}/viewers")
+    suspend fun storyViewers(@Path("storyId") storyId: String): List<PublicProfileDto>
+
+    @DELETE("stories/{storyId}")
+    suspend fun deleteStory(@Path("storyId") storyId: String)
+
     // --- Amis (ADR-012) ---
     @GET("friendships")
     suspend fun friends(): List<FriendshipItemDto>
@@ -164,3 +180,9 @@ data class SendTextRequest(val content: String)
 
 @Serializable
 data class SnapViewUrlDto(val url: String, val expiresAt: String)
+
+@Serializable
+data class StoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewed: Boolean)
+
+@Serializable
+data class StoryFeedEntryDto(val author: PublicProfileDto, val items: List<StoryItemDto>, val hasUnviewed: Boolean)
