@@ -38,6 +38,22 @@ interface SnapCoreApi {
     @POST("stories")
     suspend fun publishStory(@Body body: PublishStoryRequest): OwnStoryItemDto
 
+    // --- Conversations (ADR-009) ---
+    @GET("conversations")
+    suspend fun conversations(): List<ConversationDto>
+
+    @GET("conversations/{friendId}/messages")
+    suspend fun messages(@Path("friendId") friendId: String, @Query("before") before: String? = null): List<ChatMessageDto>
+
+    @POST("conversations/{friendId}/messages/text")
+    suspend fun sendText(@Path("friendId") friendId: String, @Body body: SendTextRequest): ChatMessageDto
+
+    @POST("conversations/{friendId}/read")
+    suspend fun markRead(@Path("friendId") friendId: String)
+
+    @POST("messages/{messageId}/view")
+    suspend fun viewSnap(@Path("messageId") messageId: String): SnapViewUrlDto
+
     // --- Amis (ADR-012) ---
     @GET("friendships")
     suspend fun friends(): List<FriendshipItemDto>
@@ -126,3 +142,25 @@ data class UserSearchResultDto(val id: String, val username: String, val profile
 
 @Serializable
 data class FriendRequestBody(val username: String)
+
+// Miroir de MessageView (packages/types) : la clé R2 n'est jamais exposée, seulement mediaPurged.
+@Serializable
+data class ChatMessageDto(
+    val id: String,
+    val senderId: String,
+    val recipientId: String,
+    val contentType: String,
+    val content: String? = null,
+    val createdAt: String,
+    val openedAt: String? = null,
+    val mediaPurged: Boolean = false,
+)
+
+@Serializable
+data class ConversationDto(val friend: PublicProfileDto, val lastMessage: ChatMessageDto? = null)
+
+@Serializable
+data class SendTextRequest(val content: String)
+
+@Serializable
+data class SnapViewUrlDto(val url: String, val expiresAt: String)

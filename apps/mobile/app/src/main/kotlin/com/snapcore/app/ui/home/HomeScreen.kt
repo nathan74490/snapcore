@@ -35,16 +35,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.CapturedMedia
+import com.snapcore.app.domain.Friend
 import com.snapcore.app.ui.camera.CameraScreen
+import com.snapcore.app.ui.chat.ChatListScreen
 import com.snapcore.app.ui.components.Avatar
 import com.snapcore.app.ui.theme.SnapColors
 
 private data class Tab(val label: String, val icon: ImageVector, val placeholder: String?)
 
+private const val CHAT_TAB = 0
 private const val CAMERA_TAB = 1
 
 private val TABS = listOf(
-    Tab("Chat", Icons.Filled.ChatBubble, "Tes conversations apparaîtront ici (ADR-009)."),
+    Tab("Chat", Icons.Filled.ChatBubble, null),
     Tab("Caméra", Icons.Filled.CameraAlt, null),
     Tab("Stories", Icons.Filled.AutoStories, "Les stories de tes amis apparaîtront ici (ADR-013)."),
 )
@@ -58,6 +61,7 @@ fun HomeScreen(
     onOpenProfile: () -> Unit,
     onOpenFriends: () -> Unit,
     onCaptured: (CapturedMedia) -> Unit,
+    onOpenConversation: (Friend) -> Unit,
 ) {
     var selected by rememberSaveable { mutableIntStateOf(CAMERA_TAB) }
     val onCamera = selected == CAMERA_TAB
@@ -92,6 +96,13 @@ fun HomeScreen(
                     IconButton(onClick = onOpenFriends) { Icon(Icons.Filled.PersonAdd, "Ajouter des amis", tint = Color.White) }
                 }
             }
+        } else if (selected == CHAT_TAB) {
+            ChatListScreen(
+                myId = account.id,
+                onOpen = onOpenConversation,
+                onAddFriends = onOpenFriends,
+                modifier = Modifier.padding(padding),
+            )
         } else {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
