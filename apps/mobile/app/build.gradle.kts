@@ -31,9 +31,11 @@ android {
 
     buildTypes {
         debug {
-            // Backend local joint via "adb reverse tcp:3000 tcp:3000" : le port 3000 du téléphone (ou de
+            // Backend local. Par défaut via "adb reverse tcp:3000 tcp:3000" : le port 3000 du téléphone (ou de
             // l'émulateur) est redirigé vers celui du PC par le câble USB, sans configuration réseau.
-            buildConfigField("String", "API_BASE_URL", "\"http://127.0.0.1:3000/\"")
+            // Sans câble : apiBaseUrl=http://<IP du PC sur le Wi-Fi>:3000/ dans local.properties.
+            val apiBaseUrl = localProperty("apiBaseUrl").ifBlank { "http://127.0.0.1:3000/" }
+            buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         }
         release {
             isMinifyEnabled = false
