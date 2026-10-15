@@ -85,4 +85,38 @@ describe("PrismaMessageRepository (Postgres réel)", () => {
 
     expect(page.map((m) => m.content)).toEqual(["2", "1"]);
   });
+
+  it("CHECK : le contenu doit correspondre au type du message (ADR-009)", async () => {
+    const base = text(alice, bob, "x", "2026-09-25T10:00:00Z");
+    const snap = { ...base, contentType: "SNAP_PHOTO" as const, content: null, mediaKey: "messages/x", scheduledPurgeAt: new Date() };
+    const rejected = [
+      { ...base, content: null }, // texte vide sans modération
+      { ...base, mediaKey: "messages/x" }, // texte avec un média
+      { ...base, scheduledPurgeAt: new Date() }, // texte avec une purge programmée
+      { ...snap, content: "x" }, // Snap avec du texte
+      { ...snap, scheduledPurgeAt: null }, // Snap sans purge programmée
+    ];
+    for (const message of rejected) {
+      await expect(messages.create({ ...message, id: randomUUID() })).rejects.toThrow(/Message_content_matches_type_check/);
+    }
+  });
+
+  it("CHECK : la purge d'un Snap et la rédaction d'un texte restent possibles", async () => {
+    const snap = await messages.create({
+      ...text(alice, bob, "", "2026-09-25T10:00:00Z"),
+      contentType: "SNAP_PHOTO_VIDEO",
+      content: null,
+      mediaKey: "messages/y",
+      scheduledPurgeAt: new Date(),
+    });
+    const chat = await messages.create(text(alice, bob, "insulte", "2026-09-25T10:01:00Z"));
+    const moderator = await prisma.moderator.create({ data: { email: `mod-${randomUUID()}@snapcore.test`, passwordHash: "x" } });
+
+    await messages.clearMedia(snap.id);
+    expect(await messages.redact(chat.id, { moderatorId: moderator.id, reason: "x", at: new Date() })).toBe(true);
+
+    expect(await prisma.message.findUnique({ where: { id: snap.id } })).toMatchObject({ mediaKey: null });
+    expect(await prisma.message.findUnique({ where: { id: chat.id } })).toMatchObject({ content: null });
+    await prisma.moderator.delete({ where: { id: moderator.id } });
+  });
 });

@@ -100,6 +100,9 @@ model Message {
   @@index([recipientId])
   @@index([senderId, recipientId, createdAt]) // affichage d'une conversation
   @@index([scheduledPurgeAt])                 // sélection des Snaps à purger
+  // Contrainte CHECK "Message_content_matches_type_check" en SQL brut (migration 20261015000000_message_content_check,
+  // non exprimable en DSL Prisma, ADR-009) : TEXT → mediaKey et scheduledPurgeAt NULL, content non NULL sauf rédaction
+  // (moderatedAt renseigné) ; Snap → content NULL et scheduledPurgeAt renseigné, mediaKey NULL une fois purgé ou rédigé.
 }
 
 model Friendship {

@@ -52,6 +52,7 @@ SnapCore doit reproduire exactement le système d'icônes colorées de Snapchat 
 - Révision 5 (revue technique) : ajout d'une mise à jour atomique de `openedAt` et d'une fenêtre de grâce de 5 minutes après ouverture, pour éliminer la course entre requêtes concurrentes et permettre de redemander l'URL après un échec de téléchargement ; précision de la durée de vie courte (~1 minute) de l'URL pré-signée et de l'absence de mise en cache disque côté app.
 - Révision 6 (revue technique) : l'URL de lecture d'un Snap est désormais explicitement refusée si la paire est `BLOCKED`, même pour un Snap déjà reçu et non encore purgé (voir ADR-012).
 - Révision 7 (revue technique) : la condition est resserrée d'"absence de `BLOCKED`" à "présence d'un `FRIENDSHIP` `ACCEPTED`", pour couvrir aussi le retrait d'ami (aucune ligne restante) sans avoir à énumérer chaque statut interdit séparément — cohérent avec la règle unique posée par ADR-012.
+- Révision 8 (implémentation) : la règle "un seul des deux renseigné selon le type" est garantie en base par la contrainte `CHECK` `Message_content_matches_type_check` (migration SQL, non exprimable dans le DSL Prisma). Elle tolère les vidages légitimes : `mediaKey` d'un Snap à `NULL` après purge (ADR-017) ou rédaction (ADR-021), `content` d'un texte à `NULL` uniquement avec `moderatedAt` renseigné. Elle impose aussi `scheduledPurgeAt` nul pour un texte et renseigné pour un Snap (ADR-017). Vérifié par test d'intégration sur PostgreSQL.
 
 ## Liens
 - ADR liés : ADR-012, ADR-016, ADR-017
