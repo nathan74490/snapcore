@@ -13,3 +13,11 @@ build/
 local.properties
 .gradle/
 .idea/
+
+# Clé du compte de service Firebase (ADR-015) : ne jamais commiter
+firebase-service-account.json
+
+# Config Firebase de l'app Android (contient la clé API du projet)
+google-services.json
+*.tsbuildinfo
+next-env.d.ts

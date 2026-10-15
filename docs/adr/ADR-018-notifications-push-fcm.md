@@ -33,6 +33,7 @@ Le chat (ADR-006) et la gestion des amis (ADR-012) reposent sur la passerelle te
 - Révision (revue technique) : ajout de `DeviceToken`, mécanisme de présence Redis multi-instance, mise à jour du contexte suite à ADR-015.
 - Révision 2 : ajout de la suppression du `DeviceToken` au logout et de l'upsert par `token` pour gérer le changement de compte sur un même appareil ; la contrainte `@unique` sur `token` était déjà présente au schéma.
 - Révision 3 : correction du texte qui affirmait à tort que la contrainte `@unique` restait à ajouter — elle était déjà présente au schéma depuis la révision 1.
+- Révision 4 (implémentation) : la clé `presence:online:<userId>` est un *sorted set* avec une entrée par connexion (score = expiration, rafraîchie par un heartbeat serveur toutes les 20 s, validité 60 s) plutôt qu'une clé unique à TTL — sans quoi un utilisateur connecté sur deux appareils passait "hors ligne" dès que l'un des deux se déconnectait. Le repli sur le push ne concerne que les événements qui justifient de réveiller le téléphone (demande d'ami reçue/acceptée, message reçu, Snap conservé) ; les simples mises à jour d'affichage (Snap ouvert, Chats lus, Snap expiré) ne sont livrées qu'en temps réel et rattrapées à la resynchronisation REST (ADR-006).
 
 ## Liens
 - ADR liés : ADR-002, ADR-003, ADR-006, ADR-012, ADR-015

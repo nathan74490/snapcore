@@ -2,10 +2,13 @@
   "name": "@snapcore/db",
   "version": "0.0.0",
   "private": true,
-  "main": "index.ts",
+  "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
     "generate": "prisma generate",
-    "migrate": "prisma migrate dev"
+    "migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "postinstall": "prisma generate"
   },
   "devDependencies": {
     "prisma": "^5.20.0"

@@ -31,6 +31,23 @@ enum StoryContentType {
   VIDEO
 }
 
+enum ModerationStatus {
+  ACTIVE           // voir ADR-021
+  SUSPENDED
+}
+
+enum ReportTargetType {
+  USER             // voir ADR-021
+  MESSAGE
+  STORY_ITEM
+}
+
+enum ReportStatus {
+  PENDING          // voir ADR-021
+  RESOLVED
+  DISMISSED
+}
+
 model User {
   id                String    @id @default(uuid())
   username          String    @unique // normalisé en minuscules, modifiable, unicité revérifiée (ADR-014)
@@ -42,6 +59,11 @@ model User {
   premiumUntil      DateTime?
   createdAt         DateTime  @default(now())
   deletionRequestedAt DateTime? // renseigné au déclenchement de la suppression de compte ; bloque connexion/actions dès cet instant, avant même la fin du job de suppression (ADR-019)
+  moderationStatus  ModerationStatus @default(ACTIVE) // SUSPENDED traité comme deletionRequestedAt non nul pour les autres utilisateurs, à vérifier au même endroit centralisé (ADR-021)
+  suspendedAt       DateTime?
+  suspendedById     String?
+  suspendedBy       Moderator? @relation("UserSuspendedBy", fields: [suspendedById], references: [id], onDelete: SetNull)
+  suspensionReason  String?
 
   sentMessages         Message[]     @relation("MessageSender")
   receivedMessages     Message[]     @relation("MessageRecipient")
@@ -50,6 +72,8 @@ model User {
   friendshipsBlockedBy Friendship[]  @relation("FriendshipBlockedBy")
   storyItems           StoryItem[]
   deviceTokens         DeviceToken[]
+  reportsMade          Report[]      @relation("ReportsMade")
+  reportsReceived      Report[]      @relation("ReportsReceivedAsUser")
 }
 
 model Message {
@@ -59,12 +83,18 @@ model Message {
   recipientId       String
   recipient         User               @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
   contentType       MessageContentType // voir ADR-009
-  content           String?            // texte du chat, renseigné uniquement si contentType = TEXT ; PERMANENT, jamais purgé (ADR-009)
-  mediaKey          String?            // clé d'objet R2 (jamais une URL), renseignée uniquement si contentType est un type de Snap ; vidée par la purge (ADR-009, ADR-016, ADR-017)
+  content           String?            // texte du chat, renseigné uniquement si contentType = TEXT ; PERMANENT, jamais purgé par le job de purge — sauf rédaction par modération (ADR-009, ADR-021)
+  mediaKey          String?            // clé d'objet R2 (jamais une URL), renseignée uniquement si contentType est un type de Snap ; vidée par la purge (ADR-009, ADR-016, ADR-017) ou par une rédaction de modération (ADR-021)
   createdAt         DateTime           @default(now())
   openedAt          DateTime?          // horodatage durable de la 1re ouverture ; null = jamais ouvert (ADR-009)
   scheduledPurgeAt  DateTime?          // uniquement pour les Snaps : createdAt + 30j par défaut, ramené à openedAt + 24h à l'ouverture, mis à jour à CHAQUE reprogrammation ; repoussé à premiumUntil + 24h si abonnement SnapCore+ actif ; toujours null pour un message TEXT (ADR-017)
   retainedNotifiedAt DateTime?         // renseigné au premier envoi de la notification "Snap conservé" à l'expéditeur, pour qu'elle ne parte qu'une seule fois même si la purge est évitée à plusieurs reprises (ADR-009)
+  moderatedAt       DateTime?          // renseigné si un modérateur a rédigé ce message (content vidé ou mediaKey vidé + objet R2 supprimé) sans supprimer la ligne (ADR-021)
+  moderatedById     String?
+  moderatedBy       Moderator?         @relation("MessageModeratedBy", fields: [moderatedById], references: [id], onDelete: SetNull)
+  moderationReason  String?
+
+  reports Report[]
 
   @@index([senderId])
   @@index([recipientId])
@@ -94,7 +124,7 @@ model Friendship {
 
   @@unique([pairLow, pairHigh])
   @@index([addresseeId])
-  // Contraintes CHECK à ajouter via une migration SQL brute (non exprimables en DSL Prisma, ADR-012 v3) :
+  // Contraintes CHECK ajoutées en SQL brut dans la migration initiale (non exprimables en DSL Prisma, ADR-012 v3) :
   //   CHECK ("requesterId" <> "addresseeId")                                   -- interdit l'auto-ajout
   //   CHECK ("pairLow" = LEAST("requesterId", "addresseeId")
   //          AND "pairHigh" = GREATEST("requesterId", "addresseeId"))          -- cohérence de la paire triée
@@ -109,6 +139,8 @@ model StoryItem {
   createdAt     DateTime         @default(now())
   expiresAt     DateTime         // createdAt + 24h ; déclenche le job BullMQ de purge (ADR-017)
 
+  reports Report[]
+
   @@index([authorId])
   @@index([expiresAt])
 }
@@ -121,4 +153,40 @@ model DeviceToken {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+}
+
+model Moderator {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String            // bcrypt/argon2id, jamais en clair, jamais partagé avec un mot de passe Firebase (ADR-020)
+  createdAt    DateTime @default(now())
+
+  usersSuspended    User[]    @relation("UserSuspendedBy")
+  messagesModerated Message[] @relation("MessageModeratedBy")
+  reportsResolved   Report[]  @relation("ReportResolvedBy")
+}
+
+model Report {
+  id                String           @id @default(uuid())
+  reporterId        String
+  reporter          User             @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType        ReportTargetType // voir ADR-021 : une seule des trois clés ci-dessous est renseignée, selon targetType
+  targetUserId      String?
+  targetUser        User?            @relation("ReportsReceivedAsUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+  targetMessageId   String?
+  targetMessage     Message?         @relation(fields: [targetMessageId], references: [id], onDelete: SetNull)
+  targetStoryItemId String?
+  targetStoryItem   StoryItem?       @relation(fields: [targetStoryItemId], references: [id], onDelete: SetNull)
+  reason            String
+  status            ReportStatus     @default(PENDING)
+  createdAt         DateTime         @default(now())
+  resolvedAt        DateTime?
+  resolvedById      String?
+  resolvedBy        Moderator?       @relation("ReportResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([targetUserId])
+  // Contrainte CHECK "Report_single_target_check" en SQL brut (migration 20260925150000_moderation,
+  // non exprimable en DSL Prisma, ADR-021) : seule la clé correspondant à targetType peut être renseignée,
+  // et elle peut devenir NULL quand le contenu visé disparaît (onDelete: SetNull ci-dessus).
 }

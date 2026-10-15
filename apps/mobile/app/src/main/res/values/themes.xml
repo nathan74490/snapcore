@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Thème de la fenêtre avant l'affichage de Compose ; le thème réel est défini en Compose. -->
+    <style name="Theme.SnapCore" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

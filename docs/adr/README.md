@@ -23,3 +23,5 @@ Liste des Architecture Decision Records du projet.
 | [ADR-017](./ADR-017-purge-medias-bullmq.md) | Purge automatique des Snaps expirés : job BullMQ, exception SnapCore+ | Proposé |
 | [ADR-018](./ADR-018-notifications-push-fcm.md) | Notifications push : Firebase Cloud Messaging, suivi des tokens et de la présence | Proposé |
 | [ADR-019](./ADR-019-suppression-compte-cascade.md) | Suppression de compte : Firebase, R2 et cascade sur les données liées | Proposé |
+| [ADR-020](./ADR-020-authentification-backoffice.md) | Authentification du backoffice : comptes modérateurs internes, distincts des comptes Firebase | Proposé |
+| [ADR-021](./ADR-021-moderation-backoffice.md) | Modération : signalements, suspension de compte, suppression ciblée de contenu | Proposé |

@@ -1,6 +1,12 @@
 // Types métier partagés entre apps/backend et apps/backoffice.
 export type SubscriptionTier = "free" | "premium";
 
+// Statut de modération d'un compte (voir ADR-021). SUSPENDED est traité comme
+// deletionRequestedAt non nul pour les autres utilisateurs (connexion bloquée,
+// profil/messagerie/stories masqués), mais reste réversible contrairement à la
+// suppression de compte (ADR-019).
+export type ModerationStatus = "ACTIVE" | "SUSPENDED";
+
 export interface User {
   id: string;
   username: string;             // normalisé en minuscules, modifiable depuis le profil, unicité revérifiée (voir ADR-014)
@@ -11,6 +17,8 @@ export interface User {
   subscriptionTier: SubscriptionTier;
   premiumUntil?: string;
   deletionRequestedAt?: string; // renseigné dès la demande de suppression de compte ; bloque connexion/actions même avant la fin du job de suppression (voir ADR-019). Champ interne : à exclure de toute réponse représentant le profil PUBLIC d'un autre utilisateur (recherche, profil consulté, liste d'amis) — pertinent uniquement pour l'utilisateur lui-même et le backend.
+  moderationStatus: ModerationStatus; // voir ADR-021. Champ interne au même titre que deletionRequestedAt ci-dessus : jamais exposé dans un profil PUBLIC.
+  suspendedAt?: string;
 }
 
 // Types de contenu d'un message de chat, pour le rendu des icônes/couleurs
@@ -32,6 +40,8 @@ export interface Message {
   createdAt: string;
   openedAt?: string;    // horodatage durable de la 1re ouverture ; absent = jamais ouvert (voir ADR-009)
   retainedNotifiedAt?: string; // renseigné au premier envoi de la notification "Snap conservé" à l'expéditeur, pour qu'elle ne parte qu'une fois (voir ADR-009)
+  moderatedAt?: string;         // renseigné si un modérateur a rédigé ce message (content ou mediaKey vidé) sans supprimer la ligne (voir ADR-021)
+  moderationReason?: string;
 }
 
 // Relation d'amitié entre deux utilisateurs (voir ADR-012).
@@ -73,4 +83,110 @@ export interface DeviceToken {
   userId: string;
   token: string;
   updatedAt: string;
+}
+
+// Profil d'un AUTRE utilisateur tel qu'exposé par l'API (recherche, liste d'amis, demandes).
+// Ne contient jamais phoneNumber, email ni deletionRequestedAt (voir ADR-014, ADR-019).
+export interface PublicUserProfile {
+  id: string;
+  username: string;
+  profilePhotoUrl?: string;
+}
+
+// Relation vue depuis l'utilisateur courant, pour l'affichage d'un résultat de recherche.
+// DECLINED est volontairement présenté comme "NONE" (un refus n'est pas révélé), et un
+// utilisateur BLOCKED n'apparaît jamais dans une recherche (voir ADR-012).
+export type FriendshipRelation = "NONE" | "OUTGOING_REQUEST" | "INCOMING_REQUEST" | "FRIENDS";
+
+export interface UserSearchResult extends PublicUserProfile {
+  relation: FriendshipRelation;
+}
+
+// Une ligne de liste (amis, demandes reçues/envoyées, utilisateurs bloqués) : la relation
+// et l'autre utilisateur de la paire (voir ADR-012).
+export interface FriendshipListItem {
+  friendshipId: string;
+  status: FriendshipStatus;
+  requestedAt: string;
+  respondedAt?: string;
+  user: PublicUserProfile;
+}
+
+// Message tel qu'exposé par l'API (voir ADR-009). La clé R2 n'est jamais exposée :
+// `mediaPurged` suffit au client pour afficher l'icône grise d'un Snap expiré.
+export interface MessageView {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  contentType: MessageContentType;
+  content?: string;      // uniquement pour TEXT
+  createdAt: string;
+  openedAt?: string;
+  mediaPurged: boolean;  // toujours false pour TEXT
+  moderated: boolean;    // contenu retiré par un modérateur (voir ADR-021)
+}
+
+// Une ligne de la liste de conversations : uniquement les amis ACCEPTED (voir ADR-012).
+export interface ConversationSummary {
+  friend: PublicUserProfile;
+  lastMessage?: MessageView;
+}
+
+// URL de lecture d'un Snap, à durée de vie courte (~1 min), jamais mise en cache disque (voir ADR-009).
+export interface SnapViewUrl {
+  url: string;
+  expiresAt: string;
+}
+
+// Élément de story tel qu'exposé à un ami : la clé R2 n'est jamais exposée (voir ADR-013, ADR-016).
+export interface StoryItemView {
+  id: string;
+  contentType: StoryContentType;
+  createdAt: string;
+  expiresAt: string;
+  viewed: boolean;          // l'utilisateur courant l'a déjà vu
+}
+
+// Story d'un ami : ses éléments encore visibles, du plus ancien au plus récent.
+export interface StoryFeedEntry {
+  author: PublicUserProfile;
+  items: StoryItemView[];
+  hasUnviewed: boolean;
+}
+
+// Élément de ma propre story, avec le nombre de vues (voir ADR-013).
+export interface OwnStoryItemView {
+  id: string;
+  contentType: StoryContentType;
+  createdAt: string;
+  expiresAt: string;
+  viewCount: number;
+}
+
+// Compte membre de l'équipe Alpvengers avec accès au backoffice, entièrement
+// distinct d'un compte Firebase utilisateur final (voir ADR-020). Le hash du
+// mot de passe n'est jamais inclus dans ce type partagé, réservé côté serveur.
+export interface Moderator {
+  id: string;
+  email: string;
+  createdAt: string;
+}
+
+// Signalement d'un utilisateur, message ou élément de story (voir ADR-021).
+// targetType détermine laquelle des trois cibles ci-dessous est renseignée.
+export type ReportTargetType = "USER" | "MESSAGE" | "STORY_ITEM";
+export type ReportStatus = "PENDING" | "RESOLVED" | "DISMISSED";
+
+export interface Report {
+  id: string;
+  reporterId: string;
+  targetType: ReportTargetType;
+  targetUserId?: string;
+  targetMessageId?: string;
+  targetStoryItemId?: string;
+  reason: string;
+  status: ReportStatus;
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedById?: string;
 }
