@@ -1,5 +1,11 @@
 package com.snapcore.app.ui.friends
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import com.snapcore.app.ui.components.SnapHeader
+import com.snapcore.app.ui.components.FigmaAsset
+import com.snapcore.app.ui.components.StatusBarIcons
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,12 +59,10 @@ fun FriendsScreen(onBack: () -> Unit) {
         }
     }
 
+    StatusBarIcons(dark = true)
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Ajouter des amis") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") } },
-            )
+            SnapHeader("Ajouter des amis", onBack)
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -67,7 +71,9 @@ fun FriendsScreen(onBack: () -> Unit) {
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = vm::onQuery,
-                    label = { Text("Pseudo exact") },
+                    placeholder = { Text("Rechercher un pseudo") },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = SnapColors.Control, focusedContainerColor = SnapColors.Control, unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent, focusedBorderColor = SnapColors.ChatBlue),
                     singleLine = true,
                     trailingIcon = { IconButton(onClick = vm::search) { Icon(Icons.Filled.Search, "Rechercher") } },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -79,7 +85,7 @@ fun FriendsScreen(onBack: () -> Unit) {
                 state.result?.let { result ->
                     PersonRow(result.user) {
                         when (result.relation) {
-                            Relation.NONE -> Button(onClick = vm::addResult, colors = ButtonDefaults.buttonColors(containerColor = SnapColors.ChatBlue)) { Text("Ajouter") }
+                            Relation.NONE -> Button(onClick = vm::addResult, colors = ButtonDefaults.buttonColors(containerColor = SnapColors.Yellow, contentColor = SnapColors.Ink)) { Text("Ajouter") }
                             Relation.INCOMING_REQUEST -> Button(onClick = vm::addResult) { Text("Accepter") }
                             Relation.OUTGOING_REQUEST -> Text("Demande envoyée", color = SnapColors.Grey)
                             Relation.FRIENDS -> Text("Ami", color = SnapColors.Grey)
@@ -92,7 +98,7 @@ fun FriendsScreen(onBack: () -> Unit) {
                 items(state.incoming, key = { it.friendshipId }) { request ->
                     PersonRow(request.user) {
                         OutlinedButton(onClick = { vm.decline(request) }) { Text("Refuser") }
-                        Button(onClick = { vm.accept(request) }, colors = ButtonDefaults.buttonColors(containerColor = SnapColors.ChatBlue)) { Text("Accepter") }
+                        Button(onClick = { vm.accept(request) }, colors = ButtonDefaults.buttonColors(containerColor = SnapColors.Yellow, contentColor = SnapColors.Ink)) { Text("Accepter") }
                     }
                 }
             }
@@ -114,11 +120,11 @@ private fun Section(title: String) {
 @Composable
 private fun PersonRow(user: Friend, actions: @Composable () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 66.dp).padding(vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Avatar(user.username, user.photoUrl, size = 44.dp)
+        Avatar(user.username, user.photoUrl, size = 56.dp)
         Text(user.username, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
     }

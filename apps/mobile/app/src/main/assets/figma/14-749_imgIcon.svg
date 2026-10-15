@@ -1,0 +1,7 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Icon">
+<rect x="1" y="1" width="42" height="42" rx="21" fill="#3A3F47"/>
+<rect x="1" y="1" width="42" height="42" rx="21" stroke="#F0CD7B" stroke-width="2"/>
+<path id="Star" d="M22 11L24.2451 17.9098H31.5106L25.6327 22.1803L27.8779 29.0902L22 24.8197L16.1221 29.0902L18.3673 22.1803L12.4894 17.9098H19.7549L22 11Z" fill="white"/>
+</g>
+</svg>

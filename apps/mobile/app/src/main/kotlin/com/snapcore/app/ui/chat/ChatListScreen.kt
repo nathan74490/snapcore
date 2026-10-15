@@ -1,61 +1,86 @@
 package com.snapcore.app.ui.chat
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.snapcore.app.domain.Conversation
-import com.snapcore.app.domain.Friend
-import com.snapcore.app.domain.statusOf
-import com.snapcore.app.ui.components.Avatar
+import com.snapcore.app.domain.*
+import com.snapcore.app.ui.components.*
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
 
-// Liste des conversations avec l'icône de statut du dernier message (ADR-009,
-// référence : chat-liste-conversations.png). Seuls les amis ACCEPTED y figurent (ADR-012).
+private fun Conversation.unread(myId: String) = lastMessage?.let { !it.isFrom(myId) && it.openedAt == null && !it.mediaPurged } == true
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> Unit, modifier: Modifier = Modifier) {
     val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events) }
     val state by vm.state.collectAsStateWithLifecycle()
-
-    PullToRefreshBox(isRefreshing = state.loading && state.conversations.isNotEmpty(), onRefresh = vm::refresh, modifier = modifier.fillMaxSize()) {
-        when {
-            state.loading && state.conversations.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-            state.conversations.isEmpty() -> Column(
-                Modifier.fillMaxSize().padding(32.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(state.error ?: "Aucune conversation pour l'instant.", color = SnapColors.Grey, textAlign = TextAlign.Center)
-                TextButton(onClick = onAddFriends) { Text("Ajouter des amis") }
-            }
-            else -> LazyColumn(Modifier.fillMaxSize()) {
-                items(state.conversations, key = { it.friend.id }) { conversation ->
-                    ConversationRow(conversation, myId) { onOpen(conversation.friend) }
-                    HorizontalDivider()
+    var filter by rememberSaveable { mutableIntStateOf(0) }
+    val unread = state.conversations.count { it.unread(myId) }
+    val visible = state.conversations.filter { when(filter) { 1 -> it.unread(myId); 2 -> it.lastMessage == null; else -> true } }
+    Column(modifier.fillMaxSize().background(Color.White)) {
+        Row(Modifier.fillMaxWidth().height(52.dp).padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("Tous", "Non lus", "Nouveaux").forEachIndexed { index, label ->
+                Row(Modifier.clip(RoundedCornerShape(18.dp)).background(if(filter == index) SnapColors.Selected else Color.Transparent)
+                    .clickable { filter = index }.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(label, fontSize = 17.sp, color = if(filter == index) Color(0xFF0A6EA8) else SnapColors.Grey)
+                    if(index == 1 && unread > 0) Box(Modifier.size(22.dp).background(Color(0xFF0D4B70), CircleShape), Alignment.Center) {
+                        Text(unread.toString(), color = Color.White, style = MaterialTheme.typography.labelMedium)
+                    }
                 }
+            }
+        }
+        PullToRefreshBox(isRefreshing = state.loading && state.conversations.isNotEmpty(), onRefresh = vm::refresh, modifier = Modifier.weight(1f)) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 90.dp)) {
+                state.error?.let { error -> item { TextButton(onClick = vm::refresh) { Text("$error · Réessayer", color = SnapColors.SnapRed) } } }
+                if(state.loading && state.conversations.isEmpty()) item {
+                    Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }
+                }
+                items(visible, key = { it.friend.id }) { conversation ->
+                    ConversationRow(conversation, myId) { onOpen(conversation.friend) }
+                }
+                if(visible.isEmpty() && !state.loading) item {
+                    Text(if(filter == 1) "Tous tes chats sont lus." else if(filter == 2) "Aucune nouvelle conversation." else "Retrouve tes amis ici pour commencer à discuter.",
+                        modifier = Modifier.fillMaxWidth().padding(24.dp), color = SnapColors.Grey, textAlign = TextAlign.Center)
+                }
+                item {
+                    Text("Ajouter des amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 10.dp, top = 24.dp, bottom = 12.dp))
+                    Row(Modifier.fillMaxWidth().clickable(onClick = onAddFriends).padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(48.dp).background(SnapColors.Control, CircleShape), Alignment.Center) { FigmaAsset("17-1301_imgIconAddFriend") }
+                        Column(Modifier.weight(1f)) {
+                            Text("Trouver mes amis", style = MaterialTheme.typography.bodyLarge)
+                            Text("Rechercher un pseudo", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Box(Modifier.clip(RoundedCornerShape(18.dp)).background(SnapColors.Yellow).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Text("Ajouter", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+            FloatingActionButton(onClick = onAddFriends, containerColor = SnapColors.ChatBlue, contentColor = Color.White,
+                shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(60.dp)) {
+                FigmaAsset("15-925_imgIconEdit", "Nouveau chat")
             }
         }
     }
@@ -64,30 +89,23 @@ fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> U
 @Composable
 private fun ConversationRow(conversation: Conversation, myId: String, onClick: () -> Unit) {
     val last = conversation.lastMessage
-    // Un message reçu non ouvert met la conversation en gras, comme dans Snapchat.
-    val unread = last != null && !last.isFrom(myId) && last.openedAt == null && !last.mediaPurged
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Avatar(conversation.friend.username, conversation.friend.photoUrl, size = 48.dp)
+    val unread = conversation.unread(myId)
+    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(onClick = onClick).padding(start = 10.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Avatar(conversation.friend.username, conversation.friend.photoUrl, 48.dp)
         Column(Modifier.weight(1f)) {
-            Text(conversation.friend.username, style = MaterialTheme.typography.titleMedium, fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal)
+            Text(conversation.friend.username, fontSize = 18.sp, lineHeight = 22.sp,
+                fontWeight = if(unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (last != null) {
+                if(last != null) {
                     val status = statusOf(last, myId)
-                    StatusIcon(status)
-                    Text(
-                        "${status.label} · ${relativeTime(last.createdAt)}",
-                        color = if (unread) status.color.toColor() else SnapColors.Grey,
-                        fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                } else {
-                    Text("Appuie pour discuter", color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
-                }
+                    StatusIcon(status, size = 14.dp)
+                    Text("${status.label} · ${relativeTime(last.createdAt)}", color = if(unread) status.color.toColor() else SnapColors.Grey,
+                        style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                } else Text("Appuie pour discuter", color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
             }
         }
+        FigmaAsset("15-925_imgIconChat2", tint = SnapColors.Ink)
     }
+    HorizontalDivider(color = SnapColors.Border, thickness = .5.dp)
 }

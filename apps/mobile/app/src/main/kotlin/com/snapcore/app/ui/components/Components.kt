@@ -1,6 +1,17 @@
 package com.snapcore.app.ui.components
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,9 +53,9 @@ fun PrimaryButton(
     Button(
         onClick = onClick,
         enabled = enabled && !loading,
-        shape = RoundedCornerShape(28.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content),
-        modifier = modifier.fillMaxWidth().height(52.dp),
+        shape = RoundedCornerShape(25.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content, disabledContainerColor = SnapColors.Disabled, disabledContentColor = Color.White),
+        modifier = modifier.fillMaxWidth().height(50.dp),
     ) {
         if (loading) CircularProgressIndicator(color = content, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
         else Text(text, style = androidx.compose.material3.MaterialTheme.typography.labelLarge)
@@ -63,18 +74,31 @@ fun SnapTextField(
     enabled: Boolean = true,
     supporting: String? = null,
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        singleLine = true,
-        enabled = enabled,
-        isError = error != null,
-        supportingText = (error ?: supporting)?.let { { Text(it) } },
-        visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboardType),
-        modifier = modifier.fillMaxWidth(),
-    )
+
+    Column(modifier.fillMaxWidth()) {
+        Text(label, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(9.dp))
+
+        var focused by remember { mutableStateOf(false) }
+        BasicTextField(value, onValueChange, singleLine = true, enabled = enabled,
+            textStyle = androidx.compose.material3.MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
+            visualTransformation = if(password) PasswordVisualTransformation() else VisualTransformation.None,
+            keyboardOptions = KeyboardOptions(keyboardType = if(password) KeyboardType.Password else keyboardType),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue),
+            modifier = Modifier.fillMaxWidth().height(50.dp).onFocusChanged { focused = it.isFocused }
+                .border(if(focused) 1.5.dp else 1.dp, if(error != null) SnapColors.SnapRed else if(focused) SnapColors.Grey else Color(0xFFC7CCD4), RoundedCornerShape(7.dp))
+                .padding(horizontal = 16.dp),
+            decorationBox = { field -> Box(contentAlignment = Alignment.CenterStart) {
+                if(value.isEmpty()) Text(label, color = SnapColors.Muted, style = androidx.compose.material3.MaterialTheme.typography.bodyLarge)
+                field()
+            } },
+        )
+        (error ?: supporting)?.let {
+            Text(it, color = if (error != null) SnapColors.SnapRed else SnapColors.Grey,
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+        }
+    }
+
 }
 
 // Avatar par défaut généré à l'affichage : initiales sur fond coloré, aucune image stockée (ADR-014).

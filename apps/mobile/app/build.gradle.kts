@@ -69,6 +69,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
 
     implementation(libs.coil.compose)
+    implementation("io.coil-kt.coil3:coil-svg:${libs.versions.coil.get()}")
     implementation(libs.coil.network.okhttp)
 
     // Capture photo/vidéo (ADR-011) et lecture des vidéos capturées.
