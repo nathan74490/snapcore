@@ -57,6 +57,7 @@ model User {
   email             String?   @unique // copie de lecture de l'email Firebase ; Firebase reste la source de vérité pour la connexion, tout changement passe par verifyBeforeUpdateEmail avant mise à jour ici (ADR-014, ADR-015)
   subscriptionTier  SubscriptionTier @default(free)
   premiumUntil      DateTime?
+  subscriptionEventAt DateTime? // date du dernier événement RevenueCat appliqué : un webhook plus ancien, arrivé en retard ou rejoué, est ignoré (ADR-025)
   createdAt         DateTime  @default(now())
   deletionRequestedAt DateTime? // renseigné au déclenchement de la suppression de compte ; bloque connexion/actions dès cet instant, avant même la fin du job de suppression (ADR-019)
   moderationStatus  ModerationStatus @default(ACTIVE) // SUSPENDED traité comme deletionRequestedAt non nul pour les autres utilisateurs, à vérifier au même endroit centralisé (ADR-021)
@@ -100,6 +101,9 @@ model Message {
   @@index([recipientId])
   @@index([senderId, recipientId, createdAt]) // affichage d'une conversation
   @@index([scheduledPurgeAt])                 // sélection des Snaps à purger
+  // Contrainte CHECK "Message_content_matches_type_check" en SQL brut (migration 20261015000000_message_content_check,
+  // non exprimable en DSL Prisma, ADR-009) : TEXT → mediaKey et scheduledPurgeAt NULL, content non NULL sauf rédaction
+  // (moderatedAt renseigné) ; Snap → content NULL et scheduledPurgeAt renseigné, mediaKey NULL une fois purgé ou rédigé.
 }
 
 model Friendship {

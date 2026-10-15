@@ -8,7 +8,7 @@ Le backoffice a besoin d'actions de modération concrètes, aucune n'étant enco
 
 ## Décision
 **Modèle `Report` (signalement) :**
-- `reporterId` (l'utilisateur qui signale), `targetType` (`USER` / `MESSAGE` / `STORY_ITEM`), une seule des trois clés nullable `targetUserId` / `targetMessageId` / `targetStoryItemId` renseignée selon `targetType` — garanti par une contrainte `CHECK` en migration SQL (même famille de contrainte que celle encore ouverte pour `Message.content`/`mediaKey`, ADR-009, et que celles déjà en place sur `Friendship`, ADR-012 ; non exprimable dans le DSL Prisma).
+- `reporterId` (l'utilisateur qui signale), `targetType` (`USER` / `MESSAGE` / `STORY_ITEM`), une seule des trois clés nullable `targetUserId` / `targetMessageId` / `targetStoryItemId` renseignée selon `targetType` — garanti par une contrainte `CHECK` en migration SQL (même famille de contrainte que `Message_content_matches_type_check` sur `Message.content`/`mediaKey`, ADR-009, et que celles déjà en place sur `Friendship`, ADR-012 ; non exprimable dans le DSL Prisma).
 - `reason` (texte libre), `status` (`PENDING` / `RESOLVED` / `DISMISSED`), `resolvedById` / `resolvedAt` pointant vers le `Moderator` (ADR-020) qui a traité le signalement.
 
 **Suspension de compte (`User.moderationStatus` : `ACTIVE` / `SUSPENDED`) :**

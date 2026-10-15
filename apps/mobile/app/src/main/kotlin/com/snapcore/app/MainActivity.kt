@@ -18,13 +18,13 @@ import com.snapcore.app.ui.SnapCoreNavHost
 import com.snapcore.app.ui.theme.SnapCoreTheme
 
 class MainActivity : ComponentActivity() {
-    // Écran demandé par une notification touchée (app fermée ou déjà ouverte).
+    // Écran demandé par une notification touchée ou par le retour du paiement (app fermée ou déjà ouverte).
     private var launchTarget by mutableStateOf<LaunchTarget?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        launchTarget = Notifications.launchTargetOf(intent)
+        launchTarget = launchTargetOf(intent)
         setContent {
             SnapCoreTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -36,6 +36,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        Notifications.launchTargetOf(intent)?.let { launchTarget = it }
+        launchTargetOf(intent)?.let { launchTarget = it }
     }
+
+    // snapcore://snapcoreplus : page de succès du paiement RevenueCat (ADR-025).
+    private fun launchTargetOf(intent: Intent?): LaunchTarget? =
+        if (intent?.data?.scheme == "snapcore" && intent.data?.host == "snapcoreplus") LaunchTarget.SNAPCORE_PLUS
+        else Notifications.launchTargetOf(intent)
 }

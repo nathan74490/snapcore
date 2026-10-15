@@ -1,9 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.google.services)
 }
+
+// Identifiants Snap Camera Kit (ADR-024) : lus dans local.properties, ignoré par git, jamais commités.
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun localProperty(name: String): String = localProperties.getProperty(name).orEmpty().trim()
 
 android {
     // Nom de package enregistré dans le projet Firebase (google-services.json).
@@ -16,13 +24,18 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+
+        manifestPlaceholders["cameraKitApiToken"] = localProperty("cameraKitApiToken")
+        buildConfigField("String", "CAMERA_KIT_LENS_GROUP_ID", "\"${localProperty("cameraKitLensGroupId")}\"")
     }
 
     buildTypes {
         debug {
-            // Backend local joint via "adb reverse tcp:3000 tcp:3000" : le port 3000 du téléphone (ou de
+            // Backend local. Par défaut via "adb reverse tcp:3000 tcp:3000" : le port 3000 du téléphone (ou de
             // l'émulateur) est redirigé vers celui du PC par le câble USB, sans configuration réseau.
-            buildConfigField("String", "API_BASE_URL", "\"http://127.0.0.1:3000/\"")
+            // Sans câble : apiBaseUrl=http://<IP du PC sur le Wi-Fi>:3000/ dans local.properties.
+            val apiBaseUrl = localProperty("apiBaseUrl").ifBlank { "http://127.0.0.1:3000/" }
+            buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         }
         release {
             isMinifyEnabled = false
@@ -69,6 +82,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
 
     implementation(libs.coil.compose)
+    implementation("io.coil-kt.coil3:coil-svg:${libs.versions.coil.get()}")
     implementation(libs.coil.network.okhttp)
 
     // Capture photo/vidéo (ADR-011) et lecture des vidéos capturées.
@@ -79,6 +93,12 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
+    // Filtres couleur choisis après la capture, incrustés dans la vidéo avant l'envoi (ADR-022).
+    implementation(libs.media3.effect)
+    implementation(libs.media3.transformer)
+    // Lenses visage en direct ; Camera Kit pilote toute la caméra (ADR-024).
+    implementation(libs.camerakit)
+    implementation(libs.camerakit.support.camerax)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -17,6 +17,7 @@ import { PurgeWorker } from "../modules/purge/infrastructure/purge.worker";
 import { PURGE_QUEUE } from "../modules/purge/infrastructure/purge-queue";
 import { STORY_PURGE_SCHEDULER, STORY_REPOSITORY, STORY_VIEW_STORE } from "../modules/stories/application/ports";
 import { MODERATION_REPOSITORY } from "../modules/moderation/application/ports";
+import { SUBSCRIPTION_REPOSITORY } from "../modules/subscriptions/application/ports";
 import { FakeIdentityProvider } from "./fakes";
 import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "./in-memory-account-deletion";
 import { InMemoryFriendshipRepository } from "./in-memory-friendship.repository";
@@ -25,6 +26,7 @@ import { InMemoryMessageRepository, RecordingPurgeScheduler } from "./in-memory-
 import { InMemoryModerationRepository } from "./in-memory-moderation";
 import { InMemoryDeviceTokens, InMemoryPresence, RecordingPush } from "./in-memory-notifications";
 import { InMemoryStoryRepository, InMemoryStoryViews, RecordingStoryPurgeScheduler } from "./in-memory-stories";
+import { InMemorySubscriptionRepository } from "./in-memory-subscriptions";
 import { InMemoryUserRepository } from "./in-memory-user.repository";
 
 // État partagé entre instances : deux applications construites avec le même `TestWorld`
@@ -44,6 +46,7 @@ export class TestWorld {
   readonly accountDeletion = new InMemoryAccountDeletionRepository(this.users, this.messages, this.stories, this.friendships);
   readonly deletionQueue = new RecordingDeletionQueue();
   readonly moderation = new InMemoryModerationRepository(this.users);
+  readonly subscriptions = new InMemorySubscriptionRepository(this.users);
 }
 
 // Application Nest complète, adaptateurs externes (Postgres, Firebase, R2, Redis, BullMQ, FCM) remplacés.
@@ -89,6 +92,8 @@ export async function createTestApp(
     .useValue({})
     .overrideProvider(MODERATION_REPOSITORY)
     .useValue(world.moderation)
+    .overrideProvider(SUBSCRIPTION_REPOSITORY)
+    .useValue(world.subscriptions)
     .overrideProvider(PUSH_SENDER)
     .useValue(world.push)
     .overrideProvider(DEVICE_TOKEN_REPOSITORY)

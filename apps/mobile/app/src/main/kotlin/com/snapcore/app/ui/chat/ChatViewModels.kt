@@ -58,6 +58,8 @@ data class ConversationState(
     val error: String? = null,
     /** Snap en cours d'ouverture ou ouvert : l'écran de lecture s'affiche par-dessus. */
     val viewer: SnapViewerState? = null,
+    /** Snap déjà vu : on propose SnapCore+, qui permet de le revoir (ADR-025). */
+    val offerPlus: Boolean = false,
 )
 
 sealed interface SnapViewerState {
@@ -116,7 +118,10 @@ class ConversationViewModel(
         viewModelScope.launch {
             when (val result = chat.openSnap(message)) {
                 is SnapOpenResult.Ready -> _state.update { it.copy(viewer = SnapViewerState.Showing(result)) }
-                SnapOpenResult.AlreadySeen -> closeWith("Ce snap a déjà été vu")
+                SnapOpenResult.AlreadySeen -> {
+                    _state.update { it.copy(viewer = null, offerPlus = true) }
+                    refresh()
+                }
                 SnapOpenResult.Expired -> closeWith("Ce snap a expiré")
                 is SnapOpenResult.Failed -> closeWith(result.message)
             }
@@ -129,6 +134,8 @@ class ConversationViewModel(
     }
 
     fun consumeError() = _state.update { it.copy(error = null) }
+
+    fun dismissPlusOffer() = _state.update { it.copy(offerPlus = false) }
 
     private fun closeWith(message: String) {
         _state.update { it.copy(viewer = null, error = message) }

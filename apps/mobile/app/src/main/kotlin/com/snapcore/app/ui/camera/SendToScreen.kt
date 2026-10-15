@@ -1,5 +1,19 @@
 package com.snapcore.app.ui.camera
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.sp
+import com.snapcore.app.ui.components.FigmaAsset
+import com.snapcore.app.ui.components.StatusBarIcons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,15 +63,25 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.done) { if (state.done) onSent() }
 
+    var query by remember { mutableStateOf("") }
+    StatusBarIcons(dark = true)
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Envoyer à…") },
-                navigationIcon = { IconButton(onClick = onBack, enabled = !state.sending) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") } },
-            )
+
+            Row(Modifier.fillMaxWidth().background(Color.White).statusBarsPadding().height(56.dp).padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, enabled = !state.sending) { FigmaAsset("15-752_imgIconChevronDown", "Retour") }
+                Row(Modifier.weight(1f).height(38.dp).clip(RoundedCornerShape(19.dp)).background(SnapColors.Control).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FigmaAsset("15-752_imgIconSearch")
+                    BasicTextField(query, { query = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f), decorationBox = { field -> Box { if(query.isEmpty()) Text("Envoyer à…", color = SnapColors.Grey); field() } })
+                }
+                IconButton(onClick = onAddFriends) { FigmaAsset("15-752_imgIconAddFriend", "Ajouter des amis") }
+            }
         },
         bottomBar = {
-            Column(Modifier.padding(16.dp)) {
+            Column(Modifier.navigationBarsPadding().padding(16.dp)) {
                 if (state.failures.isNotEmpty()) {
                     Text(
                         "Échec pour ${state.failures.size} destinataire(s) : ${state.failures.values.first()}",
@@ -77,33 +101,33 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
             item {
                 TargetRow(
-                    label = "Ma story",
+                    label = "Ma story · Mes amis",
                     subtitle = "Visible par tes amis pendant 24 h",
                     icon = Icons.Filled.AutoStories,
                     checked = SendTarget.ToStory in state.selected,
                     failed = SendTarget.ToStory in state.failures,
-                    onToggle = { vm.toggle(SendTarget.ToStory) },
+                    onToggle = { if(!state.sending) vm.toggle(SendTarget.ToStory) },
                 )
-                HorizontalDivider()
+                HorizontalDivider(color = SnapColors.Border)
                 Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
             }
             when {
                 state.loading -> item { Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) { CircularProgressIndicator() } }
                 state.loadError != null -> item { TextButton(onClick = vm::loadFriends, modifier = Modifier.padding(16.dp)) { Text("${state.loadError} · Réessayer") } }
                 state.friends.isEmpty() -> item {
-                    Column(Modifier.padding(16.dp)) {
+                    Column(Modifier.navigationBarsPadding().padding(16.dp)) {
                         Text("Tu n'as pas encore d'amis.", color = SnapColors.Grey)
                         TextButton(onClick = onAddFriends) { Text("Ajouter des amis") }
                     }
                 }
-                else -> items(state.friends, key = { it.id }) { friend ->
+                else -> items(state.friends.filter { it.username.contains(query, ignoreCase = true) }, key = { it.id }) { friend ->
                     val target = SendTarget.ToFriend(friend)
                     TargetRow(
                         label = friend.username,
-                        avatar = { Avatar(friend.username, friend.photoUrl, size = 44.dp) },
+                        avatar = { Avatar(friend.username, friend.photoUrl, size = 40.dp) },
                         checked = target in state.selected,
                         failed = target in state.failures,
-                        onToggle = { vm.toggle(target) },
+                        onToggle = { if(!state.sending) vm.toggle(target) },
                     )
                 }
             }
@@ -122,17 +146,21 @@ private fun TargetRow(
     avatar: (@Composable () -> Unit)? = null,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).heightIn(min = 58.dp).padding(horizontal = 24.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        avatar?.invoke() ?: icon?.let { Icon(it, null, tint = SnapColors.SnapPurple, modifier = Modifier.size(44.dp)) }
+        avatar?.invoke() ?: icon?.let { Box(Modifier.size(40.dp).background(SnapColors.Selected, CircleShape), Alignment.Center) { FigmaAsset("17-1301_imgIconStories", tint = SnapColors.ChatBlue) } }
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             (if (failed) "Échec de l'envoi" else subtitle)?.let {
                 Text(it, color = if (failed) MaterialTheme.colorScheme.error else SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        Checkbox(checked = checked, onCheckedChange = { onToggle() })
+
+        Box(Modifier.size(22.dp).clip(CircleShape).background(if(checked) SnapColors.ChatBlue else Color.Transparent)
+            .border(1.5.dp, if(checked) SnapColors.ChatBlue else Color(0xFFCAD0D5), CircleShape), Alignment.Center) {
+            if(checked) FigmaAsset("13-364_imgIconCheck", tint = Color.White)
+        }
     }
 }

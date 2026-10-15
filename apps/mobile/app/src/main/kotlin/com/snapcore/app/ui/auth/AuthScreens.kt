@@ -1,5 +1,22 @@
 package com.snapcore.app.ui.auth
 
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.sp
+import com.snapcore.app.ui.components.FigmaAsset
+import com.snapcore.app.ui.components.SnapHeader
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,24 +83,22 @@ fun StartScreen(onSession: (Session) -> Unit) {
 
 @Composable
 private fun Logo() {
-    Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = SnapColors.Black, modifier = Modifier.size(96.dp))
+    FigmaAsset("13-241_imgImageGhostLogo")
 }
 
 @Composable
 fun WelcomeScreen(onLogin: () -> Unit, onSignUp: () -> Unit) {
     StatusBarIcons(dark = true)
-    Column(
-        modifier = Modifier.fillMaxSize().background(SnapColors.Yellow).safeDrawingPadding(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(Modifier.weight(1f))
-        Logo()
-        Text("SnapCore", style = MaterialTheme.typography.headlineMedium, color = SnapColors.Black)
-        Spacer(Modifier.weight(1f))
-        // Disposition de l'écran d'accueil Snapchat : deux grands boutons pleine largeur en bas.
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PrimaryButton("Connexion", onLogin, container = SnapColors.SnapRed)
-            PrimaryButton("Inscription", onSignUp, container = SnapColors.ChatBlue)
+
+    BoxWithConstraints(Modifier.fillMaxSize().background(SnapColors.Yellow)) {
+        FigmaAsset("13-241_imgImageGhostLogo", modifier = Modifier.align(Alignment.TopCenter).padding(top = maxHeight * (262f / 852f)))
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth().height(80.dp).background(SnapColors.SnapRed).clickable(onClick = onLogin), Alignment.Center) {
+                Text("CONNEXION", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            }
+            Box(Modifier.fillMaxWidth().background(SnapColors.ChatBlue).navigationBarsPadding().height(66.dp).clickable(onClick = onSignUp), Alignment.Center) {
+                Text("INSCRIPTION", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -93,19 +108,19 @@ private fun FormScaffold(
     title: String,
     onBack: () -> Unit,
     progress: Float? = null,
+    action: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
-        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour") }
-        progress?.let { LinearProgressIndicator(progress = { it }, color = SnapColors.ChatBlue, modifier = Modifier.fillMaxWidth()) }
+
+    StatusBarIcons(dark = true)
+    Column(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding().imePadding()) {
+        SnapHeader(title, onBack, subtitle = progress?.let { "Étape ${(it * SignUpState.STEPS).toInt()} sur ${SignUpState.STEPS}" })
         Column(
-            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
+            modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-            content()
-        }
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) { content() }
+        action?.let { Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) { it() } }
     }
 }
 
@@ -115,13 +130,43 @@ fun LoginScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.session) { state.session?.let(onSession) }
 
-    FormScaffold("Connexion à SnapCore", onBack) {
-        SnapTextField(state.email, vm::onEmail, "Email", keyboardType = KeyboardType.Email)
-        SnapTextField(state.password, vm::onPassword, "Mot de passe", password = true)
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Spacer(Modifier.height(8.dp))
-        PrimaryButton("Connexion", vm::submit, loading = state.loading)
+
+    StatusBarIcons(dark = true)
+    Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding().imePadding().verticalScroll(rememberScrollState())) {
+        IconButton(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) {
+            FigmaAsset("19-1518_imgIconChevronLeft", "Retour")
+        }
+        Text("Connexion", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Normal,
+            modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 36.dp), textAlign = TextAlign.Center)
+        Column(Modifier.padding(horizontal = 53.dp)) {
+            LoginField(state.email, vm::onEmail, "ADRESSE EMAIL", false)
+            Spacer(Modifier.height(12.dp))
+            LoginField(state.password, vm::onPassword, "MOT DE PASSE", true)
+            state.error?.let { Text(it, color = SnapColors.SnapRed, modifier = Modifier.padding(top = 12.dp)) }
+        }
+        Spacer(Modifier.height(150.dp))
+        PrimaryButton("Connexion", vm::submit, enabled = state.email.isNotBlank() && state.password.isNotBlank(),
+            loading = state.loading, modifier = Modifier.padding(horizontal = 75.dp))
+        Spacer(Modifier.height(24.dp))
     }
+}
+
+@Composable
+private fun LoginField(value: String, change: (String) -> Unit, label: String, password: Boolean) {
+
+    var reveal by remember { mutableStateOf(false) }
+    Text(label, color = SnapColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+    Row(Modifier.fillMaxWidth().height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+        BasicTextField(value, change, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge,
+            visualTransformation = if(password && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
+            keyboardOptions = KeyboardOptions(keyboardType = if(password) KeyboardType.Password else KeyboardType.Email),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue), modifier = Modifier.weight(1f))
+        if(password) IconButton(onClick = { reveal = !reveal }, modifier = Modifier.size(36.dp)) {
+            if(reveal) Icon(Icons.Filled.Visibility, "Masquer le mot de passe", tint = SnapColors.Muted, modifier = Modifier.size(22.dp))
+            else FigmaAsset("19-1518_imgIconEyeOff", "Afficher le mot de passe")
+        }
+    }
+    HorizontalDivider(color = Color(0xFFC7CCD4), thickness = 1.dp)
 }
 
 @Composable
@@ -135,8 +180,8 @@ fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
         2 -> "Tes coordonnées"
         else -> if (state.firebaseAccountCreated) "Finalise ton inscription" else "Choisis un mot de passe"
     }
-    FormScaffold(title, onBack = { if (state.step == 1) onBack() else vm.back() }, progress = state.step / SignUpState.STEPS.toFloat()) {
-        Text("Étape ${state.step} sur ${SignUpState.STEPS}", color = SnapColors.Grey)
+    FormScaffold(title, onBack = { if (state.step == 1) onBack() else vm.back() }, progress = state.step / SignUpState.STEPS.toFloat(),
+        action = { PrimaryButton(if (state.step < SignUpState.STEPS) "Continuer" else "S'inscrire", vm::next, loading = state.loading) }) {
         when (state.step) {
             1 -> SnapTextField(
                 state.username,
@@ -177,8 +222,6 @@ fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
             }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
-        Spacer(Modifier.height(8.dp))
-        PrimaryButton(if (state.step < SignUpState.STEPS) "Continuer" else "S'inscrire", vm::next, loading = state.loading)
     }
 }
 

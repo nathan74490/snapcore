@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Build debug uniquement : HTTP en clair autorisé vers le backend de développement, joint soit par
+     adb reverse (127.0.0.1), soit par le Wi-Fi à l'adresse du PC (apiBaseUrl dans local.properties).
+     Le build release garde la configuration de src/main (HTTPS uniquement hors 127.0.0.1). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

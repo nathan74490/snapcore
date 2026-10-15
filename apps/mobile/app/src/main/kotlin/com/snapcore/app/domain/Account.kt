@@ -1,5 +1,7 @@
 package com.snapcore.app.domain
 
+import java.time.Instant
+
 data class Account(
     val id: String,
     val username: String,
@@ -7,6 +9,8 @@ data class Account(
     val phoneNumber: String?,
     val profilePhotoUrl: String?,
     val isPremium: Boolean,
+    /** Fin de la période SnapCore+ payée (ADR-025) ; null si jamais abonné. */
+    val premiumUntil: Instant? = null,
 )
 
 // Données saisies à l'inscription, conservées localement jusqu'à ce que POST /auth/register

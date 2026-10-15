@@ -19,6 +19,10 @@ interface SnapCoreApi {
     @GET("me")
     suspend fun me(): UserDto
 
+    /** Lien de paiement SnapCore+ propre au compte (ADR-025). */
+    @POST("subscription/checkout")
+    suspend fun checkout(): CheckoutDto
+
     @PATCH("me")
     suspend fun updateProfile(@Body body: UpdateProfileRequest): UserDto
 
@@ -119,6 +123,9 @@ data class UserDto(
     val email: String? = null,
     val premiumUntil: String? = null,
 )
+
+@Serializable
+data class CheckoutDto(val url: String)
 
 @Serializable
 data class RegisterRequest(val username: String, val phoneNumber: String? = null)

@@ -8,6 +8,7 @@ import { MessagesModule } from "./modules/messages/messages.module";
 import { ModerationModule } from "./modules/moderation/moderation.module";
 import { PurgeWorkerModule } from "./modules/purge/purge-worker.module";
 import { StoriesModule } from "./modules/stories/stories.module";
+import { SubscriptionsModule } from "./modules/subscriptions/subscriptions.module";
 import { RedisModule } from "./shared/infrastructure/redis/redis.module";
 import { SharedModule } from "./shared/shared.module";
 
@@ -23,6 +24,7 @@ import { SharedModule } from "./shared/shared.module";
     PurgeWorkerModule,
     AccountDeletionModule,
     ModerationModule,
+    SubscriptionsModule,
   ],
   controllers: [HealthController],
 })

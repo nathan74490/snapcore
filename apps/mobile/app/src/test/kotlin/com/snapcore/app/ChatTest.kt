@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -157,7 +158,7 @@ class ConversationViewModelTest {
     }
 
     @Test
-    fun `Snap deja vu (403), message clair et pas de lecture`() = runTest(dispatcher) {
+    fun `Snap deja vu (403), pas de lecture et SnapCore+ propose`() = runTest(dispatcher) {
         chat.openResult = SnapOpenResult.AlreadySeen
         val received = message(ChatContentType.SNAP_PHOTO, FRIEND, opened = true)
         chat.messages += received
@@ -168,7 +169,10 @@ class ConversationViewModelTest {
         advanceUntilIdle()
 
         assertNull(vm.state.value.viewer)
-        assertEquals("Ce snap a déjà été vu", vm.state.value.error)
+        assertTrue(vm.state.value.offerPlus)
+
+        vm.dismissPlusOffer()
+        assertFalse(vm.state.value.offerPlus)
     }
 
     @Test
