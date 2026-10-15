@@ -6,6 +6,7 @@ import { createTestApp, TestWorld } from "./test/test-app";
 
 // Application Nest complète, avec les adaptateurs externes (Postgres, Firebase, R2, Redis, BullMQ, FCM) remplacés.
 const ADMIN_SECRET = "s".repeat(40);
+const WEBHOOK_SECRET = "w".repeat(40);
 const MODERATOR_ID = "5f0c8d2e-2b7a-4c1e-9d3f-6a8b1c2d3e4f";
 
 describe("API HTTP", () => {
@@ -16,6 +17,9 @@ describe("API HTTP", () => {
 
   beforeEach(async () => {
     process.env.ADMIN_API_SECRET = ADMIN_SECRET;
+    process.env.REVENUECAT_WEBHOOK_SECRET = WEBHOOK_SECRET;
+    process.env.REVENUECAT_PURCHASE_LINK = "https://pay.rev.cat/sandbox-token/";
+    process.env.REVENUECAT_ENTITLEMENT_ID = "snapcore_plus";
     world = new TestWorld();
     identity = world.identity;
     users = world.users;
@@ -52,6 +56,49 @@ describe("API HTTP", () => {
 
     await http.post(`/admin/users/${id}/reactivate`).set("x-admin-secret", ADMIN_SECRET).send({ moderatorId: MODERATOR_ID }).expect(204);
     await http.get("/me").set("Authorization", `Bearer ${token}`).expect(200);
+  });
+
+  it("SnapCore+ : webhook RevenueCat protégé, achat puis expiration visibles dans /me (ADR-025)", async () => {
+    const { token, id } = await register("uid-1", "nathan");
+    const http = request(app.getHttpServer());
+    const event = (type: string, at: number, expires: number) => ({
+      api_version: "1.0",
+      event: { type, app_user_id: id, entitlement_ids: ["snapcore_plus"], event_timestamp_ms: at, expiration_at_ms: expires },
+    });
+    const now = Date.now();
+    const in30Days = now + 30 * 86_400_000;
+
+    await http.post("/webhooks/revenuecat").send(event("INITIAL_PURCHASE", now, in30Days)).expect(401);
+    await http.post("/webhooks/revenuecat").set("Authorization", "mauvais").send(event("INITIAL_PURCHASE", now, in30Days)).expect(401);
+    // Un jeton Firebase valide ne donne pas accès au webhook.
+    await http.post("/webhooks/revenuecat").set("Authorization", `Bearer ${token}`).send(event("INITIAL_PURCHASE", now, in30Days)).expect(401);
+
+    const webhook = (body: object) => http.post("/webhooks/revenuecat").set("Authorization", WEBHOOK_SECRET).send(body);
+    await webhook(event("INITIAL_PURCHASE", now, in30Days)).expect(200, { outcome: "applied" });
+    let me = await http.get("/me").set("Authorization", `Bearer ${token}`).expect(200);
+    expect(me.body).toMatchObject({ subscriptionTier: "premium", premiumUntil: new Date(in30Days).toISOString() });
+
+    // Événement plus ancien arrivé en retard : ignoré.
+    await webhook(event("EXPIRATION", now - 1000, now - 1000)).expect(200, { outcome: "stale" });
+    await webhook(event("EXPIRATION", now + 1000, in30Days)).expect(200, { outcome: "applied" });
+    me = await http.get("/me").set("Authorization", `Bearer ${token}`).expect(200);
+    expect(me.body.subscriptionTier).toBe("free");
+
+    // Compte inconnu ou événement de test : acquittés sans erreur, RevenueCat ne réessaie pas.
+    await webhook({ event: { ...event("RENEWAL", now + 2000, in30Days).event, app_user_id: "inconnu" } }).expect(200, { outcome: "unknown-user" });
+    await webhook({ event: { type: "TEST", event_timestamp_ms: now } }).expect(200, { outcome: "ignored" });
+  });
+
+  it("SnapCore+ : lien de paiement propre au compte", async () => {
+    const { token, id } = await register("uid-1", "nathan");
+    const res = await request(app.getHttpServer()).post("/subscription/checkout").set("Authorization", `Bearer ${token}`).expect(200);
+    expect(res.body.url).toBe(`https://pay.rev.cat/sandbox-token/${id}?email=nathan%40example.com`);
+  });
+
+  it("SnapCore+ : la page des conditions est publique (liée depuis la page de paiement)", async () => {
+    const res = await request(app.getHttpServer()).get("/legal/cgu").expect(200);
+    expect(res.headers["content-type"]).toContain("text/html");
+    expect(res.text).toContain("Conditions d'utilisation de SnapCore+");
   });
 
   it("GET /health est public", async () => {
