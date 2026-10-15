@@ -25,4 +25,5 @@ Liste des Architecture Decision Records du projet.
 | [ADR-019](./ADR-019-suppression-compte-cascade.md) | Suppression de compte : Firebase, R2 et cascade sur les données liées | Proposé |
 | [ADR-020](./ADR-020-authentification-backoffice.md) | Authentification du backoffice : comptes modérateurs internes, distincts des comptes Firebase | Proposé |
 | [ADR-021](./ADR-021-moderation-backoffice.md) | Modération : signalements, suspension de compte, suppression ciblée de contenu | Proposé |
+| [ADR-022](./ADR-022-filtres-camera.md) | Filtres : filtres couleur choisis sur l'aperçu après la capture, Lenses visage en direct en V2 | Proposé |
 | [ADR-025](./ADR-025-paywall-snapcoreplus.md) | Paywall SnapCore+ : Web Purchase Link RevenueCat, webhook vers le backend | Proposé |

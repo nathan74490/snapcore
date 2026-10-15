@@ -8,6 +8,7 @@ import com.snapcore.app.data.ApiFriendsService
 import com.snapcore.app.data.ApiSnapService
 import com.snapcore.app.data.ApiStoryService
 import com.snapcore.app.data.BitmapProfilePhotoPreparer
+import com.snapcore.app.data.MediaFilterRenderer
 import com.snapcore.app.data.DataStorePendingRegistrationStore
 import com.snapcore.app.data.FirebaseAuthService
 import com.snapcore.app.data.R2MediaUploader
@@ -17,6 +18,7 @@ import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.ChatService
+import com.snapcore.app.domain.FilterRenderer
 import com.snapcore.app.domain.FriendsService
 import com.snapcore.app.domain.MediaPublisher
 import com.snapcore.app.domain.MediaUploader
@@ -88,4 +90,6 @@ class AppContainer(context: Context) {
     val capturesDir: File = File(context.cacheDir, "captures").apply { mkdirs() }
 
     val profilePhotoPreparer: ProfilePhotoPreparer = BitmapProfilePhotoPreparer(context.applicationContext, capturesDir)
+    /** Incrustation du filtre choisi sur l'aperçu, avant l'envoi (ADR-022). */
+    val filterRenderer: FilterRenderer = MediaFilterRenderer(context.applicationContext, capturesDir)
 }

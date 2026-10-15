@@ -153,7 +153,8 @@ fun SnapCoreNavHost(
             PreviewScreen(
                 media = route.media(),
                 onDiscard = ::backToHome,
-                onSendTo = { navController.navigate(SendToRoute(route.path, route.kind)) },
+                // Média déjà filtré (ADR-022) : un nouveau fichier, l'original restant à l'aperçu.
+                onSendTo = { filtered -> navController.navigate(SendToRoute(filtered.file.absolutePath, filtered.kind)) },
             )
         }
         composable<SendToRoute> { entry ->

@@ -80,6 +80,9 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
+    // Filtres couleur choisis après la capture, incrustés dans la vidéo avant l'envoi (ADR-022).
+    implementation(libs.media3.effect)
+    implementation(libs.media3.transformer)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
