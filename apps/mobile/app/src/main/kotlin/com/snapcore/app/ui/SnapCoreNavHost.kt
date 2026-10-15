@@ -44,6 +44,7 @@ import com.snapcore.app.push.Notifications
 import com.snapcore.app.ui.home.CAMERA_TAB
 import com.snapcore.app.ui.home.CHAT_TAB
 import com.snapcore.app.ui.home.HomeScreen
+import com.snapcore.app.ui.plus.PaywallScreen
 import com.snapcore.app.ui.profile.ProfileScreen
 import com.snapcore.app.ui.stories.MyStoryScreen
 import com.snapcore.app.ui.stories.StoryPlayerScreen
@@ -59,6 +60,8 @@ import java.io.File
 @Serializable private object ProfileRoute
 @Serializable private object FriendsRoute
 @Serializable private object MyStoryRoute
+// Paywall SnapCore+ ; returnedFromCheckout = ouvert par le lien de retour du paiement (ADR-025).
+@Serializable private data class PaywallRoute(val returnedFromCheckout: Boolean = false)
 // authorId = null : sa propre story.
 @Serializable private data class StoryPlayerRoute(val title: String, val authorId: String?, val startItemId: String? = null)
 @Serializable private data class ConversationRoute(val friendId: String, val username: String, val photoUrl: String?)
@@ -114,6 +117,10 @@ fun SnapCoreNavHost(
                 navController.popBackStack(HomeRoute, inclusive = false)
             }
             LaunchTarget.FRIENDS -> navController.navigate(FriendsRoute)
+            // Remplace le paywall déjà ouvert avant le paiement, plutôt que d'en empiler un second.
+            LaunchTarget.SNAPCORE_PLUS -> navController.navigate(PaywallRoute(returnedFromCheckout = true)) {
+                popUpTo<PaywallRoute> { inclusive = true }
+            }
         }
         onLaunchTargetHandled()
     }
@@ -172,7 +179,12 @@ fun SnapCoreNavHost(
             val route = entry.toRoute<ConversationRoute>()
             val me = account
             if (me == null) StartScreen(onSession = ::go)
-            else ConversationScreen(Friend(route.friendId, route.username, route.photoUrl), me.id, onBack = navController::popBackStack)
+            else ConversationScreen(
+                Friend(route.friendId, route.username, route.photoUrl),
+                me.id,
+                onBack = navController::popBackStack,
+                onOpenPlus = { navController.navigate(PaywallRoute()) },
+            )
         }
         composable<MyStoryRoute> {
             MyStoryScreen(
@@ -189,6 +201,16 @@ fun SnapCoreNavHost(
             ProfileScreen(
                 onBack = navController::popBackStack,
                 onSignedOut = { go(Session.SignedOut) },
+                onOpenMyStory = { navController.navigate(MyStoryRoute) },
+                onOpenFriends = { navController.navigate(FriendsRoute) },
+                onAccountChanged = { account = it },
+                onOpenPlus = { navController.navigate(PaywallRoute()) },
+            )
+        }
+        composable<PaywallRoute> { entry ->
+            PaywallScreen(
+                returnedFromCheckout = entry.toRoute<PaywallRoute>().returnedFromCheckout,
+                onBack = navController::popBackStack,
                 onAccountChanged = { account = it },
             )
         }

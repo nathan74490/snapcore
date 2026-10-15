@@ -1,11 +1,23 @@
 package com.snapcore.app.ui.profile
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.snapcore.app.ui.components.FigmaAsset
+import com.snapcore.app.ui.components.RoundAction
+import com.snapcore.app.ui.components.SnapHeader
+import com.snapcore.app.ui.components.StatusBarIcons
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,16 +27,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,28 +62,42 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.layout.size
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.snapcore.app.domain.SnapCorePlus
 import com.snapcore.app.ui.components.Avatar
 import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(onBack: () -> Unit, onSignedOut: () -> Unit, onAccountChanged: (com.snapcore.app.domain.Account) -> Unit) {
+fun ProfileScreen(
+    onBack: () -> Unit,
+    onSignedOut: () -> Unit,
+    onAccountChanged: (com.snapcore.app.domain.Account) -> Unit,
+    onOpenPlus: () -> Unit,
+    onOpenMyStory: () -> Unit,
+    onOpenFriends: () -> Unit,
+) {
     val vm = containerViewModel { ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.signedOut) { if (state.signedOut) onSignedOut() }
     LaunchedEffect(state.account) { state.account?.let(onAccountChanged) }
+    // Retour du paywall : l'abonnement a pu changer (ADR-025).
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
     LaunchedEffect(state.message) {
         state.message?.let {
             snackbar.showSnackbar(it)
@@ -73,58 +105,94 @@ fun ProfileScreen(onBack: () -> Unit, onSignedOut: () -> Unit, onAccountChanged:
         }
     }
 
+
+    var settings by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = settings) { settings = false }
+    StatusBarIcons(dark = settings)
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Mon compte") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") } },
-            )
-        },
+        containerColor = SnapColors.Background,
+        topBar = { if(settings) SnapHeader("Paramètres", { settings = false }) },
         snackbarHost = { SnackbarHost(snackbar) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         val account = state.account
-        if (account == null) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                if (state.loading) CircularProgressIndicator() else TextButton(onClick = vm::refresh) { Text("Réessayer") }
+        if(account == null) {
+            Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
+                if(state.loading) CircularProgressIndicator() else TextButton(onClick = vm::refresh) { Text("Réessayer") }
             }
             return@Scaffold
         }
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            EditableAvatar(
-                username = account.username,
-                photoUrl = account.profilePhotoUrl,
-                busy = state.photoBusy,
-                onPicked = vm::changePhoto,
-                onRemove = vm::removePhoto,
-            )
-            Text(account.username, style = MaterialTheme.typography.headlineMedium)
-            if (account.isPremium) Text("SnapCore+", color = SnapColors.SnapPurple)
-            Spacer(Modifier.height(16.dp))
-
-            ProfileRow("Pseudo", account.username, onEdit = { vm.startEditing(EditableField.USERNAME) })
-            HorizontalDivider()
-            ProfileRow("Email", account.email ?: "—") {
-                // Vérification informative, jamais bloquante (ADR-010, ADR-015).
-                when (state.emailVerified) {
-                    true -> Icon(Icons.Filled.Verified, "Email vérifié", tint = SnapColors.ChatBlue)
-                    false -> TextButton(onClick = vm::resendVerification) {
-                        Icon(Icons.Filled.WarningAmber, null, tint = SnapColors.SnapRed)
-                        Text(" Non vérifié · renvoyer")
+        if(settings) {
+            Column(Modifier.fillMaxSize().padding(padding).navigationBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                Row(Modifier.fillMaxWidth().height(60.dp).clip(RoundedCornerShape(12.dp))
+                    .background(Brush.horizontalGradient(listOf(Color(0xFFF7E7A6), Color(0xFFEFC46E))))
+                    .clickable(onClick = onOpenPlus).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    FigmaAsset("17-1408_imgIconGhost", tint = SnapColors.Ink)
+                    Text("Gérer SnapCore+", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                    FigmaAsset("17-1408_imgIconChevronRight")
+                }
+                Text("MON COMPTE", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 16.dp))
+                Column(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White)) {
+                    ProfileRow("Pseudo", account.username, onEdit = { vm.startEditing(EditableField.USERNAME) })
+                    HorizontalDivider(color = SnapColors.Border)
+                    ProfileRow("Email", account.email ?: "—") {
+                        when(state.emailVerified) {
+                            true -> Icon(Icons.Filled.Verified, "Email vérifié", tint = SnapColors.ChatBlue)
+                            false -> TextButton(onClick = vm::resendVerification) { Text("Vérifier", color = SnapColors.SnapRed) }
+                            null -> Unit
+                        }
                     }
-                    null -> Unit
+                    HorizontalDivider(color = SnapColors.Border)
+                    ProfileRow("Téléphone", account.phoneNumber ?: "Non renseigné", onEdit = { vm.startEditing(EditableField.PHONE) })
+                    HorizontalDivider(color = SnapColors.Border)
+                    ProfileRow("SnapCore+", if(account.isPremium) "Abonnement actif" else SnapCorePlus.PRICE_LABEL, onEdit = onOpenPlus)
+                }
+                Spacer(Modifier.height(32.dp))
+                PrimaryButton("Se déconnecter", vm::signOut, container = Color.White, content = SnapColors.Ink)
+                TextButton(onClick = vm::askDeletion, enabled = !state.saving, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Text("Supprimer mon compte", color = SnapColors.SnapRed)
                 }
             }
-            HorizontalDivider()
-            ProfileRow("Téléphone", account.phoneNumber ?: "—", onEdit = { vm.startEditing(EditableField.PHONE) })
-            HorizontalDivider()
-            Spacer(Modifier.height(24.dp))
-            PrimaryButton("Se déconnecter", vm::signOut, container = MaterialTheme.colorScheme.surfaceVariant, content = MaterialTheme.colorScheme.onSurface)
-            TextButton(onClick = vm::askDeletion, enabled = !state.saving) {
-                Text("Supprimer mon compte", color = MaterialTheme.colorScheme.error)
+        } else {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                Box(Modifier.fillMaxWidth().height(290.dp).background(Brush.verticalGradient(
+                    0f to Color(0xFF935499), .16f to Color(0xFF944F99), .31f to Color(0xFFBE63C4),
+                    .52f to Color(0xFFF67AFF), .73f to Color(0xFFF274FA), .9f to Color(0xFFCD5FCF)))) {
+                    Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 30.dp)) {
+                        EditableAvatar(account.username, account.profilePhotoUrl, state.photoBusy, vm::changePhoto, vm::removePhoto)
+                    }
+                    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 15.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        RoundAction("17-1301_imgIconChevronLeft", "Retour", onBack, dark = true)
+                        RoundAction("17-1301_imgIconSettings", "Paramètres", { settings = true }, dark = true)
+                    }
+                }
+                Column(Modifier.offset(y = (-20).dp).fillMaxWidth().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .background(SnapColors.Background).padding(horizontal = 16.dp).navigationBarsPadding()) {
+                    Box(Modifier.padding(top = 8.dp).size(36.dp, 5.dp).align(Alignment.CenterHorizontally).background(Color(0xFFC7C7CC), RoundedCornerShape(3.dp)))
+                    Row(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Avatar(account.username, account.profilePhotoUrl, 75.dp)
+                        Column {
+                            Text(account.username, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                            Text("@${account.username}", color = SnapColors.Grey, fontSize = 16.sp)
+                        }
+                    }
+                    Row(Modifier.padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if(account.isPremium) "✦ SnapCore+" else "SnapCore", modifier = Modifier.clip(RoundedCornerShape(16.dp))
+                            .background(Color.White).border(1.dp, Color(0xFFE3E5E8), RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 5.dp),
+                            color = if(account.isPremium) SnapColors.SnapPurple else SnapColors.Ink)
+                    }
+                    PlusCard(account, onOpenPlus)
+                    Text("Mes Stories", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
+                    ProfileAction("17-1301_imgIconCamera", "Ma story · Mes amis", onOpenMyStory)
+                    Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 12.dp))
+                    ProfileAction("17-1301_imgIconAddFriend", "Ajouter des amis", onOpenFriends)
+                    Spacer(Modifier.height(12.dp))
+                    ProfileAction("17-1301_imgIconSettings", "Paramètres du compte", { settings = true })
+                    Spacer(Modifier.height(24.dp))
+                }
             }
         }
     }
@@ -162,15 +230,15 @@ fun ProfileScreen(onBack: () -> Unit, onSignedOut: () -> Unit, onAccountChanged:
 @Composable
 private fun ProfileRow(label: String, value: String, onEdit: (() -> Unit)? = null, trailing: @Composable () -> Unit = {}) {
     Row(
-        modifier = Modifier.fillMaxWidth().then(if (onEdit != null) Modifier.clickable(onClick = onEdit) else Modifier).padding(vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().then(if (onEdit != null) Modifier.clickable(onClick = onEdit) else Modifier).heightIn(min = 71.dp).padding(horizontal = 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(label, color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
-            Text(value, style = MaterialTheme.typography.bodyLarge)
+            Text(label, color = SnapColors.Ink, style = MaterialTheme.typography.bodyLarge)
+            Text(value, color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
         }
         trailing()
-        if (onEdit != null) Icon(Icons.Filled.Edit, contentDescription = "Modifier $label", tint = SnapColors.Grey)
+        if (onEdit != null) FigmaAsset("17-1408_imgIconChevronRight", "Modifier $label")
     }
 }
 
@@ -190,7 +258,7 @@ private fun EditableAvatar(
     }
     Box {
         Box(Modifier.clickable(enabled = !busy) { menuOpen = true }, contentAlignment = Alignment.Center) {
-            Avatar(username, photoUrl, size = 112.dp)
+            Avatar(username, photoUrl, size = 160.dp)
             if (busy) CircularProgressIndicator(color = Color.White)
         }
         Box(
@@ -215,5 +283,39 @@ private fun EditableAvatar(
                 )
             }
         }
+    }
+}
+
+// Accès au paywall SnapCore+ : l'offre pour un compte gratuit, la date de fin pour un abonné (ADR-025).
+@Composable
+private fun PlusCard(account: com.snapcore.app.domain.Account, onOpen: () -> Unit) {
+    val until = account.premiumUntil?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRENCH))
+
+    Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
+        .border(1.dp, SnapColors.Gold, RoundedCornerShape(12.dp)).clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1A1710)), Alignment.Center) {
+            FigmaAsset("14-704_imgImageGoldGhost", modifier = Modifier.size(48.dp, 49.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text("SnapCore+", fontSize = 18.sp)
+            Text(when {
+                account.isPremium && until != null -> "Actif jusqu'au $until"
+                account.isPremium -> "Abonnement actif"
+                else -> "Des relectures illimitées et des snaps conservés."
+            }, color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
+        }
+        FigmaAsset("17-1301_imgIconChevronRight")
+    }
+}
+
+@Composable
+private fun ProfileAction(icon: String, title: String, click: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
+        .clickable(onClick = click).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        FigmaAsset(icon, tint = SnapColors.ChatBlue)
+        Text(title, modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 17.sp)
+        FigmaAsset("17-1301_imgIconChevronRight")
     }
 }

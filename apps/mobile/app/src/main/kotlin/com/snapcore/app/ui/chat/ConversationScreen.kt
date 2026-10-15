@@ -1,5 +1,14 @@
 package com.snapcore.app.ui.chat
 
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import com.snapcore.app.ui.components.FigmaAsset
+import com.snapcore.app.ui.components.StatusBarIcons
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,9 +28,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -29,6 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,7 +61,7 @@ import com.snapcore.app.ui.theme.SnapColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit) {
+fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit) {
     val vm = containerViewModel { ConversationViewModel(friend, myId, it.chat, it.realtime.events) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -60,17 +72,34 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit) {
         }
     }
 
+    // Snap déjà vu : c'est précisément ce que SnapCore+ débloque (ADR-025).
+    if (state.offerPlus) {
+        AlertDialog(
+            onDismissRequest = vm::dismissPlusOffer,
+            title = { Text("Ce snap a déjà été vu") },
+            text = { Text("Avec SnapCore+, revois les snaps reçus autant de fois que tu veux.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.dismissPlusOffer()
+                    onOpenPlus()
+                }) { Text("Découvrir SnapCore+") }
+            },
+            dismissButton = { TextButton(onClick = vm::dismissPlusOffer) { Text("Plus tard") } },
+        )
+    }
+
+    StatusBarIcons(dark = true)
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Avatar(friend.username, friend.photoUrl, size = 36.dp)
-                        Text(friend.username)
-                    }
-                },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") } },
-            )
+
+            Column(Modifier.background(Color.White).statusBarsPadding()) {
+                Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { FigmaAsset("15-1124_imgIconChevronLeft", "Retour") }
+                    Avatar(friend.username, friend.photoUrl, 48.dp)
+                    Text(friend.username, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                }
+                HorizontalDivider(color = SnapColors.Border, thickness = .5.dp)
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
@@ -78,14 +107,14 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedTextField(
-                    value = state.draft,
-                    onValueChange = vm::onDraft,
-                    placeholder = { Text("Envoyer un Chat") },
-                    shape = RoundedCornerShape(24.dp),
+
+                BasicTextField(value = state.draft, onValueChange = vm::onDraft,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { if(state.draft.isNotBlank() && !state.sending) vm.send() }),
                     maxLines = 4,
-                    modifier = Modifier.weight(1f),
-                )
+                    modifier = Modifier.weight(1f).background(SnapColors.Control, RoundedCornerShape(24.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+                    decorationBox = { field -> Box { if(state.draft.isEmpty()) Text("Envoyer un Chat", color = SnapColors.Muted); field() } })
                 IconButton(onClick = vm::send, enabled = state.draft.isNotBlank() && !state.sending) {
                     Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = SnapColors.ChatBlue)
                 }

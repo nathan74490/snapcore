@@ -1,7 +1,8 @@
 package com.snapcore.app.domain
 
 /** Écran ouvert quand on touche une notification. */
-enum class LaunchTarget { CHAT, FRIENDS }
+// Écran à ouvrir au lancement : notification touchée, ou retour du paiement SnapCore+ (ADR-025).
+enum class LaunchTarget { CHAT, FRIENDS, SNAPCORE_PLUS }
 
 data class PushNotification(val title: String, val text: String, val target: LaunchTarget)
 

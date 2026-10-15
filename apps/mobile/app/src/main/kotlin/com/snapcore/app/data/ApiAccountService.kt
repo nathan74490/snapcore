@@ -9,6 +9,9 @@ import com.snapcore.app.data.api.apiCall
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.PendingRegistration
+import com.snapcore.app.domain.SubscriptionService
+import com.snapcore.app.domain.isPlusActive
+import java.time.Instant
 
 class ApiAccountService(private val api: SnapCoreApi) : AccountService {
     override suspend fun me() = apiCall { api.me() }.toAccount()
@@ -26,11 +29,19 @@ class ApiAccountService(private val api: SnapCoreApi) : AccountService {
     override suspend fun removeProfilePhoto() = apiCall { api.removeProfilePhoto() }.toAccount()
 }
 
-private fun UserDto.toAccount() = Account(
-    id = id,
-    username = username,
-    email = email,
-    phoneNumber = phoneNumber,
-    profilePhotoUrl = profilePhotoUrl,
-    isPremium = subscriptionTier == "premium",
-)
+private fun UserDto.toAccount(): Account {
+    val until = premiumUntil?.let { runCatching { Instant.parse(it) }.getOrNull() }
+    return Account(
+        id = id,
+        username = username,
+        email = email,
+        phoneNumber = phoneNumber,
+        profilePhotoUrl = profilePhotoUrl,
+        isPremium = isPlusActive(subscriptionTier, until, Instant.now()),
+        premiumUntil = until,
+    )
+}
+
+class ApiSubscriptionService(private val api: SnapCoreApi) : SubscriptionService {
+    override suspend fun checkoutUrl() = apiCall { api.checkout() }.url
+}

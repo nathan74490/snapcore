@@ -3,6 +3,7 @@ package com.snapcore.app
 import android.content.Context
 import com.google.firebase.auth.FirebaseAuth
 import com.snapcore.app.data.ApiAccountService
+import com.snapcore.app.data.ApiSubscriptionService
 import com.snapcore.app.data.ApiChatService
 import com.snapcore.app.data.ApiFriendsService
 import com.snapcore.app.data.ApiSnapService
@@ -26,6 +27,7 @@ import com.snapcore.app.domain.ProfilePhotoPreparer
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.SessionResolver
 import com.snapcore.app.domain.StoryService
+import com.snapcore.app.domain.SubscriptionService
 import com.snapcore.app.push.FcmDeviceRegistry
 import com.snapcore.app.push.PushDetailsResolver
 import kotlinx.coroutines.tasks.await
@@ -60,6 +62,7 @@ class AppContainer(context: Context) {
 
     val auth: AuthService = FirebaseAuthService(firebaseAuth)
     val accounts: AccountService = ApiAccountService(api)
+    val subscriptions: SubscriptionService = ApiSubscriptionService(api)
     val pendingRegistration: PendingRegistrationStore = DataStorePendingRegistrationStore(context.applicationContext)
     val sessionResolver = SessionResolver(auth, accounts, pendingRegistration)
 
@@ -90,6 +93,7 @@ class AppContainer(context: Context) {
     val capturesDir: File = File(context.cacheDir, "captures").apply { mkdirs() }
 
     val profilePhotoPreparer: ProfilePhotoPreparer = BitmapProfilePhotoPreparer(context.applicationContext, capturesDir)
+
     /** Incrustation du filtre choisi sur l'aperçu, avant l'envoi (ADR-022). */
     val filterRenderer: FilterRenderer = MediaFilterRenderer(context.applicationContext, capturesDir)
 }
