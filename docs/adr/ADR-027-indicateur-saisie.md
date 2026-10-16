@@ -10,7 +10,7 @@ L'information est éphémère : elle n'a de sens que si l'ami a la conversation 
 
 ## Décision
 **Signal par l'API REST** : `POST /conversations/:friendId/typing` (204), appelé par l'app pendant la saisie.
-- Mêmes règles d'accès qu'un envoi de message : amis ACCEPTED uniquement, sinon 403 (ADR-009).
+- Mêmes règles d'accès qu'un envoi de message : amis ACCEPTED uniquement, sinon 403 (ADR-009, ADR-012).
 - Le backend relaie l'événement `typing` `{ userId }` à l'ami par `UserEventPublisher` : s'il est connecté, Socket.io ; sinon rien. L'événement n'est **jamais** un push FCM (absent de `PUSH_WORTHY`, ADR-018).
 - Rien n'est enregistré : ni base, ni Redis.
 
@@ -35,4 +35,4 @@ L'information est éphémère : elle n'a de sens que si l'ami a la conversation 
 - Best-effort : un signal perdu (réseau, ami qui se reconnecte) fait simplement disparaître l'indicateur plus tôt.
 
 ## Liens
-- ADR liés : ADR-006, ADR-009, ADR-018
+- ADR liés : ADR-006, ADR-009, ADR-012, ADR-018
