@@ -136,7 +136,7 @@ private fun PersonRow(user: Friend, actions: @Composable () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Avatar(user.displayName, user.photoUrl, size = 56.dp)
+        Avatar(user.displayName, user.pictureUrl, size = 56.dp)
         // Prénom en titre ; le pseudo reste visible, c'est lui qu'on recherche pour ajouter un ami.
         Column(Modifier.weight(1f)) {
             Text(user.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1,

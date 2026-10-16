@@ -28,6 +28,10 @@ interface AccountService {
     /** Confirme un upload PROFILE_PHOTO déjà envoyé vers R2 (ADR-016). */
     suspend fun setProfilePhoto(uploadId: String): Account
     suspend fun removeProfilePhoto(): Account
+    /** Avatar maison (ADR-028). */
+    suspend fun avatarCatalog(): AvatarCatalog
+    suspend fun setAvatar(options: Map<String, String>): Account
+    suspend fun removeAvatar(): Account
 }
 
 /**

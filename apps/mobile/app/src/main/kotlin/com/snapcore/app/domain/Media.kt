@@ -19,8 +19,17 @@ enum class MediaKind(
 data class CapturedMedia(val file: File, val kind: MediaKind)
 
 /** Le prénom est affiché partout ; le pseudo reste l'identifiant (recherche, ajout d'ami). */
-data class Friend(val id: String, val username: String, val photoUrl: String?, val firstName: String? = null) {
+data class Friend(
+    val id: String,
+    val username: String,
+    val photoUrl: String?,
+    val firstName: String? = null,
+    /** Rendu PNG de son avatar (ADR-028), null s'il n'en a pas créé. */
+    val avatarUrl: String? = null,
+) {
     val displayName get() = firstName ?: username
+    /** Image affichée pour lui : son avatar, sinon sa photo de profil ; null = ses initiales. */
+    val pictureUrl get() = avatarUrl ?: photoUrl
 }
 
 sealed interface SendTarget {

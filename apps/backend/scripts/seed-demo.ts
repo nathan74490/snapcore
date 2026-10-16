@@ -12,11 +12,12 @@
  *   et ne notifie personne ; seuls les envois récents (snaps non ouverts, chats non lus, demandes
  *   d'ami en attente) partent en temps réel / push FCM vers nathan et rober.
  * - Médias générés localement avec ffmpeg (FFMPEG_PATH, sinon "ffmpeg" du PATH) : aucune photo réelle.
+ * - Chaque compte de démo reçoit un avatar dessiné (ADR-028) ; un avatar déjà présent est conservé.
  */
 import "reflect-metadata";
 import { Logger, type INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import type { StoryContentType } from "@snapcore/types";
+import type { AvatarOptions, StoryContentType } from "@snapcore/types";
 import type { App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { execFileSync } from "node:child_process";
@@ -45,6 +46,7 @@ import {
 import { USER_REPOSITORY, type UserRepository } from "../src/modules/identity/application/ports/user.repository";
 import { ProfilePhotoUseCases } from "../src/modules/identity/application/use-cases/profile-photo";
 import { RegisterUser } from "../src/modules/identity/application/use-cases/register-user";
+import { UserAvatarUseCases } from "../src/modules/identity/application/use-cases/user-avatar";
 import type { UserAccount } from "../src/modules/identity/domain/user";
 import { FIREBASE_APP } from "../src/modules/identity/infrastructure/firebase-app.provider";
 import { OBJECT_STORAGE, type ObjectStorage } from "../src/modules/media/application/ports/object-storage.port";
@@ -87,19 +89,45 @@ interface DemoUser {
   firstName: string;
   username: string;
   email: string;
-  /** Couleurs du dégradé de l'avatar ; sans avatar, pas de photo de profil. */
-  avatar?: [string, string];
+  /** Couleurs du dégradé de la photo de profil ; sans elles, pas de photo. */
+  photo?: [string, string];
+  /** Avatar dessiné avataaars (ADR-028), validé par le vrai cas d'usage. */
+  avatar: AvatarOptions;
 }
 
 const DEMO_USERS: Record<DemoKey, DemoUser> = {
-  lea: { firstName: "Léa", username: "lea.martin", email: "lea.martin@snapcore.test", avatar: ["0xff9a9e", "0xfad0c4"] },
-  hugo: { firstName: "Hugo", username: "hugo_b", email: "hugo.b@snapcore.test", avatar: ["0x2193b0", "0x6dd5ed"] },
-  ines: { firstName: "Inès", username: "ines.k", email: "ines.k@snapcore.test", avatar: ["0x8e2de2", "0xff6fd8"] },
-  lucas: { firstName: "Lucas", username: "lucas_dvx", email: "lucas.dvx@snapcore.test", avatar: ["0x11998e", "0x38ef7d"] },
-  chloe: { firstName: "Chloé", username: "chloe.rsn", email: "chloe.rsn@snapcore.test", avatar: ["0xf7971e", "0xffd200"] },
-  yanis: { firstName: "Yanis", username: "yanis_74", email: "yanis.74@snapcore.test" },
-  sarah: { firstName: "Sarah", username: "sarah.lmb", email: "sarah.lmb@snapcore.test", avatar: ["0xee0979", "0xff6a00"] },
-  tom: { firstName: "Tom", username: "tom_grd", email: "tom.grd@snapcore.test" },
+  lea: {
+    firstName: "Léa", username: "lea.martin", email: "lea.martin@snapcore.test", photo: ["0xff9a9e", "0xfad0c4"],
+    avatar: { top: "longButNotTooLong", hairColor: "724133", skinColor: "ffdbb4", eyes: "happy", eyebrows: "defaultNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "shirtScoopNeck", clothesColor: "ff488e", backgroundColor: "ffd5dc" },
+  },
+  hugo: {
+    firstName: "Hugo", username: "hugo_b", email: "hugo.b@snapcore.test", photo: ["0x2193b0", "0x6dd5ed"],
+    avatar: { top: "shortCurly", hairColor: "4a312c", skinColor: "d08b5b", eyes: "default", eyebrows: "raisedExcitedNatural", mouth: "twinkle", facialHair: "beardLight", accessories: "none", clothing: "hoodie", clothesColor: "25557c", backgroundColor: "b6e3f4" },
+  },
+  ines: {
+    firstName: "Inès", username: "ines.k", email: "ines.k@snapcore.test", photo: ["0x8e2de2", "0xff6fd8"],
+    avatar: { top: "curvy", hairColor: "2c1b18", skinColor: "ae5d29", eyes: "wink", eyebrows: "defaultNatural", mouth: "smile", facialHair: "none", accessories: "round", clothing: "collarAndSweater", clothesColor: "a7ffc4", backgroundColor: "c0aede" },
+  },
+  lucas: {
+    firstName: "Lucas", username: "lucas_dvx", email: "lucas.dvx@snapcore.test", photo: ["0x11998e", "0x38ef7d"],
+    avatar: { top: "shortWaved", hairColor: "b58143", skinColor: "edb98a", eyes: "squint", eyebrows: "defaultNatural", mouth: "default", facialHair: "none", accessories: "wayfarers", clothing: "graphicShirt", clothesColor: "5199e4", backgroundColor: "a7ffc4" },
+  },
+  chloe: {
+    firstName: "Chloé", username: "chloe.rsn", email: "chloe.rsn@snapcore.test", photo: ["0xf7971e", "0xffd200"],
+    avatar: { top: "bob", hairColor: "d6b370", skinColor: "ffdbb4", eyes: "happy", eyebrows: "raisedExcitedNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "overall", clothesColor: "ffafb9", backgroundColor: "fffaa1" },
+  },
+  yanis: {
+    firstName: "Yanis", username: "yanis_74", email: "yanis.74@snapcore.test",
+    avatar: { top: "theCaesar", hairColor: "2c1b18", skinColor: "614335", eyes: "default", eyebrows: "defaultNatural", mouth: "default", facialHair: "beardMedium", accessories: "none", clothing: "blazerAndShirt", clothesColor: "262e33", backgroundColor: "d1d4f9" },
+  },
+  sarah: {
+    firstName: "Sarah", username: "sarah.lmb", email: "sarah.lmb@snapcore.test", photo: ["0xee0979", "0xff6a00"],
+    avatar: { top: "straight01", hairColor: "a55728", skinColor: "edb98a", eyes: "default", eyebrows: "defaultNatural", mouth: "twinkle", facialHair: "none", accessories: "prescription02", clothing: "blazerAndSweater", clothesColor: "e6e6e6", backgroundColor: "ffdfbf" },
+  },
+  tom: {
+    firstName: "Tom", username: "tom_grd", email: "tom.grd@snapcore.test",
+    avatar: { top: "shaggy", hairColor: "724133", skinColor: "ffdbb4", eyes: "side", eyebrows: "upDownNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "shirtCrewNeck", clothesColor: "ff5c5c", backgroundColor: "ffffff" },
+  },
 };
 
 // Amis de nathan ET de rober ; Sarah et Tom restent en demande d'ami en attente vers nathan.
@@ -368,10 +396,10 @@ class MediaFactory {
     return { path: join(this.dir, output), contentType: "image/jpeg" };
   }
 
-  /** Avatar 512×512 : dégradé et initiale du prénom. */
-  avatar(key: DemoKey): MediaFile {
+  /** Photo de profil 512×512 : dégradé et initiale du prénom. */
+  profilePhoto(key: DemoKey): MediaFile {
     const user = DEMO_USERS[key];
-    const [c0, c1] = user.avatar!;
+    const [c0, c1] = user.photo!;
     const output = `avatar-${key}.jpg`;
     const text = this.caption(`avatar-${key}`, user.firstName.charAt(0));
     this.run(output, [
@@ -485,7 +513,7 @@ class DemoSeeder {
   private readonly media = new MediaFactory();
   private readonly now = new Date();
   private readonly users = new Map<DemoKey | Owner, UserAccount>();
-  private readonly stats = { created: [] as string[], reused: [] as string[], photos: [] as string[], pushes: 0 };
+  private readonly stats = { created: [] as string[], reused: [] as string[], photos: [] as string[], avatars: [] as string[], pushes: 0 };
 
   private readonly prisma: PrismaService;
   private readonly userRepository: UserRepository;
@@ -497,6 +525,7 @@ class DemoSeeder {
   private readonly storage: ObjectStorage;
   private readonly requestUpload: RequestUpload;
   private readonly profilePhotos: ProfilePhotoUseCases;
+  private readonly avatars: UserAvatarUseCases;
 
   constructor(private readonly app: INestApplication) {
     const get = <T>(token: unknown): T => app.get(token as string, { strict: false });
@@ -510,6 +539,7 @@ class DemoSeeder {
     this.storage = get(OBJECT_STORAGE);
     this.requestUpload = get(RequestUpload);
     this.profilePhotos = get(ProfilePhotoUseCases);
+    this.avatars = get(UserAvatarUseCases);
   }
 
   async run(): Promise<void> {
@@ -548,10 +578,15 @@ class DemoSeeder {
       throw new Error(`Compte ${demo.username} en suppression ou suspendu : à traiter à la main`);
     }
 
-    if (demo.avatar && !user.profilePhotoUrl) {
-      const uploadId = await this.upload(user, "PROFILE_PHOTO", this.media.avatar(key));
+    if (demo.photo && !user.profilePhotoUrl) {
+      const uploadId = await this.upload(user, "PROFILE_PHOTO", this.media.profilePhoto(key));
       user = await this.profilePhotos.change(user, uploadId);
       this.stats.photos.push(demo.username);
+    }
+    // Avatar dessiné (ADR-028) : celui que l'utilisateur a pu se composer depuis l'app est conservé.
+    if (!user.avatar) {
+      user = await this.avatars.set(user, demo.avatar);
+      this.stats.avatars.push(demo.username);
     }
     this.users.set(key, user);
   }
@@ -783,6 +818,7 @@ class DemoSeeder {
     console.log(`Comptes créés : ${this.stats.created.join(", ") || "aucun"}`);
     console.log(`Comptes réutilisés : ${this.stats.reused.join(", ") || "aucun"}`);
     console.log(`Photos de profil ajoutées : ${this.stats.photos.join(", ") || "aucune"}`);
+    console.log(`Avatars dessinés ajoutés : ${this.stats.avatars.join(", ") || "aucun"}`);
     console.log(`Envois notifiés vers nathan / rober : ${this.stats.pushes}`);
     console.log(`Mot de passe des comptes de démo : ${DEMO_PASSWORD}`);
     for (const owner of Object.keys(OWNERS) as Owner[]) {

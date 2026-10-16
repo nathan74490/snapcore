@@ -7,12 +7,38 @@ export type SubscriptionTier = "free" | "premium";
 // suppression de compte (ADR-019).
 export type ModerationStatus = "ACTIVE" | "SUSPENDED";
 
+// Avatar dessiné façon Bitmoji, style avataaars de DiceBear (voir ADR-028). Chaque valeur
+// appartient au catalogue de GET /avatars/catalog ; "none" (top, facialHair, accessories)
+// masque l'élément. Les couleurs sont des hex sans "#". Rendu PNG public et déterministe
+// par GET /avatars/avataaars.png?<ces 11 clés>&size=…
+export interface AvatarOptions {
+  top: string;
+  hairColor: string;
+  skinColor: string;
+  eyes: string;
+  eyebrows: string;
+  mouth: string;
+  facialHair: string;
+  accessories: string;
+  clothing: string;
+  clothesColor: string;
+  backgroundColor: string;
+}
+
+// Réponse de GET /avatars/catalog : avatar proposé à l'ouverture de l'éditeur et valeurs
+// autorisées par clé, dans un ordre stable ("none" en premier quand il existe).
+export interface AvatarCatalog {
+  defaults: AvatarOptions;
+  options: Record<keyof AvatarOptions, string[]>;
+}
+
 export interface User {
   id: string;
   username: string;             // normalisé en minuscules, modifiable depuis le profil, unicité revérifiée (voir ADR-014)
   firstName?: string;           // prénom affiché à la place du pseudo ; absent pour les comptes créés avant son introduction
   // firebaseUid (lien vers le compte Firebase Authentication) n'est jamais exposé dans les types partagés app/backoffice (voir ADR-015)
   profilePhotoUrl?: string;     // URL publique CDN, recadrée/redimensionnée côté app avant upload (voir ADR-014, ADR-016)
+  avatar?: AvatarOptions;       // avatar dessiné, absent si l'utilisateur n'en a pas créé ; affiché avant la photo de profil (voir ADR-028)
   phoneNumber?: string;         // collecté à l'onboarding, jamais vérifié (voir ADR-010)
   email?: string;               // copie de lecture ; Firebase reste la source de vérité pour la connexion, tout changement passe par Firebase avant mise à jour ici (voir ADR-014, ADR-015)
   subscriptionTier: SubscriptionTier;
@@ -93,6 +119,7 @@ export interface PublicUserProfile {
   username: string;
   firstName?: string; // absent pour les comptes créés avant son introduction : afficher le pseudo à la place
   profilePhotoUrl?: string;
+  avatar?: AvatarOptions; // absent sans avatar ; priorité d'affichage : avatar, puis photo, puis initiales (voir ADR-028)
 }
 
 // Relation vue depuis l'utilisateur courant, pour l'affichage d'un résultat de recherche.

@@ -112,7 +112,7 @@ private fun ConversationRow(conversation: Conversation, myId: String, onSnap: ()
     // l'horodatage reste à part en gris clair.
     Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick).padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Avatar(conversation.friend.displayName, conversation.friend.photoUrl, 48.dp)
+        Avatar(conversation.friend.displayName, conversation.friend.pictureUrl, 48.dp)
         Column(Modifier.weight(1f)) {
             Text(conversation.friend.displayName, fontSize = 18.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

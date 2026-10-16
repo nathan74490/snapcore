@@ -30,6 +30,7 @@ SnapCore doit proposer un écran de profil simple pour ce premier lot de fonctio
 ## Historique
 - Version initiale : ne précisait pas comment un changement d'email se répercute sur l'identifiant de connexion.
 - Révision (suite à l'adoption de Firebase Authentication, ADR-015) : le changement d'email passe désormais par Firebase avant la mise à jour de la copie en base.
+- Révision (ADR-028) : le « pas de Bitmoji pour l'instant » est levé par un avatar dessiné façon Bitmoji (style avataaars), affiché avant la photo de profil puis les initiales.
 
 ## Liens
-- ADR liés : ADR-010, ADR-012, ADR-015, ADR-016
+- ADR liés : ADR-010, ADR-012, ADR-015, ADR-016, ADR-028

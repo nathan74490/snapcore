@@ -22,3 +22,7 @@ npm run test
 ```
 
 L'app mobile (`apps/mobile`) se build indépendamment avec Gradle (`./gradlew build`), en dehors de Turborepo.
+
+## Crédits
+
+- Avatars dessinés (ADR-028) : style [Avataaars](https://avataaars.com) de Pablo Stanley, licence « Free for personal and commercial use », rendu avec [DiceBear](https://www.dicebear.com) (MIT).

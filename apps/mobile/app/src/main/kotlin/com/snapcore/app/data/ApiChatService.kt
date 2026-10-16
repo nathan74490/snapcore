@@ -15,7 +15,7 @@ import java.time.Instant
 
 class ApiChatService(private val api: SnapCoreApi) : ChatService {
     override suspend fun conversations() = apiCall { api.conversations() }.map { dto ->
-        Conversation(Friend(dto.friend.id, dto.friend.username, dto.friend.profilePhotoUrl, dto.friend.firstName), dto.lastMessage?.toDomain())
+        Conversation(dto.friend.toFriend(), dto.lastMessage?.toDomain())
     }
 
     override suspend fun messages(friendId: String) = apiCall { api.messages(friendId) }.map { it.toDomain() }

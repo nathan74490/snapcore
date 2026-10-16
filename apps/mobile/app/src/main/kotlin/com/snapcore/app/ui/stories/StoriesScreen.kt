@@ -78,7 +78,7 @@ fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory
                             // Vignette de la story (ADR-026), sinon la photo de profil ; jamais une photo de maquette Figma.
                             val cover = story.thumbnailUrl ?: story.author.photoUrl
                             if(cover != null) AsyncImage(cover, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                            else Box(Modifier.fillMaxSize(), Alignment.Center) { Avatar(story.author.displayName, null, 72.dp) }
+                            else Box(Modifier.fillMaxSize(), Alignment.Center) { Avatar(story.author.displayName, story.author.avatarUrl, 72.dp) }
                             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha=.65f)))))
                             Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
                                 Text(story.author.displayName, color = Color.White, fontWeight = FontWeight.Bold)
@@ -101,7 +101,7 @@ private fun StoryCircle(author: Friend, thumbnailUrl: String?, ring: Color, clic
         // Comme Snapchat : l'image de la story dans l'anneau (ADR-026), l'avatar à défaut.
         Box(Modifier.size(82.dp).border(3.dp, ring, CircleShape), Alignment.Center) {
             if (thumbnailUrl != null) AsyncImage(thumbnailUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.size(72.dp).clip(CircleShape).background(SnapColors.Control))
-            else Avatar(author.displayName, author.photoUrl, 72.dp)
+            else Avatar(author.displayName, author.pictureUrl, 72.dp)
         }
         Text(author.displayName, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
         if (author.firstName != null) Text(author.username, fontSize = 12.sp, lineHeight = 16.sp, color = SnapColors.Grey, maxLines = 1, overflow = TextOverflow.Ellipsis)

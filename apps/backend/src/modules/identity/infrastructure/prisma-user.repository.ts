@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
-import type { User as UserRow } from "@snapcore/db";
+import { Prisma, type User as UserRow } from "@snapcore/db";
+import type { AvatarOptions } from "@snapcore/types";
+import { readStoredAvatar } from "../../avatars/domain/avatar-catalog";
 import { PrismaService } from "../../../shared/infrastructure/prisma/prisma.service";
 import { ACTIVE_USER_WHERE } from "../../../shared/infrastructure/prisma/active-user";
 import { rethrowUniqueViolation } from "../../../shared/infrastructure/prisma/prisma-errors";
@@ -45,8 +47,14 @@ export class PrismaUserRepository implements UserRepository {
     });
     return count === 0 ? null : this.findActiveById(id);
   }
+
+  async updateAvatar(id: string, avatar: AvatarOptions | null): Promise<UserAccount> {
+    // Colonne Json nullable : le NULL SQL s'écrit Prisma.DbNull (null seul est refusé par Prisma).
+    const row = await this.prisma.user.update({ where: { id }, data: { avatar: avatar ? { ...avatar } : Prisma.DbNull } });
+    return toAccount(row)!;
+  }
 }
 
 function toAccount(row: UserRow | null): UserAccount | null {
-  return row && { ...row };
+  return row && { ...row, avatar: readStoredAvatar(row.avatar) };
 }

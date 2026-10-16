@@ -31,3 +31,4 @@ Liste des Architecture Decision Records du projet.
 | [ADR-025](./ADR-025-paywall-snapcoreplus.md) | Paywall SnapCore+ : Web Purchase Link RevenueCat, webhook vers le backend | Accepté |
 | [ADR-026](./ADR-026-vignettes-stories.md) | Vignettes des stories : fabriquées par l'app, servies par le backend sans compter de vue | Accepté |
 | [ADR-027](./ADR-027-indicateur-saisie.md) | Indicateur « en train d'écrire » : signal REST relayé par la passerelle temps réel, jamais en push | Accepté |
+| [ADR-028](./ADR-028-avatars.md) | Avatars maison façon Bitmoji : style avataaars (DiceBear), options stockées par le backend, rendu PNG public déterministe | Accepté |

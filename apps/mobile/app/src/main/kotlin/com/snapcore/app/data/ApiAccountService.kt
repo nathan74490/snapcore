@@ -2,12 +2,14 @@ package com.snapcore.app.data
 
 import com.snapcore.app.data.api.ConfirmUploadRequest
 import com.snapcore.app.data.api.RegisterRequest
+import com.snapcore.app.data.api.SetAvatarRequest
 import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.data.api.UpdateProfileRequest
 import com.snapcore.app.data.api.UserDto
 import com.snapcore.app.data.api.apiCall
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.AccountService
+import com.snapcore.app.domain.AvatarCatalog
 import com.snapcore.app.domain.PendingRegistration
 import com.snapcore.app.domain.SubscriptionService
 import com.snapcore.app.domain.isPlusActive
@@ -27,6 +29,16 @@ class ApiAccountService(private val api: SnapCoreApi) : AccountService {
     override suspend fun setProfilePhoto(uploadId: String) = apiCall { api.setProfilePhoto(ConfirmUploadRequest(uploadId)) }.toAccount()
 
     override suspend fun removeProfilePhoto() = apiCall { api.removeProfilePhoto() }.toAccount()
+
+    override suspend fun avatarCatalog() = apiCall { api.avatarCatalog() }.let { AvatarCatalog(it.defaults, it.options) }
+
+    override suspend fun setAvatar(options: Map<String, String>) = apiCall { api.setAvatar(SetAvatarRequest(options)) }.toAccount()
+
+    // DELETE ne renvoie rien : le compte à jour est relu.
+    override suspend fun removeAvatar(): Account {
+        apiCall { api.removeAvatar() }
+        return me()
+    }
 }
 
 private fun UserDto.toAccount(): Account {
@@ -40,6 +52,8 @@ private fun UserDto.toAccount(): Account {
         isPremium = isPlusActive(subscriptionTier, until, Instant.now()),
         premiumUntil = until,
         firstName = firstName,
+        avatar = avatar,
+        avatarUrl = avatar?.let(::avatarImageUrl),
     )
 }
 

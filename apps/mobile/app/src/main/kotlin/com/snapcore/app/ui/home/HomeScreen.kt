@@ -102,7 +102,7 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                         CameraScreen(onCaptured, lensMode = lensMode, onLensModeChange = { lensMode = it }, onRecordingChange = { recording = it })
                         if (!recording) Row(Modifier.statusBarsPadding().fillMaxWidth().padding(start = 8.dp, end = 72.dp, top = 8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(account.displayName, account.profilePhotoUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
+                            Avatar(account.displayName, account.pictureUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
                             IconButton(onClick = onOpenFriends) { FigmaAsset("14-588_imgIconSearch", "Rechercher", tint = Color.White) }
                             Spacer(Modifier.weight(1f))
                             Box {
@@ -127,7 +127,7 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                     Row(Modifier.statusBarsPadding().fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.width(96.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Avatar(account.displayName, account.profilePhotoUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
+                            Avatar(account.displayName, account.pictureUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
                             RoundAction("15-925_imgIconSearch", "Rechercher des amis", onOpenFriends)
                         }
                         Box(Modifier.weight(1f), Alignment.Center) { Text(labels[page], style = MaterialTheme.typography.titleLarge) }

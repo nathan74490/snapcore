@@ -39,6 +39,16 @@ interface SnapCoreApi {
     @DELETE("me/photo")
     suspend fun removeProfilePhoto(): UserDto
 
+    // --- Avatar maison (ADR-028) ---
+    @GET("avatars/catalog")
+    suspend fun avatarCatalog(): AvatarCatalogDto
+
+    @PUT("me/avatar")
+    suspend fun setAvatar(@Body body: SetAvatarRequest): UserDto
+
+    @DELETE("me/avatar")
+    suspend fun removeAvatar()
+
     // --- Médias (ADR-016) ---
     @POST("media/uploads")
     suspend fun requestUpload(@Body body: UploadRequest): UploadInstructions
@@ -126,7 +136,14 @@ data class UserDto(
     val email: String? = null,
     val premiumUntil: String? = null,
     val firstName: String? = null,
+    val avatar: Map<String, String>? = null,
 )
+
+@Serializable
+data class AvatarCatalogDto(val defaults: Map<String, String>, val options: Map<String, List<String>>)
+
+@Serializable
+data class SetAvatarRequest(val options: Map<String, String>)
 
 @Serializable
 data class CheckoutDto(val url: String)
@@ -168,7 +185,7 @@ data class MessageDto(val id: String, val contentType: String, val createdAt: St
 data class OwnStoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewCount: Int, val thumbnailUrl: String? = null)
 
 @Serializable
-data class PublicProfileDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val firstName: String? = null)
+data class PublicProfileDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val firstName: String? = null, val avatar: Map<String, String>? = null)
 
 @Serializable
 data class FriendshipItemDto(
@@ -180,7 +197,7 @@ data class FriendshipItemDto(
 )
 
 @Serializable
-data class UserSearchResultDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val relation: String, val firstName: String? = null)
+data class UserSearchResultDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val relation: String, val firstName: String? = null, val avatar: Map<String, String>? = null)
 
 @Serializable
 data class FriendRequestBody(val username: String)

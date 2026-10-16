@@ -127,7 +127,7 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
                             val target = SendTarget.ToFriend(friend)
                             TargetRow(
                                 label = friend.displayName,
-                                avatar = { Avatar(friend.displayName, friend.photoUrl, size = 40.dp) },
+                                avatar = { Avatar(friend.displayName, friend.pictureUrl, size = 40.dp) },
                                 checked = target in state.selected,
                                 failed = target in state.failures,
                                 onToggle = { if(!state.sending) vm.toggle(target) },

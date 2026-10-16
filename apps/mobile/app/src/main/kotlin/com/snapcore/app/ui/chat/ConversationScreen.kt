@@ -143,7 +143,7 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                     Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBack) { FigmaAsset("15-1124_imgIconChevronLeft", "Retour") }
                         // Comme Snapchat : avatar compact, prénom en gras et le pseudo dessous.
-                        Avatar(friend.displayName, friend.photoUrl, 40.dp)
+                        Avatar(friend.displayName, friend.pictureUrl, 40.dp)
                         Column(Modifier.padding(start = 10.dp).weight(1f)) {
                             Text(friend.displayName, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
                             if (friend.firstName != null) Text("@${friend.username}", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)

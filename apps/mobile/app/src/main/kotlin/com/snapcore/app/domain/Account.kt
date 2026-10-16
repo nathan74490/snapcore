@@ -13,9 +13,17 @@ data class Account(
     val premiumUntil: Instant? = null,
     /** Absent pour les comptes créés avant l'ajout du prénom. */
     val firstName: String? = null,
+    /** Options de l'avatar maison (ADR-028), null sans avatar. */
+    val avatar: Map<String, String>? = null,
+    val avatarUrl: String? = null,
 ) {
     val displayName get() = firstName ?: username
+    /** Même priorité que pour un ami : avatar, photo, puis initiales. */
+    val pictureUrl get() = avatarUrl ?: profilePhotoUrl
 }
+
+/** Choix proposés par l'éditeur d'avatar, servis par le backend (ADR-028). */
+data class AvatarCatalog(val defaults: Map<String, String>, val options: Map<String, List<String>>)
 
 // Données saisies à l'inscription, conservées localement jusqu'à ce que POST /auth/register
 // réussisse : si l'app est fermée entre la création du compte Firebase et cet appel, elle le

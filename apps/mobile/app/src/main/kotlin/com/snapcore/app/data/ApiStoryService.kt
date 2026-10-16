@@ -12,7 +12,7 @@ import java.time.Instant
 class ApiStoryService(private val api: SnapCoreApi) : StoryService {
     override suspend fun feed() = apiCall { api.storyFeed() }.map { entry ->
         FriendStory(
-            author = Friend(entry.author.id, entry.author.username, entry.author.profilePhotoUrl, entry.author.firstName),
+            author = entry.author.toFriend(),
             items = entry.items.map { StoryItem(it.id, kindOf(it.contentType), Instant.parse(it.createdAt), Instant.parse(it.expiresAt), it.viewed) },
             hasUnviewed = entry.hasUnviewed,
             thumbnailUrl = entry.thumbnailUrl,
@@ -25,7 +25,7 @@ class ApiStoryService(private val api: SnapCoreApi) : StoryService {
 
     override suspend fun viewUrl(item: StoryItem) = apiCall { api.viewStory(item.id) }.url
 
-    override suspend fun viewers(item: StoryItem) = apiCall { api.storyViewers(item.id) }.map { Friend(it.id, it.username, it.profilePhotoUrl, it.firstName) }
+    override suspend fun viewers(item: StoryItem) = apiCall { api.storyViewers(item.id) }.map { it.toFriend() }
 
     override suspend fun delete(item: StoryItem) = apiCall { api.deleteStory(item.id) }
 

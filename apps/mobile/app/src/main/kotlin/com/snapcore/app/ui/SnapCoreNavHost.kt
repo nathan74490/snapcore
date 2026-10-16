@@ -61,6 +61,7 @@ import com.snapcore.app.ui.camera.SendToScreen
 import com.snapcore.app.ui.chat.ConversationScreen
 import com.snapcore.app.ui.friends.FriendsScreen
 import com.snapcore.app.ui.home.CAMERA_TAB
+import com.snapcore.app.ui.profile.AvatarEditorScreen
 import com.snapcore.app.ui.home.CHAT_TAB
 import com.snapcore.app.ui.home.HomeScreen
 import com.snapcore.app.ui.plus.PaywallScreen
@@ -82,6 +83,7 @@ private val HOME_TAB_SCREENS = listOf("Chat", "Camera", "Stories")
 @Serializable private object ProfileRoute
 @Serializable private object FriendsRoute
 @Serializable private object MyStoryRoute
+@Serializable private object AvatarEditorRoute
 // Paywall SnapCore+ ; returnedFromCheckout = ouvert par le lien de retour du paiement (ADR-025).
 @Serializable private data class PaywallRoute(val returnedFromCheckout: Boolean = false)
 // authorId = null : sa propre story.
@@ -236,7 +238,7 @@ fun SnapCoreNavHost(
                             navigationScope.launch {
                                 chatBackdrop = runCatching { homeLayer.toImageBitmap() }.getOrNull()
                                 swipeDismissed = false
-                                navController.navigate(ConversationRoute(f.id, f.username, f.photoUrl, f.firstName, snapId))
+                                navController.navigate(ConversationRoute(f.id, f.username, f.pictureUrl, f.firstName, snapId))
                                 openingChat = false
                             }
                         }
@@ -309,6 +311,7 @@ fun SnapCoreNavHost(
                 onSignedOut = { go(Session.SignedOut) },
                 onOpenMyStory = { navController.navigate(MyStoryRoute) },
                 onOpenFriends = { navController.navigate(FriendsRoute) },
+                onOpenAvatar = { navController.navigate(AvatarEditorRoute) },
                 onNewStory = {
                     homeTab = CAMERA_TAB
                     backToHome()
@@ -316,6 +319,14 @@ fun SnapCoreNavHost(
                 onAccountChanged = { account = it },
                 onOpenPlus = { navController.navigate(PaywallRoute()) },
             )
+        }
+        composable<AvatarEditorRoute> {
+            val me = account
+            if (me == null) StartScreen(onSession = ::go)
+            else AvatarEditorScreen(me, onBack = navController::popBackStack, onSaved = {
+                account = it
+                navController.popBackStack()
+            })
         }
         composable<PaywallRoute> { entry ->
             PaywallScreen(

@@ -10,6 +10,7 @@ export function presentSelf(user: UserAccount): User {
     moderationStatus: user.moderationStatus,
     ...(user.firstName ? { firstName: user.firstName } : {}),
     ...(user.profilePhotoUrl ? { profilePhotoUrl: user.profilePhotoUrl } : {}),
+    ...(user.avatar ? { avatar: { ...user.avatar } } : {}),
     ...(user.phoneNumber ? { phoneNumber: user.phoneNumber } : {}),
     ...(user.email ? { email: user.email } : {}),
     ...(user.premiumUntil ? { premiumUntil: user.premiumUntil.toISOString() } : {}),

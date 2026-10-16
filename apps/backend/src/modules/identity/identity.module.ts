@@ -13,6 +13,7 @@ import { RegisterUser } from "./application/use-cases/register-user";
 import { ResolveCurrentUser } from "./application/use-cases/resolve-current-user";
 import { SyncEmailFromIdentityProvider } from "./application/use-cases/sync-email";
 import { UpdateProfile } from "./application/use-cases/update-profile";
+import { UserAvatarUseCases } from "./application/use-cases/user-avatar";
 import { FIREBASE_APP, firebaseAppProvider } from "./infrastructure/firebase-app.provider";
 import { FirebaseIdentityProvider } from "./infrastructure/firebase-identity.provider";
 import { PrismaUserRepository } from "./infrastructure/prisma-user.repository";
@@ -49,6 +50,11 @@ import { MeController } from "./interface/http/me.controller";
       provide: UpdateProfile,
       inject: [USER_REPOSITORY],
       useFactory: (users: UserRepository) => new UpdateProfile(users),
+    },
+    {
+      provide: UserAvatarUseCases,
+      inject: [USER_REPOSITORY],
+      useFactory: (users: UserRepository) => new UserAvatarUseCases(users),
     },
     {
       provide: SyncEmailFromIdentityProvider,

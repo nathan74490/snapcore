@@ -97,6 +97,7 @@ fun ProfileScreen(
     onOpenMyStory: () -> Unit,
     onOpenFriends: () -> Unit,
     onNewStory: () -> Unit = {},
+    onOpenAvatar: () -> Unit = {},
 ) {
     val vm = containerViewModel { ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -180,7 +181,8 @@ fun ProfileScreen(
                     0f to Color(0xFF935499), .16f to Color(0xFF944F99), .31f to Color(0xFFBE63C4),
                     .52f to Color(0xFFF67AFF), .73f to Color(0xFFF274FA), .9f to Color(0xFFCD5FCF)))) {
                     Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 30.dp)) {
-                        EditableAvatar(account.displayName, account.profilePhotoUrl, state.photoBusy, vm::changePhoto, vm::removePhoto)
+                        // Comme le Bitmoji de Snapchat : l'avatar maison s'affiche en grand s'il existe (ADR-028).
+                        EditableAvatar(account.displayName, account.pictureUrl, state.photoBusy, vm::changePhoto, vm::removePhoto)
                     }
                     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 15.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween) {
@@ -193,7 +195,7 @@ fun ProfileScreen(
                     Box(Modifier.padding(top = 8.dp).size(36.dp, 5.dp).align(Alignment.CenterHorizontally).background(Color(0xFFC7C7CC), RoundedCornerShape(3.dp)))
                     Row(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Avatar(account.displayName, account.profilePhotoUrl, 75.dp)
+                        Avatar(account.displayName, account.pictureUrl, 75.dp)
                         Column {
                             Text(account.displayName, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                             Text("@${account.username}", color = SnapColors.Grey, fontSize = 16.sp)
@@ -205,6 +207,8 @@ fun ProfileScreen(
                             color = if(account.isPremium) SnapColors.SnapPurple else SnapColors.Ink)
                     }
                     PlusCard(account, onOpenPlus)
+                    Text("Mon avatar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
+                    ProfileAction("13-250_imgIconEmoji", if (account.avatar == null) "Créer mon avatar" else "Modifier mon avatar", onOpenAvatar)
                     // Comme Snapchat : « + Nouvelle Story » à côté du titre ouvre la caméra.
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Mes Stories", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))

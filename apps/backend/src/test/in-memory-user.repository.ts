@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { AvatarOptions } from "@snapcore/types";
 import { UniqueViolationError } from "../shared/domain/errors";
 import type { NewUser, ProfilePatch, UserRepository } from "../modules/identity/application/ports/user.repository";
 import { isActive, type UserAccount } from "../modules/identity/domain/user";
@@ -26,6 +27,7 @@ export class InMemoryUserRepository implements UserRepository {
     const row: UserAccount = {
       id: randomUUID(),
       profilePhotoUrl: null,
+      avatar: null,
       subscriptionTier: "free",
       premiumUntil: null,
       createdAt: new Date(),
@@ -51,6 +53,14 @@ export class InMemoryUserRepository implements UserRepository {
     const current = this.rows.get(id);
     if (!current || !isActive(current) || current.profilePhotoUrl !== expectedUrl) return null;
     const next = { ...current, profilePhotoUrl: newUrl };
+    this.rows.set(id, next);
+    return { ...next };
+  }
+
+  async updateAvatar(id: string, avatar: AvatarOptions | null): Promise<UserAccount> {
+    const current = this.rows.get(id);
+    if (!current) throw new Error(`User ${id} introuvable`);
+    const next = { ...current, avatar: avatar && { ...avatar } };
     this.rows.set(id, next);
     return { ...next };
   }

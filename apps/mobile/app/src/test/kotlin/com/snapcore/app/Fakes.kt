@@ -2,6 +2,7 @@ package com.snapcore.app
 
 import com.snapcore.app.data.api.ApiException
 import com.snapcore.app.domain.Account
+import com.snapcore.app.domain.AvatarCatalog
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.DeviceRegistry
@@ -80,6 +81,15 @@ class FakeAccounts : AccountService {
     }
 
     override suspend fun removeProfilePhoto(): Account = account!!.copy(profilePhotoUrl = null).also { account = it }
+    var catalog = AvatarCatalog(
+        defaults = mapOf("top" to "shortFlat", "eyes" to "default", "mouth" to "smile", "facialHair" to "none"),
+        options = mapOf("top" to listOf("none", "shortFlat", "bob"), "eyes" to listOf("default", "cry", "happy"), "mouth" to listOf("smile", "sad"), "facialHair" to listOf("none", "beardLight")),
+    )
+    var savedAvatar: Map<String, String>? = null
+    override suspend fun avatarCatalog() = catalog
+    override suspend fun setAvatar(options: Map<String, String>): Account =
+        account!!.copy(avatar = options, avatarUrl = "avatar.png").also { account = it; savedAvatar = options }
+    override suspend fun removeAvatar(): Account = account!!.copy(avatar = null, avatarUrl = null).also { account = it; savedAvatar = null }
 }
 
 class FakePending : PendingRegistrationStore {

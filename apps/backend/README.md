@@ -22,9 +22,9 @@ npm run seed:demo -w @snapcore/backend    # backend de dev lancé à côté (ses
 
 `scripts/seed-demo.ts` peuple la base pour tester l'app avec les comptes `nathan` et `rober` (qui doivent
 exister) : 8 comptes de démo (Firebase email/mot de passe en `@snapcore.test`, mot de passe commun
-`SnapDemo2026!`), amitiés, 2 demandes en attente vers nathan, stories avec vignette, conversations
-antidatées, snaps non ouverts et chats non lus. Tout passe par les vrais cas d'usage (upload pré-signé
-vers R2 puis promotion, purges programmées). Idempotent, ne supprime jamais rien ; seuls les envois
+`SnapDemo2026!`) avec avatar dessiné (ADR-028, conservé s'il existe déjà), amitiés, 2 demandes en attente
+vers nathan, stories avec vignette, conversations antidatées, snaps non ouverts et chats non lus. Tout
+passe par les vrais cas d'usage (upload pré-signé vers R2 puis promotion, purges programmées). Idempotent, ne supprime jamais rien ; seuls les envois
 récents sont notifiés (push / temps réel). Médias générés avec ffmpeg (`FFMPEG_PATH`, sinon le PATH).
 
 ## Tests
@@ -104,6 +104,10 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | POST | `/media/uploads` | URL de PUT signée vers `tmp/` `{ purpose, contentType, contentLength }` | 016 |
 | PUT | `/me/photo` | Confirme un upload `PROFILE_PHOTO` `{ uploadId }` | 014, 016 |
 | DELETE | `/me/photo` | Retire la photo de profil | 014, 016 |
+| PUT | `/me/avatar` | Enregistre l'avatar dessiné `{ options }` (valeurs du catalogue, 400 sinon), renvoie le profil | 028 |
+| DELETE | `/me/avatar` | Retire l'avatar dessiné (204) | 028 |
+| GET | `/avatars/catalog` | Avatar par défaut et valeurs autorisées par option | 028 |
+| GET | `/avatars/avataaars.png?<11 options>&size=` | Public : PNG carré déterministe (64 à 512 px, 256 par défaut), cache immuable | 028 |
 | DELETE | `/me` | Supprime mon compte (202 : bloqué immédiatement, suppression en arrière-plan) | 019 |
 | GET | `/users/search?username=` | Recherche par pseudo exact + relation | 012 |
 | GET | `/friendships` | Mes amis | 012 |

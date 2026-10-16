@@ -194,4 +194,82 @@ describe("API HTTP", () => {
 
     expect(res.body).toMatchObject({ username: "nathan", firstName: "Jean-Marc" });
   });
+
+  describe("avatars dessinés (ADR-028)", () => {
+    const AVATAR = {
+      top: "bob",
+      hairColor: "724133",
+      skinColor: "ffdbb4",
+      eyes: "happy",
+      eyebrows: "defaultNatural",
+      mouth: "smile",
+      facialHair: "none",
+      accessories: "round",
+      clothing: "overall",
+      clothesColor: "ffafb9",
+      backgroundColor: "fffaa1",
+    };
+
+    it("PUT /me/avatar enregistre, l'avatar apparaît dans /me et chez les amis ; DELETE le retire (204)", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      const http = request(app.getHttpServer());
+      const sent = await http.post("/friendships/requests").set("Authorization", `Bearer ${alice.token}`).send({ username: "bob" });
+      await http.post(`/friendships/requests/${sent.body.friendshipId}/accept`).set("Authorization", `Bearer ${bob.token}`).expect(200);
+
+      const saved = await http.put("/me/avatar").set("Authorization", `Bearer ${alice.token}`).send({ options: AVATAR }).expect(200);
+      expect(saved.body).toMatchObject({ id: alice.id, username: "alice", avatar: AVATAR });
+
+      await http.get("/me").set("Authorization", `Bearer ${alice.token}`).expect(200).expect((res) => expect(res.body.avatar).toEqual(AVATAR));
+      const friends = await http.get("/friendships").set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect(friends.body[0].user).toEqual({ id: alice.id, username: "alice", firstName: "Alice", avatar: AVATAR });
+      const conversations = await http.get("/conversations").set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect(conversations.body[0].friend.avatar).toEqual(AVATAR);
+
+      await http.delete("/me/avatar").set("Authorization", `Bearer ${alice.token}`).expect(204, "");
+      const me = await http.get("/me").set("Authorization", `Bearer ${alice.token}`).expect(200);
+      expect(me.body).not.toHaveProperty("avatar");
+    });
+
+    it("PUT /me/avatar refuse des options invalides (400) et exige un compte", async () => {
+      const { token } = await register("uid-1", "nathan");
+      const http = request(app.getHttpServer());
+      const put = (body: object) => http.put("/me/avatar").set("Authorization", `Bearer ${token}`).send(body);
+
+      await put({ options: { ...AVATAR, mouth: "vomit" } }).expect(400);
+      await put({ options: { ...AVATAR, seed: "x" } }).expect(400);
+      await put({ options: { top: "bob" } }).expect(400);
+      await put({ options: "bob" }).expect(400);
+      await put({ ...AVATAR }).expect(400);
+      await http.put("/me/avatar").send({ options: AVATAR }).expect(401);
+      expect([...users.rows.values()][0].avatar).toBeNull();
+    });
+
+    it("GET /avatars/catalog exige un ID token et renvoie défauts et valeurs", async () => {
+      const { token } = await register("uid-1", "nathan");
+      await request(app.getHttpServer()).get("/avatars/catalog").expect(401);
+
+      const res = await request(app.getHttpServer()).get("/avatars/catalog").set("Authorization", `Bearer ${token}`).expect(200);
+      expect(res.body.defaults).toMatchObject({ top: "shortFlat", facialHair: "none", backgroundColor: "b6e3f4" });
+      expect(res.body.options.top[0]).toBe("none");
+      expect(res.body.options.mouth).not.toContain("vomit");
+      expect(Object.keys(res.body.options)).toHaveLength(11);
+    });
+
+    it("GET /avatars/avataaars.png est public, PNG immuable en cache ; paramètre invalide → 400", async () => {
+      const http = request(app.getHttpServer());
+
+      const res = await http.get("/avatars/avataaars.png").query({ ...AVATAR, size: 128 }).buffer(true).expect(200);
+      expect(res.headers["content-type"]).toBe("image/png");
+      expect(res.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+      const png = res.body as Buffer;
+      expect(png.subarray(1, 4).toString()).toBe("PNG");
+      expect(png.readUInt32BE(16)).toBe(128);
+
+      await http.get("/avatars/avataaars.png").query({ ...AVATAR, size: 1024 }).expect(400);
+      await http.get("/avatars/avataaars.png").query({ ...AVATAR, mouth: "vomit" }).expect(400);
+      await http.get("/avatars/avataaars.png").query({ ...AVATAR, userId: "x" }).expect(400);
+      await http.get("/avatars/avataaars.png").query({ top: "bob" }).expect(400);
+    });
+  });
 });

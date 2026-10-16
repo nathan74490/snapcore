@@ -1,3 +1,4 @@
+import type { AvatarOptions } from "@snapcore/types";
 import type { UserAccount } from "../../domain/user";
 
 export const USER_REPOSITORY = Symbol("UserRepository");
@@ -37,4 +38,7 @@ export interface UserRepository {
    * @returns le compte mis à jour, ou null si la photo a changé entre-temps.
    */
   replaceProfilePhoto(id: string, expectedUrl: string | null, newUrl: string | null): Promise<UserAccount | null>;
+
+  /** Remplace (ou retire, null) l'avatar dessiné, déjà validé (ADR-028). */
+  updateAvatar(id: string, avatar: AvatarOptions | null): Promise<UserAccount>;
 }
