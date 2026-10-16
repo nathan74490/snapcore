@@ -362,12 +362,12 @@ private fun CaptureButton(
     val lock by rememberUpdatedState(onHandsFree)
     val zoom by rememberUpdatedState(onZoom)
     var finger by remember { mutableStateOf(Offset.Zero) }
-    val diameter by animateDpAsState(if (recording) 104.dp else 86.dp, label = "captureSize")
+    val diameter by animateDpAsState(if (recording) 104.dp else CAPTURE_RING, label = "captureSize")
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(diameter)
-            .then(if (recording) Modifier.background(SnapColors.Yellow, CircleShape) else Modifier.border(6.dp, Color.White, CircleShape))
+            .then(if (recording) Modifier.background(SnapColors.Yellow, CircleShape) else Modifier.border(5.dp, Color.White, CircleShape))
             .semantics { contentDescription = "Prendre un snap ; maintenir pour filmer" }
             .pointerInput(busy) {
                 if (busy) return@pointerInput
@@ -425,7 +425,7 @@ private fun CaptureButton(
         }
         // Lens en cours de chargement : arc qui tourne autour de l'anneau, comme dans Snapchat.
         if (lensLoading && !recording) {
-            CircularProgressIndicator(color = LENS_LOADING, strokeWidth = 5.dp, modifier = Modifier.size(86.dp))
+            CircularProgressIndicator(color = LENS_LOADING, strokeWidth = 5.dp, modifier = Modifier.size(CAPTURE_RING))
         }
         if (busy) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(32.dp))
     }

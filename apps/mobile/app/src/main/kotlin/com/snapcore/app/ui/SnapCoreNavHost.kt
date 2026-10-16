@@ -91,7 +91,7 @@ private val HOME_TAB_SCREENS = listOf("Chat", "Camera", "Stories")
 
 // Le média capturé transite par son chemin dans le cache privé de l'app (ADR-011).
 @Serializable private data class PreviewRoute(val path: String, val kind: MediaKind)
-@Serializable private data class SendToRoute(val path: String, val kind: MediaKind)
+@Serializable private data class SendToRoute(val path: String, val kind: MediaKind, val recipientId: String? = null)
 
 private fun PreviewRoute.media() = CapturedMedia(File(path), kind)
 private fun SendToRoute.media() = CapturedMedia(File(path), kind)
@@ -112,6 +112,9 @@ fun SnapCoreNavHost(
     var chatBackdrop by remember { mutableStateOf<ImageBitmap?>(null) }
     var swipeDismissed by remember { mutableStateOf(false) }
     var openingChat by remember { mutableStateOf(false) }
+    // Ami à qui envoyer le prochain snap : posé par le bouton appareil photo d'une conversation ou de
+    // la liste Chat, il est coché d'office à l'envoi. Quitter la caméra l'oublie.
+    var snapRecipient by remember { mutableStateOf<Friend?>(null) }
 
     // Après résolution de la session, on remplace toute la pile : pas de retour vers l'onboarding.
     fun go(session: Session) {
@@ -214,7 +217,16 @@ fun SnapCoreNavHost(
                     },
                     account = current,
                     selected = homeTab,
-                    onSelect = { homeTab = it },
+                    onSelect = {
+                        homeTab = it
+                        if (it != CAMERA_TAB) snapRecipient = null
+                    },
+                    snapRecipient = snapRecipient,
+                    onSnapTo = { friend ->
+                        snapRecipient = friend
+                        homeTab = CAMERA_TAB
+                    },
+                    onClearSnapRecipient = { snapRecipient = null },
                     onOpenProfile = { navController.navigate(ProfileRoute) },
                     onOpenFriends = { navController.navigate(FriendsRoute) },
                     onCaptured = { media -> navController.navigate(PreviewRoute(media.file.absolutePath, media.kind)) },
@@ -240,14 +252,16 @@ fun SnapCoreNavHost(
                 media = route.media(),
                 onDiscard = ::backToHome,
                 // Média déjà filtré (ADR-022) : un nouveau fichier, l'original restant à l'aperçu.
-                onSendTo = { filtered -> navController.navigate(SendToRoute(filtered.file.absolutePath, filtered.kind)) },
+                onSendTo = { filtered -> navController.navigate(SendToRoute(filtered.file.absolutePath, filtered.kind, snapRecipient?.id)) },
             )
         }
         composable<SendToRoute> { entry ->
             SendToScreen(
                 media = entry.toRoute<SendToRoute>().media(),
+                recipientId = entry.toRoute<SendToRoute>().recipientId,
                 onBack = navController::popBackStack,
                 onSent = {
+                    snapRecipient = null
                     Toast.makeText(context, "Snap envoyé !", Toast.LENGTH_SHORT).show()
                     backToHome()
                 },
@@ -266,6 +280,11 @@ fun SnapCoreNavHost(
             else ConversationScreen(
                 Friend(route.friendId, route.username, route.photoUrl, route.firstName),
                 me.id,
+                onOpenCamera = {
+                    snapRecipient = Friend(route.friendId, route.username, route.photoUrl, route.firstName)
+                    homeTab = CAMERA_TAB
+                    backToHome()
+                },
                 backdrop = chatBackdrop,
                 onSwipeBack = { swipeDismissed = true; navController.popBackStack() },
                 onBack = navController::popBackStack,
@@ -290,6 +309,10 @@ fun SnapCoreNavHost(
                 onSignedOut = { go(Session.SignedOut) },
                 onOpenMyStory = { navController.navigate(MyStoryRoute) },
                 onOpenFriends = { navController.navigate(FriendsRoute) },
+                onNewStory = {
+                    homeTab = CAMERA_TAB
+                    backToHome()
+                },
                 onAccountChanged = { account = it },
                 onOpenPlus = { navController.navigate(PaywallRoute()) },
             )

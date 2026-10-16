@@ -19,6 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.snapcore.app.ui.containerViewModel
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,6 +36,7 @@ import com.snapcore.app.ui.components.*
 import com.snapcore.app.ui.stories.StoriesScreen
 import com.snapcore.app.ui.theme.SnapColors
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -43,7 +50,11 @@ private val icons = listOf("Chat", "Camera", "Stories")
 fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
     onOpenProfile: () -> Unit, onOpenFriends: () -> Unit, onCaptured: (CapturedMedia) -> Unit,
     onOpenConversation: (Friend, snapId: String?) -> Unit, onOpenMyStory: () -> Unit, onPlayStory: (FriendStory) -> Unit,
-    modifier: Modifier = Modifier) {
+    modifier: Modifier = Modifier, snapRecipient: Friend? = null, onSnapTo: (Friend) -> Unit = {}, onClearSnapRecipient: () -> Unit = {}) {
+    // Demandes d'ami en attente : le bouton d'ajout passe en jaune avec un badge, comme dans Snapchat.
+    val requestsVm = containerViewModel { FriendRequestsViewModel(it.friends, it.realtime.events) }
+    val pendingRequests by requestsVm.count.collectAsStateWithLifecycle()
+    LifecycleResumeEffect(Unit) { requestsVm.refresh(); onPauseOrDispose {} }
     val pager = rememberPagerState(initialPage = selected, pageCount = { labels.size })
     val scope = rememberCoroutineScope()
     val select by rememberUpdatedState(onSelect)
@@ -51,7 +62,9 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
         if (pager.settledPage != selected) pager.animateScrollToPage(selected, animationSpec = tween(280, easing = FastOutSlowInEasing))
     }
     LaunchedEffect(pager) {
-        snapshotFlow { pager.settledPage }.distinctUntilChanged().collect { select(it) }
+        // La première valeur est la page restaurée : au retour d'un écran, elle écraserait l'onglet
+        // demandé entre-temps (bouton appareil photo d'une conversation).
+        snapshotFlow { pager.settledPage }.distinctUntilChanged().drop(1).collect { select(it) }
     }
     val camera = pager.currentPage == CAMERA_TAB
     val cameraVisible by remember(pager) {
@@ -84,14 +97,28 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                 }) {
             if (page == CAMERA_TAB) {
                 CameraPageLifecycle(cameraVisible) {
-                    Box(Modifier.fillMaxSize()) {
+                    // Comme Snapchat : la barre d'état reste noire et l'aperçu est une carte aux coins arrondis.
+                    Box(Modifier.fillMaxSize().background(Color.Black).statusBarsPadding().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))) {
                         CameraScreen(onCaptured, lensMode = lensMode, onLensModeChange = { lensMode = it }, onRecordingChange = { recording = it })
                         if (!recording) Row(Modifier.statusBarsPadding().fillMaxWidth().padding(start = 8.dp, end = 72.dp, top = 8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Avatar(account.displayName, account.profilePhotoUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
                             IconButton(onClick = onOpenFriends) { FigmaAsset("14-588_imgIconSearch", "Rechercher", tint = Color.White) }
                             Spacer(Modifier.weight(1f))
-                            IconButton(onClick = onOpenFriends) { FigmaAsset("14-588_imgIconAddFriend", "Ajouter des amis", tint = Color.White) }
+                            Box {
+                                IconButton(onClick = onOpenFriends) { FigmaAsset("14-588_imgIconAddFriend", "Ajouter des amis", tint = Color.White) }
+                                RequestsBadge(pendingRequests, Modifier.align(Alignment.TopEnd))
+                            }
+                        }
+                        // Snap en réponse à un ami (bouton appareil photo du chat) : rappel de son nom, ✕ pour annuler.
+                        if (snapRecipient != null && !recording) {
+                            Row(Modifier.align(Alignment.TopCenter).padding(top = 64.dp).clip(RoundedCornerShape(18.dp))
+                                .background(Color.Black.copy(alpha = .45f)).clickable(onClick = onClearSnapRecipient)
+                                .padding(start = 14.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Snap pour ${snapRecipient.displayName}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                FigmaAsset("15-925_imgIconClose", "Annuler", Modifier.size(16.dp), tint = Color.White)
+                            }
                         }
                     }
                 }
@@ -105,11 +132,15 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                         }
                         Box(Modifier.weight(1f), Alignment.Center) { Text(labels[page], style = MaterialTheme.typography.titleLarge) }
                         Row(Modifier.width(96.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                            RoundAction("15-925_imgIconAddFriend", "Ajouter des amis", onOpenFriends)
+                            Box {
+                                if (pendingRequests > 0) RoundAction("15-925_imgIconAddFriend", "Ajouter des amis", onOpenFriends, highlighted = true)
+                                else RoundAction("15-925_imgIconAddFriend", "Ajouter des amis", onOpenFriends)
+                                RequestsBadge(pendingRequests, Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp))
+                            }
                             RoundAction("15-925_imgIconMore", "Mon profil et paramètres", onOpenProfile)
                         }
                     }
-                    if (page == CHAT_TAB) ChatListScreen(account.id, onOpenConversation, onOpenFriends, Modifier.weight(1f))
+                    if (page == CHAT_TAB) ChatListScreen(account.id, onOpenConversation, onOpenFriends, onSnapTo, Modifier.weight(1f))
                     else StoriesScreen(account, onOpenMyStory, onPlayStory, Modifier.weight(1f))
                 }
             }
@@ -136,5 +167,14 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                 }
             }
         }
+    }
+}
+
+/** Nombre de demandes d'ami reçues, en pastille rouge ; rien sans demande. */
+@Composable
+private fun RequestsBadge(count: Int, modifier: Modifier = Modifier) {
+    if (count <= 0) return
+    Box(modifier.sizeIn(minWidth = 18.dp, minHeight = 18.dp).background(SnapColors.SnapRed, CircleShape).padding(horizontal = 4.dp), Alignment.Center) {
+        Text(if (count > 9) "9+" else count.toString(), color = Color.White, fontSize = 11.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold)
     }
 }

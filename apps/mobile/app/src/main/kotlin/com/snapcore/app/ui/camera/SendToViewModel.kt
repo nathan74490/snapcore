@@ -27,6 +27,8 @@ class SendToViewModel(
     private val media: CapturedMedia,
     private val friendsService: FriendsService,
     private val publisher: MediaPublisher,
+    /** Ami dont on a ouvert la caméra (bouton appareil photo du chat) : coché d'office. */
+    private val recipientId: String? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(SendToState())
     val state: StateFlow<SendToState> = _state.asStateFlow()
@@ -39,7 +41,16 @@ class SendToViewModel(
         viewModelScope.launch {
             _state.update { it.copy(loading = true, loadError = null) }
             runCatching { friendsService.friends() }
-                .onSuccess { friends -> _state.update { it.copy(friends = friends, loading = false) } }
+                .onSuccess { friends ->
+                    val recipient = friends.firstOrNull { it.id == recipientId }
+                    _state.update { state ->
+                        state.copy(
+                            friends = friends,
+                            loading = false,
+                            selected = if (recipient != null && state.selected.isEmpty()) setOf(SendTarget.ToFriend(recipient)) else state.selected,
+                        )
+                    }
+                }
                 .onFailure { e -> _state.update { it.copy(loading = false, loadError = e.message) } }
         }
     }

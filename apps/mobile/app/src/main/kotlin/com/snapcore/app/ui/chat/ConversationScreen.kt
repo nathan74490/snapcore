@@ -32,7 +32,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
+import java.time.LocalDate
+import java.time.ZoneId
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -70,7 +76,7 @@ import com.snapcore.app.ui.theme.SnapColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit, backdrop: ImageBitmap? = null, onSwipeBack: () -> Unit = onBack, openSnapId: String? = null) {
+fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit, backdrop: ImageBitmap? = null, onSwipeBack: () -> Unit = onBack, openSnapId: String? = null, onOpenCamera: () -> Unit = {}) {
     val vm = containerViewModel { ConversationViewModel(friend, myId, it.chat, it.realtime.events, openSnapId) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -117,33 +123,42 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                 Column(Modifier.background(Color.White).statusBarsPadding()) {
                     Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBack) { FigmaAsset("15-1124_imgIconChevronLeft", "Retour") }
-                        Avatar(friend.displayName, friend.photoUrl, 48.dp)
-                        Text(friend.displayName, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                        // Comme Snapchat : avatar compact, prénom en gras et le pseudo dessous.
+                        Avatar(friend.displayName, friend.photoUrl, 40.dp)
+                        Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                            Text(friend.displayName, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
+                            if (friend.firstName != null) Text("@${friend.username}", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                     HorizontalDivider(color = SnapColors.Border, thickness = .5.dp)
                 }
             },
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
+                // Barre de saisie façon Snapchat : appareil photo noir à gauche (snap à cet ami), champ
+                // pilule à contour ; la flèche d'envoi n'apparaît qu'avec du texte à envoyer.
                 Row(
-                    // Chat Input Bar 10:677 : champ pilule 40pt (#ECEEEF, rayon 20) dans une barre de 56pt.
                     modifier = Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().imePadding()
-                        .heightIn(min = 56.dp).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                        .heightIn(min = 60.dp).padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(SnapColors.Ink).clickable(onClick = onOpenCamera), Alignment.Center) {
+                        FigmaAsset("17-1301_imgIconCamera", "Envoyer un snap", Modifier.size(24.dp), tint = Color.White)
+                    }
                     BasicTextField(value = state.draft, onValueChange = vm::onDraft,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { if(state.draft.isNotBlank()) vm.send() }),
                         maxLines = 4,
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue),
-                        modifier = Modifier.focusRequester(composerFocus).weight(1f).heightIn(min = 40.dp).background(SnapColors.Control, RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
+                        modifier = Modifier.focusRequester(composerFocus).weight(1f).heightIn(min = 44.dp)
+                            .border(1.5.dp, SnapColors.Grey, RoundedCornerShape(22.dp)).padding(horizontal = 16.dp, vertical = 11.dp),
                         decorationBox = { field -> Box { if(state.draft.isEmpty()) Text("Envoyer un Chat", color = SnapColors.Muted, style = MaterialTheme.typography.bodyLarge); field() } })
-                    // Grisé tant qu'il n'y a rien à envoyer : la teinte suit l'état, pas seulement le clic.
-                    val canSend = state.draft.isNotBlank()
-                    IconButton(onClick = vm::send, enabled = canSend) {
-                        Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = if (canSend) SnapColors.ChatBlue else SnapColors.Disabled)
+                    if (state.draft.isNotBlank()) {
+                        IconButton(onClick = vm::send) {
+                            Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = SnapColors.ChatBlue)
+                        }
                     }
                 }
             },
@@ -155,11 +170,20 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(padding).then(backGesture),
                     reverseLayout = true,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    items(state.messages, key = { it.id }) { message ->
-                        MessageRow(message, myId, friend.displayName) { vm.open(message) }
+                    // Du plus récent au plus ancien : le message suivant dans la liste est le précédent à l'écran.
+                    val today = LocalDate.now()
+                    itemsIndexed(state.messages, key = { _, message -> message.id }) { index, message ->
+                        val previous = state.messages.getOrNull(index + 1)
+                        val day = message.createdAt.atZone(ZoneId.systemDefault()).toLocalDate()
+                        val newDay = previous == null || previous.createdAt.atZone(ZoneId.systemDefault()).toLocalDate() != day
+                        MessageRow(
+                            message, myId, friend.displayName,
+                            dayHeader = if (newDay) dayLabel(day, today) else null,
+                            // Le nom n'apparaît qu'au début d'une suite de messages du même expéditeur.
+                            showName = newDay || previous?.senderId != message.senderId,
+                        ) { vm.open(message) }
                     }
                 }
             }
@@ -175,45 +199,52 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
     }
 }
 
+// Comme dans Snapchat : pas de bulles, tout est aligné à gauche avec une barre de couleur (rouge pour
+// moi, bleu pour l'ami) ; le nom de l'expéditeur ouvre chaque suite de messages.
 @Composable
-private fun MessageRow(message: ChatMessage, myId: String, friendName: String, onOpenSnap: () -> Unit) {
+private fun MessageRow(message: ChatMessage, myId: String, friendName: String, dayHeader: String?, showName: Boolean, onOpenSnap: () -> Unit) {
     val mine = message.isFrom(myId)
     val status = statusOf(message, myId)
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-        Text(
-            if (mine) "MOI" else friendName.uppercase(),
-            color = if (mine) SnapColors.SnapRed else SnapColors.ChatBlue,
-            style = MaterialTheme.typography.labelSmall,
-        )
-        if (message.isSnap) {
-            val openable = canTryToOpen(message, myId)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
-                    .then(if (openable) Modifier.clickable(onClick = onOpenSnap) else Modifier)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-            ) {
-                StatusIcon(status, size = 18.dp)
+    val color = if (mine) SnapColors.SnapRed else SnapColors.ChatBlue
+    Column(Modifier.fillMaxWidth()) {
+        dayHeader?.let {
+            Text(it, color = SnapColors.Grey, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp))
+        }
+        if (showName) {
+            Text(if (mine) "MOI" else friendName.uppercase(), color = color, style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = if (dayHeader == null) 12.dp else 4.dp, bottom = 2.dp))
+        }
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            Box(Modifier.width(2.dp).fillMaxHeight().background(color))
+            if (message.isSnap) {
+                val openable = canTryToOpen(message, myId)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                        .then(if (openable) Modifier.clickable(onClick = onOpenSnap) else Modifier)
+                        .padding(start = 10.dp, top = 6.dp, bottom = 6.dp),
+                ) {
+                    StatusIcon(status, size = 18.dp)
+                    Text(
+                        when {
+                            openable && message.openedAt == null -> "Appuie pour voir"
+                            openable -> "${status.label} · appuie pour revoir"
+                            else -> status.label
+                        },
+                        color = status.color.toColor(),
+                        fontWeight = if (openable && message.openedAt == null) FontWeight.Bold else FontWeight.Normal,
+                    )
+                }
+            } else {
                 Text(
-                    when {
-                        openable && message.openedAt == null -> "Appuie pour voir"
-                        openable -> "${status.label} · appuie pour revoir"
-                        else -> status.label
-                    },
-                    color = status.color.toColor(),
+                    message.content.orEmpty(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = SnapColors.Ink,
+                    modifier = Modifier.weight(1f).alpha(if (message.pending) .6f else 1f).padding(start = 10.dp, top = 3.dp, bottom = 3.dp),
                 )
             }
-        } else {
-            Text(
-                message.content.orEmpty(),
-                modifier = Modifier
-                    .widthIn(max = 280.dp)
-                    .alpha(if (message.pending) .6f else 1f)
-                    .background(if (mine) Color(0x1FF23C57) else Color(0x1F0EADFF), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
         }
     }
 }

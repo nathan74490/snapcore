@@ -39,28 +39,26 @@ fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory
     LifecycleResumeEffect(Unit) { vm.refresh(); onPauseOrDispose {} }
     SnapRefresh(state.loading, vm::refresh, modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp)) {
-            item { Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp)) }
-            item {
-                // Bulle de 88 pour un anneau de 82 : 9 + 3 de marge interne = 12, comme le reste de la page.
-                LazyRow(contentPadding = PaddingValues(horizontal = 9.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    item {
-                        StoryCircle("Ma story", account.displayName, account.profilePhotoUrl,
-                            if(state.mine.isEmpty()) SnapColors.Control else SnapColors.SnapPurple, onOpenMine)
-                    }
-                    items(state.friends, key = { it.author.id }) { story ->
-                        StoryCircle(story.author.displayName, story.author.displayName, story.author.photoUrl,
-                            if(story.hasUnviewed) SnapColors.SnapPurple else SnapColors.Muted) { onPlay(story) }
+            // Comme Snapchat : la rangée ne montre que les stories des amis, Ma story a sa propre carte.
+            if (state.friends.isNotEmpty()) {
+                item { Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp)) }
+                item {
+                    // Bulle de 88 pour un anneau de 82 : 9 + 3 de marge interne = 12, comme le reste de la page.
+                    LazyRow(contentPadding = PaddingValues(horizontal = 9.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(state.friends, key = { it.author.id }) { story ->
+                            StoryCircle(story.author, if(story.hasUnviewed) SnapColors.SnapPurple else SnapColors.Muted) { onPlay(story) }
+                        }
                     }
                 }
             }
             item {
-                Text("Ma story", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 24.dp, bottom = 8.dp))
+                Text("Ma story", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = if (state.friends.isEmpty()) 8.dp else 24.dp, bottom = 8.dp))
                 Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SnapColors.Background)
                     .clickable(onClick = onOpenMine).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     FigmaAsset("17-1301_imgIconCamera", tint = SnapColors.ChatBlue)
                     Column(Modifier.weight(1f)) {
-                        Text(if(state.mine.isEmpty()) "Ajouter à Ma story" else "${state.mine.size} snap(s) · ${state.mine.sumOf { it.viewCount }} vue(s)", fontWeight = FontWeight.Bold)
+                        Text(if(state.mine.isEmpty()) "Ajouter à Ma story" else myStorySummary(state.mine.size, state.mine.sumOf { it.viewCount }), fontWeight = FontWeight.Bold)
                         Text("Visible par mes amis", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
                     }
                     FigmaAsset("17-1301_imgIconChevronRight")
@@ -92,10 +90,18 @@ fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory
 }
 
 @Composable
-private fun StoryCircle(label: String, username: String, photo: String?, ring: Color, click: () -> Unit) {
-    // Story Bubble 11:325 : 88 de large, anneau 82 (3pt), avatar 72, libellé Bold 14/18 à 12 sous l'anneau.
+private fun StoryCircle(author: Friend, ring: Color, click: () -> Unit) {
+    // Story Bubble 11:325 : 88 de large, anneau 82 (3pt), avatar 72, libellé Bold 14/18 à 12 sous l'anneau ;
+    // le pseudo en gris dessous quand l'ami a un prénom, comme dans Snapchat.
     Column(Modifier.width(88.dp).clickable(onClick = click), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(82.dp).border(3.dp, ring, CircleShape), Alignment.Center) { Avatar(username, photo, 72.dp) }
-        Text(label, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
+        Box(Modifier.size(82.dp).border(3.dp, ring, CircleShape), Alignment.Center) { Avatar(author.displayName, author.photoUrl, 72.dp) }
+        Text(author.displayName, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
+        if (author.firstName != null) Text(author.username, fontSize = 12.sp, lineHeight = 16.sp, color = SnapColors.Grey, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/** « 1 snap · 1 vue », « 3 snaps · 0 vue » : accord en français (0 et 1 au singulier). */
+fun myStorySummary(snaps: Int, views: Int): String {
+    fun plural(count: Int, word: String) = "$count $word" + if (count > 1) "s" else ""
+    return "${plural(snaps, "snap")} · ${plural(views, "vue")}"
 }

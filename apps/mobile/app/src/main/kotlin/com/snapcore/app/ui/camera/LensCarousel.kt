@@ -45,10 +45,12 @@ import kotlin.math.abs
 private val SLOT = 74.dp
 private val ICON = 68.dp
 private const val SIDE_SCALE = 0.74f
-// L'anneau de capture (86) est plus large que l'icône au centre : sans ce décalage, la première Lens
-// le touche presque (≈ 6) alors que les suivantes sont espacées de ≈ 24. Les voisines s'écartent du
-// centre pour que tous les espaces soient égaux : SLOT - 86/2 - ICON·SIDE_SCALE/2 + PUSH = SLOT - ICON·SIDE_SCALE.
-private val PUSH = 18.dp
+/** Diamètre de l'anneau de capture, au repos (Snapchat : 80, contour de 5). */
+internal val CAPTURE_RING = 80.dp
+// L'anneau de capture est plus large que l'icône au centre : sans ce décalage, la première Lens le
+// touche presque alors que les suivantes sont bien espacées. Les voisines s'écartent du centre pour que
+// tous les espaces soient égaux : SLOT - CAPTURE_RING/2 - ICON·SIDE_SCALE/2 + PUSH = SLOT - ICON·SIDE_SCALE.
+private val PUSH = CAPTURE_RING / 2 - ICON * (SIDE_SCALE / 2)
 
 /** Position du carrousel qui se trouve au centre (sous l'anneau de capture) ; 0 = aucune Lens. */
 fun LazyListState.centeredIndex(): Int {

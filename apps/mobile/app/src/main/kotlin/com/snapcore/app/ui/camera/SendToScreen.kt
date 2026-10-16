@@ -62,8 +62,8 @@ import com.snapcore.app.ui.theme.SnapColors
 // "Ma story" en tête, puis les amis ACCEPTED.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, onAddFriends: () -> Unit) {
-    val vm = containerViewModel { SendToViewModel(media, it.friends, it.mediaPublisher) }
+fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, onAddFriends: () -> Unit, recipientId: String? = null) {
+    val vm = containerViewModel { SendToViewModel(media, it.friends, it.mediaPublisher, recipientId) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.done) { if (state.done) onSent() }
 

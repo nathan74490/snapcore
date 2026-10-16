@@ -45,8 +45,9 @@ fun FigmaAsset(key: String, description: String? = null, modifier: Modifier = Mo
 }
 
 @Composable
-fun RoundAction(asset: String, description: String, onClick: () -> Unit, dark: Boolean = false, modifier: Modifier = Modifier) {
-    Box(modifier.size(40.dp).clip(CircleShape).background(if(dark) Color.Black.copy(alpha=.25f) else SnapColors.Control)
+fun RoundAction(asset: String, description: String, onClick: () -> Unit, dark: Boolean = false, modifier: Modifier = Modifier, highlighted: Boolean = false) {
+    // highlighted : fond jaune, pour une action qui attend l'utilisateur (demandes d'ami en attente).
+    Box(modifier.size(40.dp).clip(CircleShape).background(if(highlighted) SnapColors.Yellow else if(dark) Color.Black.copy(alpha=.25f) else SnapColors.Control)
         .clickable(onClick = onClick), contentAlignment = Alignment.Center) {
         FigmaAsset(asset, description, tint = if(dark) Color.White else SnapColors.Ink)
     }

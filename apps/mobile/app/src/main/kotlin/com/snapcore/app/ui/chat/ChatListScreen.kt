@@ -33,7 +33,7 @@ private fun Conversation.unread(myId: String) = lastMessage?.let { !it.isFrom(my
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAddFriends: () -> Unit, modifier: Modifier = Modifier) {
+fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAddFriends: () -> Unit, onSnapTo: (Friend) -> Unit, modifier: Modifier = Modifier) {
     val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events) }
     val state by vm.state.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableIntStateOf(0) }
@@ -65,7 +65,7 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
                 items(visible, key = { it.friend.id }) { conversation ->
                     // Nouveau snap reçu : il s'ouvre directement, comme dans Snapchat.
                     val snap = conversation.lastMessage?.takeIf { canTryToOpen(it, myId) && it.openedAt == null }
-                    ConversationRow(conversation, myId) { onOpen(conversation.friend, snap?.id) }
+                    ConversationRow(conversation, myId, onSnap = { onSnapTo(conversation.friend) }) { onOpen(conversation.friend, snap?.id) }
                 }
                 if(visible.isEmpty() && !state.loading) item {
                     Text(if(filter == 1) "Tous tes chats sont lus." else if(filter == 2) "Aucune nouvelle conversation." else "Retrouve tes amis ici pour commencer à discuter.",
@@ -84,9 +84,10 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
                     }
                 }
             }
-            FloatingActionButton(onClick = onAddFriends, containerColor = SnapColors.ChatBlue, contentColor = Color.White,
+            // Jaune et icône noire, comme le bouton « Nouveau chat » de Snapchat.
+            FloatingActionButton(onClick = onAddFriends, containerColor = SnapColors.Yellow, contentColor = SnapColors.Ink,
                 shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(60.dp)) {
-                FigmaAsset("15-925_imgIconEdit", "Nouveau chat")
+                FigmaAsset("15-925_imgIconEdit", "Nouveau chat", tint = SnapColors.Ink)
             }
         }
     }
@@ -94,12 +95,12 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
 }
 
 @Composable
-private fun ConversationRow(conversation: Conversation, myId: String, onClick: () -> Unit) {
+private fun ConversationRow(conversation: Conversation, myId: String, onSnap: () -> Unit, onClick: () -> Unit) {
     val last = conversation.lastMessage
     val unread = conversation.unread(myId)
     // Chat Row 11:281 : nom toujours en Regular 18 ; seul le statut non lu passe en gras et en couleur,
     // l'horodatage reste à part en gris clair.
-    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick).padding(horizontal = 12.dp),
+    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick).padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Avatar(conversation.friend.displayName, conversation.friend.photoUrl, 48.dp)
         Column(Modifier.weight(1f)) {
@@ -115,7 +116,8 @@ private fun ConversationRow(conversation: Conversation, myId: String, onClick: (
                 } else Text("Appuie pour discuter", color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        FigmaAsset("15-925_imgIconChat2", modifier = Modifier.size(ICON), tint = SnapColors.Ink)
+        // Comme dans Snapchat : l'appareil photo de la ligne ouvre la caméra pour répondre par un snap.
+        IconButton(onClick = onSnap) { FigmaAsset("17-1301_imgIconCamera", "Envoyer un snap", Modifier.size(ICON), tint = SnapColors.Ink) }
     }
     HorizontalDivider(color = SnapColors.Border, thickness = 1.dp)
 }

@@ -73,6 +73,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.SnapCorePlus
 import com.snapcore.app.push.Notifications
 import com.snapcore.app.ui.components.Avatar
+import com.snapcore.app.ui.components.ChipButton
+import com.snapcore.app.ui.components.ChipStyle
 import com.snapcore.app.ui.components.FigmaAsset
 import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.components.RoundAction
@@ -94,6 +96,7 @@ fun ProfileScreen(
     onOpenPlus: () -> Unit,
     onOpenMyStory: () -> Unit,
     onOpenFriends: () -> Unit,
+    onNewStory: () -> Unit = {},
 ) {
     val vm = containerViewModel { ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -202,7 +205,11 @@ fun ProfileScreen(
                             color = if(account.isPremium) SnapColors.SnapPurple else SnapColors.Ink)
                     }
                     PlusCard(account, onOpenPlus)
-                    Text("Mes Stories", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
+                    // Comme Snapchat : « + Nouvelle Story » à côté du titre ouvre la caméra.
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Mes Stories", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        ChipButton("+ Nouvelle Story", onNewStory, style = ChipStyle.Gray)
+                    }
                     ProfileAction("17-1301_imgIconCamera", "Ma story · Mes amis", onOpenMyStory)
                     Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
                     ProfileAction("17-1301_imgIconAddFriend", "Ajouter des amis", onOpenFriends)
