@@ -9,7 +9,6 @@ import android.widget.FrameLayout
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -329,29 +328,8 @@ private fun CameraContent(
                 CaptureButton(recording != null, handsFree, recordProgress, busy, lensLoading, ::takePhoto, ::startRecording,
                     onStopVideo = { recording?.close() }, onHandsFree = { handsFree = true }, onZoom = camera::setZoom)
             }
-            // En mode Lens et pendant l'enregistrement, les libellés s'effacent sans changer la mise en page.
-            val labelsAlpha by animateFloatAsState(if (lensMode || recording != null) 0f else 1f, label = "labels")
-            Column(Modifier.graphicsLayer { alpha = labelsAlpha }, horizontalAlignment = Alignment.CenterHorizontally) {
-                // Le mode en cours est en gras avec un point dessous.
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
-                    CaptureModeLabel("Snap", active = true, dot = Color.White)
-                    CaptureModeLabel("Vidéo", active = false, dot = SnapColors.SnapRed)
-                }
-                Text("Appuie pour une photo, maintiens pour filmer",
-                    color = Color.White.copy(alpha = .8f), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-            }
         }
 
-    }
-}
-
-@Composable
-private fun CaptureModeLabel(label: String, active: Boolean, dot: Color) {
-    val shadow = TextStyle(shadow = Shadow(Color.Black.copy(alpha = .5f), blurRadius = 6f))
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, color = if (active) Color.White else Color.White.copy(alpha = .75f), fontSize = 17.sp,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.SemiBold, style = shadow)
-        Box(Modifier.padding(top = 3.dp).size(5.dp).background(if (active) dot else Color.Transparent, CircleShape))
     }
 }
 
