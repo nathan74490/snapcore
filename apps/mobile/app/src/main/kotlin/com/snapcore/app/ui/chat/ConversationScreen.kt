@@ -1,6 +1,13 @@
 package com.snapcore.app.ui.chat
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.graphics.ImageBitmap
+import com.snapcore.app.ui.components.SwipeBackPane
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
@@ -61,10 +68,20 @@ import com.snapcore.app.ui.theme.SnapColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit) {
+fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit, backdrop: ImageBitmap? = null, onSwipeBack: () -> Unit = onBack) {
     val vm = containerViewModel { ConversationViewModel(friend, myId, it.chat, it.realtime.events) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val composerFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    // Le clavier arrive après le panneau : aucune variation de largeur pendant le glissement.
+    LaunchedEffect(friend.id, lifecycleOwner) {
+        lifecycleOwner.lifecycle.withResumed {
+            composerFocus.requestFocus()
+            keyboard?.show()
+        }
+    }
     LaunchedEffect(state.error) {
         state.error?.let {
             snackbar.showSnackbar(it)
@@ -89,53 +106,61 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
     }
 
     StatusBarIcons(dark = true)
-    Scaffold(
-        topBar = {
+    SwipeBackPane(backdrop, enabled = state.viewer == null, onBack = onSwipeBack) { backGesture ->
+        Scaffold(
+            topBar = {
 
-            Column(Modifier.background(Color.White).statusBarsPadding()) {
-                Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { FigmaAsset("15-1124_imgIconChevronLeft", "Retour") }
-                    Avatar(friend.username, friend.photoUrl, 48.dp)
-                    Text(friend.username, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                Column(Modifier.background(Color.White).statusBarsPadding()) {
+                    Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onBack) { FigmaAsset("15-1124_imgIconChevronLeft", "Retour") }
+                        Avatar(friend.username, friend.photoUrl, 48.dp)
+                        Text(friend.username, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                    }
+                    HorizontalDivider(color = SnapColors.Border, thickness = .5.dp)
                 }
-                HorizontalDivider(color = SnapColors.Border, thickness = .5.dp)
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = {
-            Row(
-                modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            },
+            snackbarHost = { SnackbarHost(snackbar) },
+            bottomBar = {
+                Row(
+                    // Chat Input Bar 10:677 : champ pilule 40pt (#ECEEEF, rayon 20) dans une barre de 56pt.
+                    modifier = Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().imePadding()
+                        .heightIn(min = 56.dp).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
 
-                BasicTextField(value = state.draft, onValueChange = vm::onDraft,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { if(state.draft.isNotBlank() && !state.sending) vm.send() }),
-                    maxLines = 4,
-                    modifier = Modifier.weight(1f).background(SnapColors.Control, RoundedCornerShape(24.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
-                    decorationBox = { field -> Box { if(state.draft.isEmpty()) Text("Envoyer un Chat", color = SnapColors.Muted); field() } })
-                IconButton(onClick = vm::send, enabled = state.draft.isNotBlank() && !state.sending) {
-                    Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = SnapColors.ChatBlue)
+                    BasicTextField(value = state.draft, onValueChange = vm::onDraft,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { if(state.draft.isNotBlank() && !state.sending) vm.send() }),
+                        maxLines = 4,
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue),
+                        modifier = Modifier.focusRequester(composerFocus).weight(1f).heightIn(min = 40.dp).background(SnapColors.Control, RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
+                        decorationBox = { field -> Box { if(state.draft.isEmpty()) Text("Envoyer un Chat", color = SnapColors.Muted, style = MaterialTheme.typography.bodyLarge); field() } })
+                    // Grisé tant qu'il n'y a rien à envoyer : la teinte suit l'état, pas seulement le clic.
+                    val canSend = state.draft.isNotBlank() && !state.sending
+                    IconButton(onClick = vm::send, enabled = canSend) {
+                        Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = if (canSend) SnapColors.ChatBlue else SnapColors.Disabled)
+                    }
                 }
-            }
-        },
-    ) { padding ->
-        if (state.loading && state.messages.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) { CircularProgressIndicator() }
-        } else {
-            // reverseLayout : les messages les plus récents en bas, la liste s'ouvre sur eux.
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                reverseLayout = true,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-            ) {
-                items(state.messages, key = { it.id }) { message ->
-                    MessageRow(message, myId, friend.username) { vm.open(message) }
+            },
+        ) { padding ->
+            if (state.loading && state.messages.isEmpty()) {
+                Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) { CircularProgressIndicator() }
+            } else {
+                // reverseLayout : les messages les plus récents en bas, la liste s'ouvre sur eux.
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding).then(backGesture),
+                    reverseLayout = true,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                ) {
+                    items(state.messages, key = { it.id }) { message ->
+                        MessageRow(message, myId, friend.username) { vm.open(message) }
+                    }
                 }
             }
         }
+
     }
 
     state.viewer?.let { viewer ->

@@ -1,23 +1,13 @@
 package com.snapcore.app.ui.profile
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
-import com.snapcore.app.ui.components.FigmaAsset
-import com.snapcore.app.ui.components.RoundAction
-import com.snapcore.app.ui.components.SnapHeader
-import com.snapcore.app.ui.components.StatusBarIcons
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -63,18 +54,30 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.SnapCorePlus
+import com.snapcore.app.push.Notifications
 import com.snapcore.app.ui.components.Avatar
+import com.snapcore.app.ui.components.FigmaAsset
 import com.snapcore.app.ui.components.PrimaryButton
+import com.snapcore.app.ui.components.RoundAction
+import com.snapcore.app.ui.components.SnapHeader
+import com.snapcore.app.ui.components.SnapToggle
+import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
 import java.time.ZoneId
@@ -111,7 +114,7 @@ fun ProfileScreen(
     StatusBarIcons(dark = settings)
     Scaffold(
         containerColor = SnapColors.Background,
-        topBar = { if(settings) SnapHeader("Paramètres", { settings = false }) },
+        topBar = { if(settings) SnapHeader("Paramètres", { settings = false }, background = SnapColors.Background) },
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
@@ -130,23 +133,34 @@ fun ProfileScreen(
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     FigmaAsset("17-1408_imgIconGhost", tint = SnapColors.Ink)
                     Text("Gérer SnapCore+", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                    FigmaAsset("17-1408_imgIconChevronRight")
+                    FigmaAsset("17-1408_imgIconChevronRight", tint = SnapColors.Ink)
                 }
                 Text("MON COMPTE", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 16.dp))
                 Column(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White)) {
                     ProfileRow("Pseudo", account.username, onEdit = { vm.startEditing(EditableField.USERNAME) })
                     HorizontalDivider(color = SnapColors.Border)
-                    ProfileRow("Email", account.email ?: "—") {
-                        when(state.emailVerified) {
-                            true -> Icon(Icons.Filled.Verified, "Email vérifié", tint = SnapColors.ChatBlue)
-                            false -> TextButton(onClick = vm::resendVerification) { Text("Vérifier", color = SnapColors.SnapRed) }
-                            null -> Unit
+                    // Email non vérifié : la ligne entière passe en rouge (maquette 17:1408), un appui renvoie le lien.
+                    if (state.emailVerified == false) {
+                        ProfileRow("Email", account.email ?: "—", onEdit = vm::resendVerification, alert = true)
+                    } else {
+                        ProfileRow("Email", account.email ?: "—") {
+                            if (state.emailVerified == true) Icon(Icons.Filled.Verified, "Email vérifié", tint = SnapColors.ChatBlue)
                         }
                     }
                     HorizontalDivider(color = SnapColors.Border)
                     ProfileRow("Téléphone", account.phoneNumber ?: "Non renseigné", onEdit = { vm.startEditing(EditableField.PHONE) })
                     HorizontalDivider(color = SnapColors.Border)
                     ProfileRow("SnapCore+", if(account.isPremium) "Abonnement actif" else SnapCorePlus.PRICE_LABEL, onEdit = onOpenPlus)
+                    HorizontalDivider(color = SnapColors.Border)
+                    // La permission n'est demandée qu'une fois (BUG-007) : on la réactive ici, dans Android.
+                    val context = LocalContext.current
+                    val notificationsOn = Notifications.canNotify(context)
+                    // Toggle 9:101 (vert) qui reflète l'état réel ; un appui ouvre les réglages Android.
+                    ProfileRow(
+                        "Notifications",
+                        if (notificationsOn) "Activées" else "Désactivées",
+                        onTap = { context.startActivity(Notifications.settingsIntent(context)) },
+                    ) { SnapToggle(notificationsOn) }
                 }
                 Spacer(Modifier.height(32.dp))
                 PrimaryButton("Se déconnecter", vm::signOut, container = Color.White, content = SnapColors.Ink)
@@ -228,14 +242,23 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun ProfileRow(label: String, value: String, onEdit: (() -> Unit)? = null, trailing: @Composable () -> Unit = {}) {
+private fun ProfileRow(
+    label: String,
+    value: String,
+    onEdit: (() -> Unit)? = null,
+    alert: Boolean = false,
+    onTap: (() -> Unit)? = onEdit,
+    trailing: @Composable () -> Unit = {},
+) {
+    // Settings Row 11:304 : 57pt min, marges 24 / 16, titre et sous-titre espacés de 4.
     Row(
-        modifier = Modifier.fillMaxWidth().then(if (onEdit != null) Modifier.clickable(onClick = onEdit) else Modifier).heightIn(min = 71.dp).padding(horizontal = 24.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().then(if (onTap != null) Modifier.clickable(onClick = onTap) else Modifier).heightIn(min = 57.dp).padding(start = 24.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, color = SnapColors.Ink, style = MaterialTheme.typography.bodyLarge)
-            Text(value, color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, color = if (alert) SnapColors.SnapRed else SnapColors.Ink, style = MaterialTheme.typography.bodyLarge)
+            Text(value, color = if (alert) SnapColors.SnapRed else SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
         }
         trailing()
         if (onEdit != null) FigmaAsset("17-1408_imgIconChevronRight", "Modifier $label")

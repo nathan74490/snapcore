@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -49,16 +50,22 @@ fun PrimaryButton(
     loading: Boolean = false,
     container: Color = SnapColors.ChatBlue,
     content: Color = Color.White,
+    height: Dp = 50.dp,
+    textStyle: TextStyle? = null,
 ) {
     Button(
         onClick = onClick,
         enabled = enabled && !loading,
         shape = RoundedCornerShape(25.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content, disabledContainerColor = SnapColors.Disabled, disabledContentColor = Color.White),
-        modifier = modifier.fillMaxWidth().height(50.dp),
+        // Gris « Disabled » (Button 9:43) seulement quand l'action est indisponible ; pendant le chargement
+        // le bouton garde sa couleur et affiche la roue.
+        colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content,
+            disabledContainerColor = if (loading && enabled) container else SnapColors.Disabled,
+            disabledContentColor = if (loading && enabled) content else Color.White),
+        modifier = modifier.fillMaxWidth().height(height),
     ) {
         if (loading) CircularProgressIndicator(color = content, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-        else Text(text, style = androidx.compose.material3.MaterialTheme.typography.labelLarge)
+        else Text(text, style = textStyle ?: androidx.compose.material3.MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -76,7 +83,8 @@ fun SnapTextField(
 ) {
 
     Column(modifier.fillMaxWidth()) {
-        Text(label, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        // Libellé et champ : composant Input 9:78 de la maquette (libellé Bold 15/18, rayon 8, bordure #C9CED3).
+        Text(label, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium.copy(lineHeight = 18.sp), fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(9.dp))
 
         var focused by remember { mutableStateOf(false) }
@@ -86,7 +94,7 @@ fun SnapTextField(
             keyboardOptions = KeyboardOptions(keyboardType = if(password) KeyboardType.Password else keyboardType),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue),
             modifier = Modifier.fillMaxWidth().height(50.dp).onFocusChanged { focused = it.isFocused }
-                .border(if(focused) 1.5.dp else 1.dp, if(error != null) SnapColors.SnapRed else if(focused) SnapColors.Grey else Color(0xFFC7CCD4), RoundedCornerShape(7.dp))
+                .border(if(focused) 1.5.dp else 1.dp, if(error != null) SnapColors.SnapRed else if(focused) SnapColors.Grey else SnapColors.Field, RoundedCornerShape(8.dp))
                 .padding(horizontal = 16.dp),
             decorationBox = { field -> Box(contentAlignment = Alignment.CenterStart) {
                 if(value.isEmpty()) Text(label, color = SnapColors.Muted, style = androidx.compose.material3.MaterialTheme.typography.bodyLarge)

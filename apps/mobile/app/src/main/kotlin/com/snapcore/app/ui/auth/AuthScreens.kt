@@ -146,7 +146,9 @@ fun LoginScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
         }
         Spacer(Modifier.height(150.dp))
         PrimaryButton("Connexion", vm::submit, enabled = state.email.isNotBlank() && state.password.isNotBlank(),
-            loading = state.loading, modifier = Modifier.padding(horizontal = 75.dp))
+            loading = state.loading, modifier = Modifier.padding(horizontal = 75.dp),
+            // Bouton « Log In » de la maquette (19:1534) : 48 de haut, libellé Regular 19.
+            height = 48.dp, textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp))
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -155,9 +157,9 @@ fun LoginScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
 private fun LoginField(value: String, change: (String) -> Unit, label: String, password: Boolean) {
 
     var reveal by remember { mutableStateOf(false) }
-    Text(label, color = SnapColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+    Text(label, color = SnapColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = .96.sp)
     Row(Modifier.fillMaxWidth().height(38.dp), verticalAlignment = Alignment.CenterVertically) {
-        BasicTextField(value, change, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge,
+        BasicTextField(value, change, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, color = SnapColors.Ink),
             visualTransformation = if(password && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(keyboardType = if(password) KeyboardType.Password else KeyboardType.Email),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue), modifier = Modifier.weight(1f))
@@ -166,7 +168,7 @@ private fun LoginField(value: String, change: (String) -> Unit, label: String, p
             else FigmaAsset("19-1518_imgIconEyeOff", "Afficher le mot de passe")
         }
     }
-    HorizontalDivider(color = Color(0xFFC7CCD4), thickness = 1.dp)
+    HorizontalDivider(color = SnapColors.Hairline, thickness = 1.dp)
 }
 
 @Composable
@@ -181,7 +183,7 @@ fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
         else -> if (state.firebaseAccountCreated) "Finalise ton inscription" else "Choisis un mot de passe"
     }
     FormScaffold(title, onBack = { if (state.step == 1) onBack() else vm.back() }, progress = state.step / SignUpState.STEPS.toFloat(),
-        action = { PrimaryButton(if (state.step < SignUpState.STEPS) "Continuer" else "S'inscrire", vm::next, loading = state.loading) }) {
+        action = { PrimaryButton(if (state.step < SignUpState.STEPS) "Continuer" else "S'inscrire", vm::next, enabled = state.canContinue, loading = state.loading) }) {
         when (state.step) {
             1 -> SnapTextField(
                 state.username,

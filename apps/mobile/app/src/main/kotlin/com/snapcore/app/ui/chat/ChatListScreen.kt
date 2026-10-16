@@ -36,7 +36,8 @@ fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> U
     var filter by rememberSaveable { mutableIntStateOf(0) }
     val unread = state.conversations.count { it.unread(myId) }
     val visible = state.conversations.filter { when(filter) { 1 -> it.unread(myId); 2 -> it.lastMessage == null; else -> true } }
-    Column(modifier.fillMaxSize().background(Color.White)) {
+    SnapRefresh(state.loading && state.conversations.isNotEmpty(), vm::refresh, modifier.fillMaxSize()) {
+      Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().height(52.dp).padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("Tous", "Non lus", "Nouveaux").forEachIndexed { index, label ->
@@ -50,7 +51,7 @@ fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> U
                 }
             }
         }
-        PullToRefreshBox(isRefreshing = state.loading && state.conversations.isNotEmpty(), onRefresh = vm::refresh, modifier = Modifier.weight(1f)) {
+        Box(Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 90.dp)) {
                 state.error?.let { error -> item { TextButton(onClick = vm::refresh) { Text("$error · Réessayer", color = SnapColors.SnapRed) } } }
                 if(state.loading && state.conversations.isEmpty()) item {
@@ -72,9 +73,7 @@ fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> U
                             Text("Trouver mes amis", style = MaterialTheme.typography.bodyLarge)
                             Text("Rechercher un pseudo", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
                         }
-                        Box(Modifier.clip(RoundedCornerShape(18.dp)).background(SnapColors.Yellow).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            Text("Ajouter", fontWeight = FontWeight.Bold)
-                        }
+                        ChipButton("Ajouter", onAddFriends, showIcon = true)
                     }
                 }
             }
@@ -85,27 +84,31 @@ fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> U
         }
     }
 }
+}
 
 @Composable
 private fun ConversationRow(conversation: Conversation, myId: String, onClick: () -> Unit) {
     val last = conversation.lastMessage
     val unread = conversation.unread(myId)
-    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(onClick = onClick).padding(start = 10.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+    // Chat Row 11:281 : nom toujours en Regular 18 ; seul le statut non lu passe en gras et en couleur,
+    // l'horodatage reste à part en gris clair.
+    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick).padding(start = 10.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Avatar(conversation.friend.username, conversation.friend.photoUrl, 48.dp)
         Column(Modifier.weight(1f)) {
-            Text(conversation.friend.username, fontSize = 18.sp, lineHeight = 22.sp,
-                fontWeight = if(unread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(conversation.friend.username, fontSize = 18.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if(last != null) {
                     val status = statusOf(last, myId)
-                    StatusIcon(status, size = 14.dp)
-                    Text("${status.label} · ${relativeTime(last.createdAt)}", color = if(unread) status.color.toColor() else SnapColors.Grey,
+                    StatusIcon(status, size = 16.dp)
+                    Text(status.label, color = if(unread) status.color.toColor() else SnapColors.Grey,
+                        fontWeight = if(unread) FontWeight.Bold else FontWeight.Normal,
                         style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("· ${relativeTime(last.createdAt)}", color = SnapColors.Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                 } else Text("Appuie pour discuter", color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
             }
         }
         FigmaAsset("15-925_imgIconChat2", tint = SnapColors.Ink)
     }
-    HorizontalDivider(color = SnapColors.Border, thickness = .5.dp)
+    HorizontalDivider(color = SnapColors.Border, thickness = 1.dp)
 }

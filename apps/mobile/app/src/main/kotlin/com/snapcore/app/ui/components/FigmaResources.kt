@@ -2,6 +2,13 @@ package com.snapcore.app.ui.components
 
 internal data class FigmaResource(val file: String, val width: Float, val height: Float)
 internal val figmaAssets = mapOf(
+    "10-458_imgIconChatActive" to FigmaResource("10-458_imgIconChatActive.svg", 28.0f, 28.0f),
+    "10-458_imgIconCameraActive" to FigmaResource("10-458_imgIconCameraActive.svg", 28.0f, 28.0f),
+    "10-458_imgIconStoriesActive" to FigmaResource("10-458_imgIconStoriesActive.svg", 28.0f, 28.0f),
+    "9-64_imgIconAddFriend" to FigmaResource("9-64_imgIconAddFriend.svg", 18.0f, 18.0f),
+    "9-92_imgStateChecked" to FigmaResource("9-92_imgStateChecked.svg", 26.0f, 26.0f),
+    "9-92_imgStateUnchecked" to FigmaResource("9-92_imgStateUnchecked.svg", 26.0f, 26.0f),
+    "9-119_imgIconSearch" to FigmaResource("9-119_imgIconSearch.svg", 22.0f, 22.0f),
     "13-241_imgImageGhostLogo" to FigmaResource("13-241_imgImageGhostLogo.png", 93.0f, 91.0f),
     "13-250_imgIconShift" to FigmaResource("13-250_imgIconShift.svg", 22.0f, 22.0f),
     "13-250_imgIconBackspace" to FigmaResource("13-250_imgIconBackspace.svg", 24.0f, 24.0f),

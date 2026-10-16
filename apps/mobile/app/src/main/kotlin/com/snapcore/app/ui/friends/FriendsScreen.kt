@@ -43,6 +43,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.Relation
 import com.snapcore.app.ui.components.Avatar
+import com.snapcore.app.ui.components.ChipButton
+import com.snapcore.app.ui.components.ChipStyle
+import com.snapcore.app.ui.components.SectionTitle
+import com.snapcore.app.ui.components.SnapCard
+import com.snapcore.app.ui.components.SnapSearchBar
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
 
@@ -65,67 +73,71 @@ fun FriendsScreen(onBack: () -> Unit) {
             SnapHeader("Ajouter des amis", onBack)
         },
         snackbarHost = { SnackbarHost(snackbar) },
+        containerColor = SnapColors.Background,
     ) { padding ->
+        // Maquette 13:538 : fond #F6F8FA, lignes Friend Row (11:232) groupées dans des cartes blanches,
+        // actions en Chip Button (9:64) : jaune pour ajouter / accepter, gris pour refuser.
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             item {
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = vm::onQuery,
-                    placeholder = { Text("Rechercher un pseudo") },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = SnapColors.Control, focusedContainerColor = SnapColors.Control, unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent, focusedBorderColor = SnapColors.ChatBlue),
-                    singleLine = true,
-                    trailingIcon = { IconButton(onClick = vm::search) { Icon(Icons.Filled.Search, "Rechercher") } },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { vm.search() }),
-                    isError = state.searchError != null,
-                    supportingText = state.searchError?.let { { Text(it) } },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                SnapSearchBar(state.query, vm::onQuery, "Rechercher un pseudo", Modifier.fillMaxWidth().padding(top = 4.dp), onSearch = vm::search)
+                state.searchError?.let { Text(it, color = SnapColors.SnapRed, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 12.dp, top = 6.dp)) }
                 state.result?.let { result ->
-                    PersonRow(result.user) {
-                        when (result.relation) {
-                            Relation.NONE -> Button(onClick = vm::addResult, colors = ButtonDefaults.buttonColors(containerColor = SnapColors.Yellow, contentColor = SnapColors.Ink)) { Text("Ajouter") }
-                            Relation.INCOMING_REQUEST -> Button(onClick = vm::addResult) { Text("Accepter") }
-                            Relation.OUTGOING_REQUEST -> Text("Demande envoyée", color = SnapColors.Grey)
-                            Relation.FRIENDS -> Text("Ami", color = SnapColors.Grey)
+                    SnapCard(Modifier.padding(top = 12.dp)) {
+                        PersonRow(result.user) {
+                            when (result.relation) {
+                                Relation.NONE -> ChipButton("Ajouter", vm::addResult, showIcon = true)
+                                Relation.INCOMING_REQUEST -> ChipButton("Accepter", vm::addResult)
+                                Relation.OUTGOING_REQUEST -> Status("Demande envoyée")
+                                Relation.FRIENDS -> Status("Ami")
+                            }
                         }
                     }
                 }
             }
             if (state.incoming.isNotEmpty()) {
                 item { Section("Demandes reçues") }
-                items(state.incoming, key = { it.friendshipId }) { request ->
-                    PersonRow(request.user) {
-                        OutlinedButton(onClick = { vm.decline(request) }) { Text("Refuser") }
-                        Button(onClick = { vm.accept(request) }, colors = ButtonDefaults.buttonColors(containerColor = SnapColors.Yellow, contentColor = SnapColors.Ink)) { Text("Accepter") }
+                item {
+                    SnapCard {
+                        state.incoming.forEach { request ->
+                            PersonRow(request.user) {
+                                ChipButton("Refuser", { vm.decline(request) }, style = ChipStyle.Gray)
+                                ChipButton("Accepter", { vm.accept(request) })
+                            }
+                        }
                     }
                 }
             }
             if (state.outgoing.isNotEmpty()) {
                 item { Section("Demandes envoyées") }
-                items(state.outgoing, key = { it.friendshipId }) { request -> PersonRow(request.user) { Text("En attente", color = SnapColors.Grey) } }
+                item { SnapCard { state.outgoing.forEach { request -> PersonRow(request.user) { Status("En attente") } } } }
             }
             item { Section("Mes amis (${state.friends.size})") }
-            items(state.friends, key = { it.id }) { friend -> PersonRow(friend) {} }
+            if (state.friends.isNotEmpty()) item { SnapCard { state.friends.forEach { friend -> PersonRow(friend) {} } } }
+            item { Spacer(Modifier.navigationBarsPadding().height(16.dp)) }
         }
     }
 }
 
 @Composable
+private fun Status(text: String) {
+    Text(text, color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+}
+
+@Composable
 private fun Section(title: String) {
-    Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
+    SectionTitle(title, Modifier.padding(top = 20.dp, bottom = 6.dp))
 }
 
 @Composable
 private fun PersonRow(user: Friend, actions: @Composable () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 66.dp).padding(vertical = 5.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 66.dp).padding(horizontal = 16.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Avatar(user.username, user.photoUrl, size = 56.dp)
-        Text(user.username, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(user.username, style = MaterialTheme.typography.bodyLarge, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
     }
 }

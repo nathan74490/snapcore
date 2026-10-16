@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -77,6 +78,25 @@ object Notifications {
     fun canNotify(context: Context) =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * La permission n'est demandée automatiquement qu'une fois par installation : après un refus,
+     * l'utilisateur la réactive depuis les paramètres du profil (BUG-007 d'ADR-023).
+     * @return true si c'est la première demande, qui est alors marquée comme faite.
+     */
+    fun claimFirstPermissionRequest(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_PERMISSION_ASKED, false)) return false
+        prefs.edit().putBoolean(KEY_PERMISSION_ASKED, true).apply()
+        return true
+    }
+
+    /** Réglages de notification de l'app dans Android, pour les réactiver après un refus. */
+    fun settingsIntent(context: Context): Intent =
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+
+    private const val PREFS = "notifications"
+    private const val KEY_PERMISSION_ASKED = "permission_asked"
 
     fun show(context: Context, id: Int, notification: PushNotification) {
         if (!canNotify(context)) return

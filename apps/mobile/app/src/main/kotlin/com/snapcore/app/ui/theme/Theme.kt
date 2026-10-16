@@ -18,12 +18,14 @@ object SnapColors {
     val SnapRed = Color(0xFFF23C57)
     val SnapPurple = Color(0xFF9B31E7)
     val Grey = Color(0xFF656D78)
-    val Muted = Color(0xFF9AA2AE)
+    val Muted = Color(0xFF9BA1A8)
     val Background = Color(0xFFF6F8FA)
     val Control = Color(0xFFECEEEF)
     val Border = Color(0xFFEEEEEE)
     val Selected = Color(0xFFE7F8FF)
     val Disabled = Color(0xFFB9C1C7)
+    val Field = Color(0xFFC9CED3)
+    val Hairline = Color(0xFFD5D8DB)
     val Gold = Color(0xFFF0CD7B)
 }
 

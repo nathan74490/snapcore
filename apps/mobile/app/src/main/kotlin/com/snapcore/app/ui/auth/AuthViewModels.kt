@@ -100,6 +100,14 @@ data class SignUpState(
     val firebaseAccountCreated: Boolean = false,
     val session: Session? = null,
 ) {
+    /** Bouton « Continuer » grisé tant que le champ obligatoire de l'étape est vide (maquette 13:250). */
+    val canContinue: Boolean
+        get() = when (step) {
+            1 -> username.isNotBlank()
+            2 -> email.isNotBlank()
+            else -> firebaseAccountCreated || password.isNotBlank()
+        }
+
     companion object {
         const val STEPS = 3
     }

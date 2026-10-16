@@ -21,6 +21,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -36,11 +37,11 @@ fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory
     val vm = containerViewModel { StoriesViewModel(it.stories) }
     val state by vm.state.collectAsStateWithLifecycle()
     LifecycleResumeEffect(Unit) { vm.refresh(); onPauseOrDispose {} }
-    PullToRefreshBox(isRefreshing = state.loading, onRefresh = vm::refresh, modifier = modifier.fillMaxSize()) {
+    SnapRefresh(state.loading, vm::refresh, modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp)) {
             item { Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 6.dp)) }
             item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
                     item {
                         StoryCircle("Ma story", account.username, account.profilePhotoUrl,
                             if(state.mine.isEmpty()) SnapColors.Control else SnapColors.SnapPurple, onOpenMine)
@@ -91,8 +92,9 @@ fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory
 
 @Composable
 private fun StoryCircle(label: String, username: String, photo: String?, ring: Color, click: () -> Unit) {
-    Column(Modifier.width(82.dp).clickable(onClick = click), horizontalAlignment = Alignment.CenterHorizontally) {
+    // Story Bubble 11:325 : 88 de large, anneau 82 (3pt), avatar 72, libellé Bold 14/18 à 12 sous l'anneau.
+    Column(Modifier.width(88.dp).clickable(onClick = click), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(82.dp).border(3.dp, ring, CircleShape), Alignment.Center) { Avatar(username, photo, 72.dp) }
-        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp))
+        Text(label, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
     }
 }

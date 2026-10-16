@@ -51,6 +51,10 @@ import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.SendTarget
 import com.snapcore.app.ui.components.Avatar
 import com.snapcore.app.ui.components.PrimaryButton
+import com.snapcore.app.ui.components.SectionTitle
+import com.snapcore.app.ui.components.SnapCard
+import com.snapcore.app.ui.components.SnapCheckbox
+import com.snapcore.app.ui.components.SnapSearchBar
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
 
@@ -68,15 +72,10 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
     Scaffold(
         topBar = {
 
-            Row(Modifier.fillMaxWidth().background(Color.White).statusBarsPadding().height(56.dp).padding(horizontal = 6.dp),
+            Row(Modifier.fillMaxWidth().background(SnapColors.Background).statusBarsPadding().height(56.dp).padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack, enabled = !state.sending) { FigmaAsset("15-752_imgIconChevronDown", "Retour") }
-                Row(Modifier.weight(1f).height(38.dp).clip(RoundedCornerShape(19.dp)).background(SnapColors.Control).padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FigmaAsset("15-752_imgIconSearch")
-                    BasicTextField(query, { query = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f), decorationBox = { field -> Box { if(query.isEmpty()) Text("Envoyer à…", color = SnapColors.Grey); field() } })
-                }
+                SnapSearchBar(query, { query = it }, "Rechercher", Modifier.weight(1f))
                 IconButton(onClick = onAddFriends) { FigmaAsset("15-752_imgIconAddFriend", "Ajouter des amis") }
             }
         },
@@ -97,19 +96,21 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
                 )
             }
         },
+        containerColor = SnapColors.Background,
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+        // Maquette 15:752 : sections en titres gras, lignes groupées dans des cartes blanches arrondies.
+        LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             item {
-                TargetRow(
+                SectionTitle("Stories", Modifier.padding(top = 8.dp, bottom = 6.dp))
+                SnapCard { TargetRow(
                     label = "Ma story · Mes amis",
                     subtitle = "Visible par tes amis pendant 24 h",
                     icon = Icons.Filled.AutoStories,
                     checked = SendTarget.ToStory in state.selected,
                     failed = SendTarget.ToStory in state.failures,
                     onToggle = { if(!state.sending) vm.toggle(SendTarget.ToStory) },
-                )
-                HorizontalDivider(color = SnapColors.Border)
-                Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+                ) }
+                SectionTitle("Amis", Modifier.padding(top = 14.dp, bottom = 6.dp))
             }
             when {
                 state.loading -> item { Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) { CircularProgressIndicator() } }
@@ -120,15 +121,19 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
                         TextButton(onClick = onAddFriends) { Text("Ajouter des amis") }
                     }
                 }
-                else -> items(state.friends.filter { it.username.contains(query, ignoreCase = true) }, key = { it.id }) { friend ->
-                    val target = SendTarget.ToFriend(friend)
-                    TargetRow(
-                        label = friend.username,
-                        avatar = { Avatar(friend.username, friend.photoUrl, size = 40.dp) },
-                        checked = target in state.selected,
-                        failed = target in state.failures,
-                        onToggle = { if(!state.sending) vm.toggle(target) },
-                    )
+                else -> item {
+                    SnapCard {
+                        state.friends.filter { it.username.contains(query, ignoreCase = true) }.forEach { friend ->
+                            val target = SendTarget.ToFriend(friend)
+                            TargetRow(
+                                label = friend.username,
+                                avatar = { Avatar(friend.username, friend.photoUrl, size = 40.dp) },
+                                checked = target in state.selected,
+                                failed = target in state.failures,
+                                onToggle = { if(!state.sending) vm.toggle(target) },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -146,7 +151,7 @@ private fun TargetRow(
     avatar: (@Composable () -> Unit)? = null,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).heightIn(min = 58.dp).padding(horizontal = 24.dp, vertical = 5.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).heightIn(min = 50.dp).padding(horizontal = 16.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -154,13 +159,9 @@ private fun TargetRow(
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             (if (failed) "Échec de l'envoi" else subtitle)?.let {
-                Text(it, color = if (failed) MaterialTheme.colorScheme.error else SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
+                Text(it, color = if (failed) MaterialTheme.colorScheme.error else SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
             }
         }
-
-        Box(Modifier.size(22.dp).clip(CircleShape).background(if(checked) SnapColors.ChatBlue else Color.Transparent)
-            .border(1.5.dp, if(checked) SnapColors.ChatBlue else Color(0xFFCAD0D5), CircleShape), Alignment.Center) {
-            if(checked) FigmaAsset("13-364_imgIconCheck", tint = Color.White)
-        }
+        SnapCheckbox(checked)
     }
 }

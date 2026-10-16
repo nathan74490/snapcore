@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.SnapCorePlus
+import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
@@ -153,15 +154,11 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                     Text("Activation de SnapCore+…", color = Color.White, modifier = Modifier.padding(top = 12.dp))
                 }
                 else -> {
-                    Button(
-                        onClick = vm::subscribe,
-                        enabled = !state.opening,
-                        colors = ButtonDefaults.buttonColors(containerColor = SnapColors.Yellow, contentColor = SnapColors.Black),
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                    ) {
-                        if (state.opening) CircularProgressIndicator(color = SnapColors.Black, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                        else Text("S'abonner — ${SnapCorePlus.PRICE_LABEL}", fontWeight = FontWeight.Bold)
-                    }
+                    // Button 9:43, style Yellow : pilule 50pt, texte #16191C.
+                    PrimaryButton(
+                        "S'abonner — ${SnapCorePlus.PRICE_LABEL}", vm::subscribe,
+                        loading = state.opening, container = SnapColors.Yellow, content = SnapColors.Ink,
+                    )
                     Text(
                         "Paiement sécurisé dans le navigateur. Mode test : aucun débit réel.",
                         color = Color.White.copy(alpha = 0.7f),
