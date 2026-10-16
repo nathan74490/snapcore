@@ -8,6 +8,8 @@ export type UserEvent =
   | { type: "texts.read"; readerId: string }
   | { type: "snap.retained"; messageId: string }
   | { type: "snap.expired"; messageId: string }
+  // Un ami écrit dans la conversation : simple indication d'affichage, jamais de push (ADR-027).
+  | { type: "typing"; userId: string }
   // Contenu retiré par un modérateur (ADR-021) : mise à jour d'affichage, jamais de push.
   | { type: "message.moderated"; messageId: string };
 

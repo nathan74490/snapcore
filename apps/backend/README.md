@@ -57,7 +57,7 @@ Firebase n'y donne accès. Corps : `{ moderatorId, reason }` (ou `{ moderatorId 
 Connexion : `io(URL, { auth: { token: <ID token Firebase> } })`. Le serveur émet `ready` une fois
 l'utilisateur authentifié (compte actif requis), puis chaque événement sous son type :
 `friend_request.received`, `friend_request.accepted`, `message.received`, `snap.opened`,
-`texts.read`, `snap.retained`, `snap.expired`. Contenu minimal (type + identifiants) : le client
+`texts.read`, `snap.retained`, `snap.expired`, `typing` (l'ami écrit, `userId`, ADR-027). Contenu minimal (type + identifiants) : le client
 va chercher le détail via l'API et **resynchronise tout à chaque reconnexion** (ADR-006).
 Hors ligne, les événements importants partent en push FCM (message data, mêmes champs, ADR-018).
 Multi-instance via l'adaptateur Redis de Socket.io ; présence partagée dans Redis.
@@ -121,6 +121,7 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | POST | `/conversations/:friendId/messages/text` | Chat texte permanent `{ content }` | 009 |
 | POST | `/conversations/:friendId/messages/snap` | Snap `{ uploadId, contentType }` (upload `SNAP_PHOTO` / `SNAP_VIDEO`) | 009, 016 |
 | POST | `/conversations/:friendId/read` | Marque les Chats reçus comme lus | 009 |
+| POST | `/conversations/:friendId/typing` | Signale à l'ami qu'on écrit (relayé en temps réel, jamais en push) | 027 |
 | POST | `/messages/:messageId/view` | Ouvre un Snap : URL ~1 min, vue unique, grâce 5 min, SnapCore+ | 009 |
 | GET | `/stories` | Stories de mes amis (non vues d'abord), `thumbnailUrl` de l'anneau sans compter de vue | 013, 026 |
 | GET | `/stories/me` | Ma story + nombre de vues et `thumbnailUrl` par élément | 013, 026 |

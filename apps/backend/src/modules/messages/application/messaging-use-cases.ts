@@ -145,6 +145,13 @@ export class MessagingUseCases {
     if (count > 0) await this.notify(() => this.notifier.textsRead(friendId, me.id));
   }
 
+  // Indicateur « en train d'écrire » (ADR-027) : relayé à l'ami s'il est connecté, rien n'est
+  // enregistré. Mêmes règles d'accès qu'un envoi : amis ACCEPTED uniquement.
+  async notifyTyping(me: UserAccount, friendId: string): Promise<void> {
+    await this.requireFriend(me, friendId);
+    await this.notify(() => this.notifier.typing(friendId, me.id));
+  }
+
   // Règle "vue unique" d'ADR-009 : réservé au destinataire, FRIENDSHIP ACCEPTED requise,
   // 1re ouverture atomique, fenêtre de grâce de 5 min, puis refus sauf abonnement SnapCore+ actif.
   async requestSnapView(me: UserAccount, messageId: string): Promise<SnapViewUrl> {

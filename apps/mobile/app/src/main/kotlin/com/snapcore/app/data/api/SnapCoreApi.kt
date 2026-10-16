@@ -63,6 +63,9 @@ interface SnapCoreApi {
     @POST("conversations/{friendId}/read")
     suspend fun markRead(@Path("friendId") friendId: String)
 
+    @POST("conversations/{friendId}/typing")
+    suspend fun sendTyping(@Path("friendId") friendId: String)
+
     @POST("messages/{messageId}/view")
     suspend fun viewSnap(@Path("messageId") messageId: String): SnapViewUrlDto
 

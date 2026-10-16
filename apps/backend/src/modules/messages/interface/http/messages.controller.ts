@@ -81,6 +81,13 @@ export class MessagesController {
     return this.messaging.markConversationRead(me, friendId);
   }
 
+  // L'app l'appelle au plus toutes les quelques secondes pendant la saisie (ADR-027).
+  @Post("conversations/:friendId/typing")
+  @HttpCode(204)
+  typing(@CurrentUser() me: UserAccount, @Param("friendId", ParseUUIDPipe) friendId: string): Promise<void> {
+    return this.messaging.notifyTyping(me, friendId);
+  }
+
   // Ouvre un Snap : URL de lecture valable ~1 min, à ne jamais mettre en cache disque (ADR-009).
   @Post("messages/:messageId/view")
   @HttpCode(200)

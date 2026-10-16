@@ -34,6 +34,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
@@ -182,8 +190,9 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                 // référence (BUG-012) : on le montre si l'on était en bas, et toujours pour son propre envoi.
                 val listState = rememberLazyListState()
                 val newest = state.messages.firstOrNull()
-                LaunchedEffect(newest?.id) {
-                    if (newest != null && (newest.isFrom(myId) || listState.firstVisibleItemIndex <= 1)) listState.animateScrollToItem(0)
+                LaunchedEffect(newest?.id, state.friendTyping) {
+                    val mine = newest?.isFrom(myId) == true
+                    if ((newest != null || state.friendTyping) && (mine || listState.firstVisibleItemIndex <= 1)) listState.animateScrollToItem(0)
                 }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(padding).then(backGesture),
@@ -192,6 +201,10 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
                     // Du plus récent au plus ancien : le message suivant dans la liste est le précédent à l'écran.
+                    // Tout en bas, comme dans Snapchat : l'ami est en train d'écrire (ADR-027).
+                    if (state.friendTyping) item(key = "typing") {
+                        TypingIndicator(friend.displayName, showName = state.messages.firstOrNull()?.senderId != friend.id)
+                    }
                     val today = LocalDate.now()
                     itemsIndexed(state.messages, key = { _, message -> message.id }) { index, message ->
                         val previous = state.messages.getOrNull(index + 1)
@@ -263,6 +276,39 @@ private fun MessageRow(message: ChatMessage, myId: String, friendName: String, d
                     color = SnapColors.Ink,
                     modifier = Modifier.weight(1f).alpha(if (message.pending) .6f else 1f).padding(start = 10.dp, top = 3.dp, bottom = 3.dp),
                 )
+            }
+        }
+    }
+}
+
+// Trois points qui rebondissent à tour de rôle sous le nom de l'ami, avec la même barre bleue que
+// ses messages ; le nom est omis s'il ouvre déjà la suite de messages juste au-dessus.
+@Composable
+private fun TypingIndicator(friendName: String, showName: Boolean) {
+    val transition = rememberInfiniteTransition(label = "typing")
+    Column(Modifier.fillMaxWidth().semantics { contentDescription = "$friendName est en train d'écrire" }) {
+        if (showName) {
+            Text(friendName.uppercase(), color = SnapColors.ChatBlue, style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
+        }
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Box(Modifier.width(2.dp).fillMaxHeight().background(SnapColors.ChatBlue))
+            Row(Modifier.padding(start = 12.dp, top = 12.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                repeat(3) { index ->
+                    val lift by transition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 0f,
+                        animationSpec = infiniteRepeatable(keyframes {
+                            durationMillis = 1_200
+                            0f at index * 160 using FastOutSlowInEasing
+                            1f at index * 160 + 280 using FastOutSlowInEasing
+                            0f at index * 160 + 560
+                        }),
+                        label = "dot$index",
+                    )
+                    Box(Modifier.graphicsLayer { translationY = -lift * 5.dp.toPx(); alpha = .45f + .55f * lift }
+                        .size(8.dp).background(SnapColors.Grey, CircleShape))
+                }
             }
         }
     }

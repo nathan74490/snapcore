@@ -22,6 +22,10 @@ export class EventMessageNotifier implements MessageNotifier {
     return this.events.publish(senderId, { type: "snap.retained", messageId });
   }
 
+  typing(recipientId: string, typistId: string): Promise<void> {
+    return this.events.publish(recipientId, { type: "typing", userId: typistId });
+  }
+
   async snapExpired(participantIds: [string, string], messageId: string): Promise<void> {
     await Promise.all(participantIds.map((id) => this.events.publish(id, { type: "snap.expired", messageId })));
   }

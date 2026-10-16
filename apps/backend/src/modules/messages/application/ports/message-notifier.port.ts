@@ -12,4 +12,6 @@ export interface MessageNotifier {
   snapRetained(senderId: string, messageId: string): Promise<void>;
   /** Le média a été purgé : l'icône passe au gris chez les deux participants (ADR-009). */
   snapExpired(participantIds: [string, string], messageId: string): Promise<void>;
+  /** `typistId` est en train d'écrire à `recipientId` (ADR-027). */
+  typing(recipientId: string, typistId: string): Promise<void>;
 }

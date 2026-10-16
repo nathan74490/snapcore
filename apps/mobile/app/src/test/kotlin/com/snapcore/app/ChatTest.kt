@@ -28,6 +28,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import com.snapcore.app.ui.chat.TYPING_SIGNAL_INTERVAL_MS
+import com.snapcore.app.ui.chat.TYPING_VISIBLE_MS
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceTimeBy
 import java.time.Instant
 
 private const val ME = "me"
@@ -98,6 +102,10 @@ class FakeChat : ChatService {
     override suspend fun markRead(friendId: String) {
         markReadCalls++
     }
+    var typingSignals = 0
+    override suspend fun sendTyping(friendId: String) {
+        typingSignals++
+    }
     override suspend fun openSnap(message: ChatMessage): SnapOpenResult {
         opened += message.id
         return openResult
@@ -120,6 +128,53 @@ class ConversationViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     private fun vm() = ConversationViewModel(Friend(FRIEND, "testeur", null), ME, chat, events)
+
+    private fun typing(userId: String) =
+        RealtimeEvent.Message("typing", kotlinx.serialization.json.JsonObject(mapOf("userId" to kotlinx.serialization.json.JsonPrimitive(userId))))
+
+    @Test
+    fun `l'ami qui ecrit affiche l'indicateur, qui disparait seul ou a l'arrivee du message`() = runTest(dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+
+        events.emit(typing("quelqu-un-d-autre"))
+        runCurrent()
+        assertFalse(vm.state.value.friendTyping)
+
+        events.emit(typing(FRIEND))
+        runCurrent()
+        assertTrue(vm.state.value.friendTyping)
+        advanceTimeBy(TYPING_VISIBLE_MS + 1)
+        assertFalse(vm.state.value.friendTyping)
+
+        events.emit(typing(FRIEND))
+        runCurrent()
+        events.emit(RealtimeEvent.Message("message.received", kotlinx.serialization.json.JsonObject(emptyMap())))
+        runCurrent()
+        assertFalse(vm.state.value.friendTyping)
+    }
+
+    @Test
+    fun `la saisie se signale au plus toutes les 3 secondes`() = runTest(dispatcher) {
+        val vm = ConversationViewModel(Friend(FRIEND, "testeur", null), ME, chat, events, now = { testScheduler.currentTime })
+        advanceUntilIdle()
+
+        vm.onDraft("S")
+        vm.onDraft("Sa")
+        advanceTimeBy(1_000)
+        vm.onDraft("Sal")
+        runCurrent()
+        assertEquals(1, chat.typingSignals)
+
+        advanceTimeBy(TYPING_SIGNAL_INTERVAL_MS)
+        vm.onDraft("Salu")
+        runCurrent()
+        assertEquals(2, chat.typingSignals)
+
+        vm.onDraft("")
+        runCurrent()
+        assertEquals(2, chat.typingSignals)
+    }
 
     @Test
     fun `ouvrir la conversation marque les Chats recus comme lus`() = runTest(dispatcher) {

@@ -77,5 +77,7 @@ interface ChatService {
     suspend fun messages(friendId: String): List<ChatMessage>
     suspend fun sendText(friendId: String, content: String): ChatMessage
     suspend fun markRead(friendId: String)
+    /** Signale à l'ami qu'on écrit (ADR-027) ; best-effort, rien n'est enregistré. */
+    suspend fun sendTyping(friendId: String)
     suspend fun openSnap(message: ChatMessage): SnapOpenResult
 }

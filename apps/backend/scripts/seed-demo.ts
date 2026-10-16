@@ -460,6 +460,7 @@ const silentMessages: MessageNotifier = {
   textsRead: async () => undefined,
   snapRetained: async () => undefined,
   snapExpired: async () => undefined,
+  typing: async () => undefined,
 };
 const silentFriendships: FriendshipNotifier = {
   friendRequestReceived: async () => undefined,

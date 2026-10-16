@@ -262,4 +262,19 @@ describe("MessagingUseCases (ADR-009)", () => {
       expect(notifier.events).toContain(`read→${alice.id}`);
     });
   });
+
+  describe("indicateur « en train d'écrire » (ADR-027)", () => {
+    it("est relayé à l'ami, sans rien enregistrer", async () => {
+      await messaging.notifyTyping(alice, bob.id);
+
+      expect(notifier.events).toEqual([`typing ${alice.id}→${bob.id}`]);
+      expect(messages.rows.size).toBe(0);
+    });
+
+    it("est refusé hors amitié ACCEPTED", async () => {
+      await friendships.block(alice, bob.id);
+      await expect(messaging.notifyTyping(alice, bob.id)).rejects.toThrow(ForbiddenError);
+      expect(notifier.events).toEqual([]);
+    });
+  });
 });

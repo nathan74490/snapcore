@@ -25,6 +25,8 @@ class ApiChatService(private val api: SnapCoreApi) : ChatService {
 
     override suspend fun markRead(friendId: String) = apiCall { api.markRead(friendId) }
 
+    override suspend fun sendTyping(friendId: String) = apiCall { api.sendTyping(friendId) }
+
     // 403 = déjà vu hors fenêtre de grâce, 410 = média purgé (ADR-009).
     override suspend fun openSnap(message: ChatMessage): SnapOpenResult =
         try {
