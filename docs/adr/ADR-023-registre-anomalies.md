@@ -28,7 +28,8 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 | BUG-009 | Moyenne | Backend / suppression de compte | La suppression d'un compte n'annule pas son abonnement SnapCore+ | Corrigé (branche feat/v1-finitions) |
 | BUG-010 | Faible | Mobile / chat | Le bouton flottant « Nouveau chat » masque le bouton « Ajouter » quand la liste est courte | Corrigé (branche feat/v1-finitions) |
 | BUG-011 | Moyenne | Mobile / chat | Un snap ouvert reste « Nouveau snap » dans la liste Chat jusqu'à un rafraîchissement manuel | Corrigé (branche feat/v1-finitions) |
-| BUG-012 | Moyenne | Mobile / chat | Une conversation qui reçoit un message reste cachée au-dessus de l'écran dans la liste Chat | Corrigé (branche feat/v1-finitions) |
+| BUG-012 | Moyenne | Mobile / chat | Une conversation qui reçoit un message reste cachée au-dessus de l'écran dans la liste Chat et dans une conversation | Corrigé (branche feat/v1-finitions) |
+| BUG-013 | Faible | Mobile / chat | Le clavier reste ouvert par-dessus un snap ouvert depuis une conversation | Corrigé (branche feat/v1-finitions) |
 
 ### BUG-001 : Une vidéo de 60 s sans filtre dépasse la limite de 60 Mo
 - **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/camera/CameraScreen.kt` (`videoCaptureQualitySelector = QualitySelector.from(Quality.HD)`), limite dans `apps/backend/src/modules/media/domain/media-purpose.ts` (`SNAP_VIDEO`/`STORY_VIDEO` : 60 Mo).
@@ -110,7 +111,13 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/chat/ChatListScreen.kt` (`LazyColumn` à clés stables).
 - **Constat** (Galaxy A54, signalé par l'utilisateur) : à la réception d'un message, l'événement temps réel arrive et la liste se recharge, mais la conversation remontée en tête s'insère au-dessus de la première ligne affichée : la liste garde sa ligne de référence et la nouvelle conversation reste hors de l'écran. L'utilisateur croit devoir actualiser.
 - **Impact** : le message reçu semble ne pas arriver tant qu'on ne fait pas défiler la liste.
-- **Correction** : quand la conversation en tête change et que la liste est déjà en haut, elle remonte pour la montrer ; plus bas dans la liste, la position est conservée. Vérifié sur Galaxy A54 avec des messages envoyés par l'API pendant que la liste est affichée ; dans une conversation ouverte, le message s'affichait déjà en direct.
+- **Correction** : quand la conversation en tête change et que la liste est déjà en haut, elle remonte pour la montrer ; plus bas dans la liste, la position est conservée. Même défaut et même correction dans une conversation ouverte (`ConversationScreen.kt`, liste inversée) : le message reçu restait sous la dernière ligne ; il s'affiche désormais si l'on était en bas, et toujours pour son propre envoi. Vérifié sur Galaxy A54 avec des chats et des snaps envoyés par l'API pendant que l'écran est affiché.
+
+### BUG-013 : Le clavier reste ouvert par-dessus un snap
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/chat/ConversationScreen.kt` (le champ de saisie garde le focus quand le lecteur de snap s'ouvre).
+- **Constat** (Galaxy A54, signalé par l'utilisateur) : dans une conversation avec le clavier ouvert, ouvrir un snap reçu affiche le snap avec le clavier par-dessus.
+- **Impact** : le snap, visible une seule fois, est en partie caché.
+- **Correction** : à l'ouverture du lecteur, le clavier est fermé et le champ perd le focus. Vérifié sur Galaxy A54 (snap reçu en direct, clavier ouvert, puis ouvert : clavier fermé).
 
 ## Alternatives
 - **Corriger chaque anomalie dès qu'elle est trouvée** : rien n'est oublié, mais la fonctionnalité en cours se retrouve mêlée à des changements sans rapport, plus difficiles à relire et à annuler. Écarté.
@@ -128,6 +135,7 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - Cet ADR n'est pas une décision d'architecture au sens strict, mais un outil de suivi ; il est rangé avec les ADR pour rester à côté des décisions qu'il référence.
 
 ## Historique
+- Révision 8 : BUG-012 étendu aux conversations, BUG-013 relevé et corrigé.
 - Révision 7 : BUG-012 relevé et corrigé.
 - Révision 6 : BUG-011 relevé et corrigé.
 - Révision 5 : BUG-010 corrigé.

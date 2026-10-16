@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.snapcore.app.ui.components.SwipeBackPane
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.withResumed
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
@@ -90,6 +92,15 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
         lifecycleOwner.lifecycle.withResumed {
             composerFocus.requestFocus()
             keyboard?.show()
+        }
+    }
+    // Un snap s'ouvre : le clavier se ferme, il ne doit pas rester par-dessus la lecture.
+    val focusManager = LocalFocusManager.current
+    val viewing = state.viewer != null
+    LaunchedEffect(viewing) {
+        if (viewing) {
+            keyboard?.hide()
+            focusManager.clearFocus()
         }
     }
     LaunchedEffect(state.error) {
@@ -167,8 +178,16 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                 Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) { CircularProgressIndicator() }
             } else {
                 // reverseLayout : les messages les plus récents en bas, la liste s'ouvre sur eux.
+                // Un message reçu s'insère sous la dernière ligne affichée, que la liste garde sinon comme
+                // référence (BUG-012) : on le montre si l'on était en bas, et toujours pour son propre envoi.
+                val listState = rememberLazyListState()
+                val newest = state.messages.firstOrNull()
+                LaunchedEffect(newest?.id) {
+                    if (newest != null && (newest.isFrom(myId) || listState.firstVisibleItemIndex <= 1)) listState.animateScrollToItem(0)
+                }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(padding).then(backGesture),
+                    state = listState,
                     reverseLayout = true,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
