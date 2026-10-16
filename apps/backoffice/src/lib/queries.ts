@@ -1,5 +1,6 @@
 import "server-only";
 import type { ReportStatus } from "@snapcore/types";
+import { stuckDeletionThreshold } from "./deletion";
 import { prisma } from "./prisma";
 
 // Modèle du backoffice : lectures directes PostgreSQL via Prisma (ADR-004, ADR-021). Un modérateur
@@ -21,6 +22,16 @@ export async function dashboardStats() {
     prisma.report.count({ where: { status: "PENDING" } }),
   ]);
   return { users, suspended, newUsers, messages, activeStories, pendingReports };
+}
+
+/** Suppressions de compte bloquées depuis plus de 24 h (ADR-019), les plus anciennes d'abord. */
+export async function stuckDeletions() {
+  return prisma.user.findMany({
+    where: { deletionRequestedAt: { lte: stuckDeletionThreshold(new Date()) } },
+    select: { id: true, username: true, deletionRequestedAt: true },
+    orderBy: { deletionRequestedAt: "asc" },
+    take: 50,
+  });
 }
 
 const reportInclude = {

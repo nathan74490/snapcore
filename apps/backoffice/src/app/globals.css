@@ -38,6 +38,8 @@ h2 { font-size: 1.1rem; margin: 1.5rem 0 0.75rem; }
 main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; }
+.card.alert { border-color: var(--danger); margin-bottom: 1.5rem; }
+.card.alert h2 { color: var(--danger); margin-top: 0; font-size: 1.1rem; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 1rem; }
 .stat .value { font-size: 1.8rem; font-weight: 700; }
 .stat .label { color: var(--muted); font-size: 0.85rem; }
