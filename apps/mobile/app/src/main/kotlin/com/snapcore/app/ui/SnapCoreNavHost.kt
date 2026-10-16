@@ -1,5 +1,21 @@
 package com.snapcore.app.ui
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.navigation.NavDestination.Companion.hasRoute
+import kotlinx.coroutines.launch
 import android.Manifest
 import android.os.Build
 import android.util.Log
@@ -9,17 +25,19 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.coroutineScope
+import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -31,6 +49,8 @@ import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.LaunchTarget
 import com.snapcore.app.domain.MediaKind
 import com.snapcore.app.domain.Session
+import com.snapcore.app.domain.screenNameOf
+import com.snapcore.app.push.Notifications
 import com.snapcore.app.ui.auth.CompleteRegistrationScreen
 import com.snapcore.app.ui.auth.LoginScreen
 import com.snapcore.app.ui.auth.SignUpScreen
@@ -40,7 +60,6 @@ import com.snapcore.app.ui.camera.PreviewScreen
 import com.snapcore.app.ui.camera.SendToScreen
 import com.snapcore.app.ui.chat.ConversationScreen
 import com.snapcore.app.ui.friends.FriendsScreen
-import com.snapcore.app.push.Notifications
 import com.snapcore.app.ui.home.CAMERA_TAB
 import com.snapcore.app.ui.home.CHAT_TAB
 import com.snapcore.app.ui.home.HomeScreen
@@ -50,6 +69,9 @@ import com.snapcore.app.ui.stories.MyStoryScreen
 import com.snapcore.app.ui.stories.StoryPlayerScreen
 import kotlinx.serialization.Serializable
 import java.io.File
+
+// Écrans des onglets de l'accueil pour l'analytics (ADR-008), dans l'ordre CHAT_TAB, CAMERA_TAB, STORIES_TAB.
+private val HOME_TAB_SCREENS = listOf("Chat", "Camera", "Stories")
 
 @Serializable private object StartRoute
 @Serializable private object WelcomeRoute
@@ -83,18 +105,39 @@ fun SnapCoreNavHost(
     // Compte courant partagé entre l'accueil et le profil (mis à jour après une modification).
     var account by remember { mutableStateOf<Account?>(null) }
     var homeTab by rememberSaveable { mutableIntStateOf(CAMERA_TAB) }
+    val analytics = appContainer().analytics
+    val homeLayer = rememberGraphicsLayer()
+    val navigationScope = rememberCoroutineScope()
+    var chatBackdrop by remember { mutableStateOf<ImageBitmap?>(null) }
+    var swipeDismissed by remember { mutableStateOf(false) }
+    var openingChat by remember { mutableStateOf(false) }
 
     // Après résolution de la session, on remplace toute la pile : pas de retour vers l'onboarding.
     fun go(session: Session) {
+        // Le compte courant suit toujours la session : null après une déconnexion, ce qui arrête le
+        // temps réel et l'enregistrement de l'appareil (BUG-002 d'ADR-023).
+        account = (session as? Session.Ready)?.account
+        // Même identifiant que le backend (ADR-008) ; à la déconnexion, plus rien n'est rattaché au compte.
+        when (session) {
+            is Session.Ready -> analytics.identify(session.account.id)
+            Session.SignedOut -> analytics.reset()
+            Session.NeedsRegistration -> Unit
+        }
         val target: Any = when (session) {
             Session.SignedOut -> WelcomeRoute
             Session.NeedsRegistration -> CompleteRegistrationRoute
-            is Session.Ready -> {
-                account = session.account
-                HomeRoute
-            }
+            is Session.Ready -> HomeRoute
         }
         navController.navigate(target) { popUpTo(0) { inclusive = true } }
+    }
+
+    // Écrans visités (ADR-008) : la route courante, ou l'onglet de l'accueil.
+    DisposableEffect(navController) {
+        val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+            screenNameOf(destination.route)?.let(analytics::screen)
+        }
+        navController.addOnDestinationChangedListener(listener)
+        onDispose { navController.removeOnDestinationChangedListener(listener) }
     }
 
     fun backToHome() {
@@ -136,20 +179,51 @@ fun SnapCoreNavHost(
         composable<LoginRoute> { LoginScreen(onBack = navController::popBackStack, onSession = ::go) }
         composable<SignUpRoute> { SignUpScreen(onBack = navController::popBackStack, onSession = ::go) }
         composable<CompleteRegistrationRoute> { CompleteRegistrationScreen(onSession = ::go) }
-        composable<HomeRoute> {
+        composable<HomeRoute>(
+            exitTransition = {
+                if (targetState.destination.hasRoute<ConversationRoute>())
+                    slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 }
+                else fadeOut(tween(180))
+            },
+            popEnterTransition = {
+                if (initialState.destination.hasRoute<ConversationRoute>()) {
+                    if (swipeDismissed) EnterTransition.None
+                    else slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 }
+                } else fadeIn(tween(180))
+            },
+        ) {
+            LifecycleResumeEffect(Unit) {
+                chatBackdrop = null
+                onPauseOrDispose { }
+            }
             // Après une mort du processus, le compte en mémoire est perdu : on le résout à nouveau.
             val current = account
             if (current == null) {
                 StartScreen(onSession = ::go)
             } else {
+                LaunchedEffect(homeTab) { analytics.screen(HOME_TAB_SCREENS[homeTab]) }
                 HomeScreen(
+                    modifier = Modifier.drawWithContent {
+                        homeLayer.record { this@drawWithContent.drawContent() }
+                        drawLayer(homeLayer)
+                    },
                     account = current,
                     selected = homeTab,
                     onSelect = { homeTab = it },
                     onOpenProfile = { navController.navigate(ProfileRoute) },
                     onOpenFriends = { navController.navigate(FriendsRoute) },
                     onCaptured = { media -> navController.navigate(PreviewRoute(media.file.absolutePath, media.kind)) },
-                    onOpenConversation = { f -> navController.navigate(ConversationRoute(f.id, f.username, f.photoUrl)) },
+                    onOpenConversation = { f ->
+                        if (!openingChat) {
+                            openingChat = true
+                            navigationScope.launch {
+                                chatBackdrop = runCatching { homeLayer.toImageBitmap() }.getOrNull()
+                                swipeDismissed = false
+                                navController.navigate(ConversationRoute(f.id, f.username, f.photoUrl))
+                                openingChat = false
+                            }
+                        }
+                    },
                     onOpenMyStory = { navController.navigate(MyStoryRoute) },
                     onPlayStory = { story -> navController.navigate(StoryPlayerRoute(story.author.username, story.author.id)) },
                 )
@@ -175,13 +249,20 @@ fun SnapCoreNavHost(
                 onAddFriends = { navController.navigate(FriendsRoute) },
             )
         }
-        composable<ConversationRoute> { entry ->
+        composable<ConversationRoute>(
+            enterTransition = { slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { it } },
+            exitTransition = { slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 } },
+            popEnterTransition = { slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 } },
+            popExitTransition = { if (swipeDismissed) ExitTransition.None else slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { it } },
+        ) { entry ->
             val route = entry.toRoute<ConversationRoute>()
             val me = account
             if (me == null) StartScreen(onSession = ::go)
             else ConversationScreen(
                 Friend(route.friendId, route.username, route.photoUrl),
                 me.id,
+                backdrop = chatBackdrop,
+                onSwipeBack = { swipeDismissed = true; navController.popBackStack() },
                 onBack = navController::popBackStack,
                 onOpenPlus = { navController.navigate(PaywallRoute()) },
             )
@@ -248,7 +329,10 @@ private fun PushRegistration(accountId: String) {
     LaunchedEffect(accountId) {
         runCatching { container.devices.registerCurrentDevice() }
             .onFailure { Log.w("SnapCorePush", "Enregistrement de l'appareil impossible", it) }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifications.canNotify(context)) {
+        // Demandée une seule fois par installation (BUG-007) ; ensuite, depuis les paramètres du profil.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifications.canNotify(context) &&
+            Notifications.claimFirstPermissionRequest(context)
+        ) {
             permission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
