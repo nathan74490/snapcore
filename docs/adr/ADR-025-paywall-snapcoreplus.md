@@ -1,4 +1,4 @@
-# ADR-025 — Paywall SnapCore+ : Web Purchase Link RevenueCat, webhook vers le backend
+# ADR-025 : Paywall SnapCore+ : Web Purchase Link RevenueCat, webhook vers le backend
 
 ## Statut
 Accepté

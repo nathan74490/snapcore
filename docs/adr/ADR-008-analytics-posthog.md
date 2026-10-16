@@ -1,4 +1,4 @@
-# ADR-008 — PostHog (cloud) comme outil d'analytics, instrumenté côté app et côté backend
+# ADR-008 : PostHog (cloud) comme outil d'analytics, instrumenté côté app et côté backend
 
 ## Statut
 Accepté
@@ -11,13 +11,13 @@ Utiliser PostHog en version cloud (offre gratuite) comme outil d'analytics, inst
 
 ## Alternatives
 - Firebase Analytics : gratuit et illimité, déjà présent dans le projet via Firebase Cloud Messaging (un seul compte Firebase), mais moins riche que PostHog sur les funnels, cohortes, heatmaps et feature flags.
-- PostHog auto-hébergé : contrôle total des données, mais nécessite un serveur supplémentaire à faire tourner en continu — de la complexité et un risque de coût contraire au principe du projet.
+- PostHog auto-hébergé : contrôle total des données, mais nécessite un serveur supplémentaire à faire tourner en continu, soit de la complexité et un risque de coût contraire au principe du projet.
 - Mixpanel / Amplitude : très complets, mais offres gratuites plus limitées en volume ou en fonctionnalités, et un compte séparé de plus à gérer.
 
 ## Conséquences
 ### Positives
 - Vision bout-en-bout de l'usage (client + serveur), pas seulement ce que fait le téléphone.
-- Fonctionnalités avancées disponibles dès le départ : funnels, cohortes, heatmaps, feature flags — utilisables plus tard par exemple pour piloter l'activation progressive de Bitmoji, Lenses, etc.
+- Fonctionnalités avancées disponibles dès le départ : funnels, cohortes, heatmaps, feature flags, utilisables plus tard par exemple pour piloter l'activation progressive de Bitmoji, Lenses, etc.
 - Aucun frais réel dans les limites de l'offre gratuite cloud ; aucune infrastructure à maintenir.
 
 ### Négatives

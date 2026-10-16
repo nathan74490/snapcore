@@ -1,4 +1,4 @@
-# Animations Android — références vidéo du 16 octobre 2026
+# Animations Android : références vidéo du 16 octobre 2026
 
 Périmètre : gestes et transitions des fonctions existantes, selon les trois vidéos Snapchat fournies. Les données, la messagerie, les stories et Camera Kit restent pilotés par leurs services existants.
 

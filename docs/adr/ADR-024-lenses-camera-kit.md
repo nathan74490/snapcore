@@ -1,4 +1,4 @@
-# ADR-024 — Lenses visage en direct : Snap Camera Kit sur l'écran caméra
+# ADR-024 : Lenses visage en direct : Snap Camera Kit sur l'écran caméra
 
 ## Statut
 Accepté

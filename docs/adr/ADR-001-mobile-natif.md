@@ -1,4 +1,4 @@
-# ADR-001 — Application mobile native Android (Kotlin + Jetpack Compose) plutôt que cross-platform
+# ADR-001 : Application mobile native Android (Kotlin + Jetpack Compose) plutôt que cross-platform
 
 ## Statut
 Accepté
@@ -10,7 +10,7 @@ SnapCore reproduit les fonctionnalités clés de Snapchat (caméra, filtres AR, 
 Développer l'application native en Kotlin avec Jetpack Compose pour l'UI, selon une architecture MVVM.
 
 ## Alternatives
-- Flutter : code unique multiplateforme, bonne vitesse de développement, mais couche d'abstraction qui ralentit l'accès direct à la caméra et au matériel — contrainte critique pour les fonctionnalités type Snap et filtres AR en temps réel.
+- Flutter : code unique multiplateforme, bonne vitesse de développement, mais couche d'abstraction qui ralentit l'accès direct à la caméra et au matériel, contrainte critique pour les fonctionnalités type Snap et filtres AR en temps réel.
 - React Native : même limite ; un pont (bridge) entre JavaScript et natif pénalise les opérations caméra en temps réel.
 
 ## Conséquences

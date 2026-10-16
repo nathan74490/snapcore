@@ -1,4 +1,4 @@
-# ADR-003 — Séparation des données éphémères (Redis) et durables (PostgreSQL)
+# ADR-003 : Séparation des données éphémères (Redis) et durables (PostgreSQL)
 
 ## Statut
 Accepté
@@ -14,7 +14,7 @@ Stocker toute donnée à durée de vie limitée dans Redis avec une expiration (
 
 ## Conséquences
 ### Positives
-- Expiration automatique et fiable (TTL natif Redis) pour les données réellement volatiles, sans dépendre d'un scan comme mécanisme principal. Ce qui est évité ici, c'est de s'appuyer *uniquement* sur un balayage périodique pour détecter ce qui a expiré (la solution "tout en PostgreSQL + cron" écartée en Alternatives) ; cela n'exclut pas qu'un contenu individuel programme sa propre action de purge à une échéance connue, avec un balayage de rattrapage en filet de sécurité secondaire (voir ADR-017 pour les médias) — la distinction est entre "scanner comme mécanisme principal" (évité) et "planifier une action précise, avec un balayage de secours peu fréquent en complément" (complémentaire, pas contradictoire).
+- Expiration automatique et fiable (TTL natif Redis) pour les données réellement volatiles, sans dépendre d'un scan comme mécanisme principal. Ce qui est évité ici, c'est de s'appuyer *uniquement* sur un balayage périodique pour détecter ce qui a expiré (la solution "tout en PostgreSQL + cron" écartée en Alternatives) ; cela n'exclut pas qu'un contenu individuel programme sa propre action de purge à une échéance connue, avec un balayage de rattrapage en filet de sécurité secondaire (voir ADR-017 pour les médias) ; la distinction est entre "scanner comme mécanisme principal" (évité) et "planifier une action précise, avec un balayage de secours peu fréquent en complément" (complémentaire, pas contradictoire).
 - Performance élevée pour les données consultées très fréquemment.
 
 ### Négatives

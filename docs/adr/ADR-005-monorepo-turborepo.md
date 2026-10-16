@@ -1,4 +1,4 @@
-# ADR-005 — Monorepo unique piloté par Turborepo, application mobile hors périmètre
+# ADR-005 : Monorepo unique piloté par Turborepo, application mobile hors périmètre
 
 ## Statut
 Accepté

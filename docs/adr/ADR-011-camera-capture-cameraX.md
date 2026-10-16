@@ -1,4 +1,4 @@
-# ADR-011 — Écran caméra : capture CameraX, geste tap/appui maintenu, nettoyage local après upload
+# ADR-011 : Écran caméra : capture CameraX, geste tap/appui maintenu, nettoyage local après upload
 
 ## Statut
 Accepté

@@ -1,4 +1,4 @@
-# ADR-004 — Prisma comme ORM du backend et du backoffice
+# ADR-004 : Prisma comme ORM du backend et du backoffice
 
 ## Statut
 Accepté

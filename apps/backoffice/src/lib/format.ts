@@ -3,7 +3,7 @@
 const DATE_TIME = new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" });
 
 export function formatDateTime(date: Date | null | undefined): string {
-  return date ? DATE_TIME.format(date) : "—";
+  return date ? DATE_TIME.format(date) : "-";
 }
 
 export function truncate(text: string, max = 80): string {

@@ -44,7 +44,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
             <>
               <dt>Traité par</dt>
               <dd>
-                {report.resolvedBy?.email ?? "—"} le {formatDateTime(report.resolvedAt)}
+                {report.resolvedBy?.email ?? "inconnu"} le {formatDateTime(report.resolvedAt)}
               </dd>
             </>
           )}

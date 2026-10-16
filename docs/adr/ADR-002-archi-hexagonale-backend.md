@@ -1,4 +1,4 @@
-# ADR-002 — Architecture hexagonale pour le backend NestJS
+# ADR-002 : Architecture hexagonale pour le backend NestJS
 
 ## Statut
 Accepté

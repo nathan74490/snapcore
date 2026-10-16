@@ -1,4 +1,4 @@
-# ADR-006 — Passerelle temps réel Socket.io + pub/sub Redis pour le chat
+# ADR-006 : Passerelle temps réel Socket.io + pub/sub Redis pour le chat
 
 ## Statut
 Accepté

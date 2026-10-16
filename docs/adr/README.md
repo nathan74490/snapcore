@@ -1,4 +1,4 @@
-# ADR — SnapCore
+# ADR : SnapCore
 
 Liste des Architecture Decision Records du projet.
 
