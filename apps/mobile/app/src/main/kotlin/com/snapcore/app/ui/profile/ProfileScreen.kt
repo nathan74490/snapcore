@@ -204,7 +204,7 @@ fun ProfileScreen(
                     PlusCard(account, onOpenPlus)
                     Text("Mes Stories", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
                     ProfileAction("17-1301_imgIconCamera", "Ma story · Mes amis", onOpenMyStory)
-                    Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 12.dp))
+                    Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
                     ProfileAction("17-1301_imgIconAddFriend", "Ajouter des amis", onOpenFriends)
                     Spacer(Modifier.height(12.dp))
                     ProfileAction("17-1301_imgIconSettings", "Paramètres du compte", { settings = true })

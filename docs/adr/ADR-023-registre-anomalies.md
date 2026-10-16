@@ -26,7 +26,7 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 | BUG-007 | Faible | Mobile / notifications | La permission de notification est redemandée à chaque démarrage si elle a été refusée | Corrigé (branche feat/v1-finitions) |
 | BUG-008 | Faible | Documentation | `docs/impl/purge-bullmq.md` cite un fichier de test qui n'existe plus | Corrigé (branche feat/v1-finitions) |
 | BUG-009 | Moyenne | Backend / suppression de compte | La suppression d'un compte n'annule pas son abonnement SnapCore+ | Corrigé (branche feat/v1-finitions) |
-| BUG-010 | Faible | Mobile / chat | Le bouton flottant « Nouveau chat » masque le bouton « Ajouter » quand la liste est courte | Ouvert |
+| BUG-010 | Faible | Mobile / chat | Le bouton flottant « Nouveau chat » masque le bouton « Ajouter » quand la liste est courte | Corrigé (branche feat/v1-finitions) |
 
 ### BUG-001 : Une vidéo de 60 s sans filtre dépasse la limite de 60 Mo
 - **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/camera/CameraScreen.kt` (`videoCaptureQualitySelector = QualitySelector.from(Quality.HD)`), limite dans `apps/backend/src/modules/media/domain/media-purpose.ts` (`SNAP_VIDEO`/`STORY_VIDEO` : 60 Mo).
@@ -96,6 +96,7 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - **Constat** (Galaxy A54, 7 conversations) : la liste ne remplit pas l'écran, la marge basse ne sert donc à rien et le bouton rond « Nouveau chat » recouvre en grande partie le bouton jaune « Ajouter » de la ligne « Trouver mes amis ». Relevé pendant les retours du formateur (padding du Chat).
 - **Impact** : bouton à moitié caché, appui ambigu entre les deux (les deux ouvrent pourtant l'ajout d'amis).
 - **Piste** : retirer le bouton « Ajouter » de la ligne (toute la ligne est déjà cliquable) ou réserver la place du bouton flottant à droite de cette ligne.
+- **Correction** : le bouton « Ajouter » est retiré de la ligne « Trouver mes amis », qui reste cliquable en entier. Le côté droit de la ligne est vide, le bouton flottant ne recouvre plus rien. Vérifié sur Galaxy A54.
 
 ## Alternatives
 - **Corriger chaque anomalie dès qu'elle est trouvée** : rien n'est oublié, mais la fonctionnalité en cours se retrouve mêlée à des changements sans rapport, plus difficiles à relire et à annuler. Écarté.
@@ -113,6 +114,7 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - Cet ADR n'est pas une décision d'architecture au sens strict, mais un outil de suivi ; il est rangé avec les ADR pour rester à côté des décisions qu'il référence.
 
 ## Historique
+- Révision 5 : BUG-010 corrigé.
 - Révision 4 : ajout de BUG-010 (relevé pendant les retours du formateur).
 - Révision 3 : BUG-002 à BUG-009 corrigés (finitions de la V1).
 - Révision 2 : ajout de BUG-009 (relevé pendant le paywall SnapCore+, ADR-025).

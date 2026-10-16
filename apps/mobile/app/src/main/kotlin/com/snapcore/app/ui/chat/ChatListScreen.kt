@@ -73,6 +73,7 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
                 }
                 item {
                     Text("Ajouter des amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 24.dp, bottom = 8.dp))
+                    // Toute la ligne est cliquable : rien à droite, là où passe le bouton flottant (BUG-010).
                     Row(Modifier.fillMaxWidth().clickable(onClick = onAddFriends).padding(horizontal = 12.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(Modifier.size(48.dp).background(SnapColors.Control, CircleShape), Alignment.Center) { FigmaAsset("17-1301_imgIconAddFriend", modifier = Modifier.size(ICON)) }
@@ -80,7 +81,6 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
                             Text("Trouver mes amis", style = MaterialTheme.typography.bodyLarge)
                             Text("Rechercher un pseudo", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
                         }
-                        ChipButton("Ajouter", onAddFriends, showIcon = true)
                     }
                 }
             }
