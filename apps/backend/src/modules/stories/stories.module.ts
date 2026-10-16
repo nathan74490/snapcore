@@ -1,4 +1,5 @@
 import { Logger, Module } from "@nestjs/common";
+import { ANALYTICS, type Analytics } from "../../shared/domain/analytics";
 import type Redis from "ioredis";
 import { CLOCK, type Clock } from "../../shared/domain/clock";
 import { REDIS } from "../../shared/infrastructure/redis/redis.module";
@@ -40,6 +41,7 @@ import { StoriesController } from "./interface/stories.controller";
         OBJECT_STORAGE,
         STORY_PURGE_SCHEDULER,
         CLOCK,
+        ANALYTICS,
       ],
       useFactory: (
         stories: StoryRepository,
@@ -50,6 +52,7 @@ import { StoriesController } from "./interface/stories.controller";
         storage: ObjectStorage,
         scheduler: StoryPurgeScheduler,
         clock: Clock,
+        analytics: Analytics,
       ) =>
         new StoryUseCases(
           stories,
@@ -61,6 +64,7 @@ import { StoriesController } from "./interface/stories.controller";
           scheduler,
           clock,
           new Logger(StoryUseCases.name),
+          analytics,
         ),
     },
   ],

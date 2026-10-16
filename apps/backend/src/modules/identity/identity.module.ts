@@ -1,4 +1,5 @@
 import { Logger, Module } from "@nestjs/common";
+import { ANALYTICS, type Analytics } from "../../shared/domain/analytics";
 import { APP_GUARD } from "@nestjs/core";
 import type { App } from "firebase-admin/app";
 import { OBJECT_STORAGE, type ObjectStorage } from "../media/application/ports/object-storage.port";
@@ -40,8 +41,9 @@ import { MeController } from "./interface/http/me.controller";
     },
     {
       provide: RegisterUser,
-      inject: [USER_REPOSITORY, IDENTITY_PROVIDER],
-      useFactory: (users: UserRepository, identity: IdentityProvider) => new RegisterUser(users, identity),
+      inject: [USER_REPOSITORY, IDENTITY_PROVIDER, ANALYTICS],
+      useFactory: (users: UserRepository, identity: IdentityProvider, analytics: Analytics) =>
+        new RegisterUser(users, identity, analytics),
     },
     {
       provide: UpdateProfile,

@@ -2,10 +2,12 @@ package com.snapcore.app.ui.camera
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.snapcore.app.domain.Analytics
 import com.snapcore.app.domain.CameraFilter
 import com.snapcore.app.domain.CameraFilters
 import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.FilterRenderer
+import com.snapcore.app.domain.NoAnalytics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +27,11 @@ data class PreviewState(
 // Le filtre se choisit sur l'aperçu, après la capture, comme dans Snapchat (ADR-022). Il n'est
 // incrusté dans le média qu'au moment d'envoyer : l'original reste intact tant que l'aperçu est
 // ouvert, pour pouvoir revenir en arrière et changer de filtre.
-class PreviewViewModel(private val media: CapturedMedia, private val renderer: FilterRenderer) : ViewModel() {
+class PreviewViewModel(
+    private val media: CapturedMedia,
+    private val renderer: FilterRenderer,
+    private val analytics: Analytics = NoAnalytics,
+) : ViewModel() {
     private val _state = MutableStateFlow(PreviewState())
     val state: StateFlow<PreviewState> = _state.asStateFlow()
 
@@ -42,6 +48,10 @@ class PreviewViewModel(private val media: CapturedMedia, private val renderer: F
             discardRendered()
             runCatching { renderer.render(media, _state.value.filter) }
                 .onSuccess { result ->
+                    val filter = _state.value.filter
+                    if (filter != CameraFilters.NORMAL) {
+                        analytics.capture("filter_applied", mapOf("filter" to filter.id, "media" to media.kind.name.lowercase()))
+                    }
                     rendered = result
                     _state.update { it.copy(rendering = false, ready = result) }
                 }

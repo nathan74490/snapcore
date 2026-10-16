@@ -71,7 +71,7 @@ import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
 // supprime le fichier local : rien n'est conservé sans action explicite (ADR-011).
 @Composable
 fun PreviewScreen(media: CapturedMedia, onDiscard: () -> Unit, onSendTo: (CapturedMedia) -> Unit) {
-    val vm = containerViewModel { PreviewViewModel(media, it.filterRenderer) }
+    val vm = containerViewModel { PreviewViewModel(media, it.filterRenderer, it.analytics) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.ready) {
         state.ready?.let {

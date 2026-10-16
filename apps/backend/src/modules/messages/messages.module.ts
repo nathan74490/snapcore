@@ -1,4 +1,5 @@
 import { Logger, Module } from "@nestjs/common";
+import { ANALYTICS, type Analytics } from "../../shared/domain/analytics";
 import { CLOCK, type Clock } from "../../shared/domain/clock";
 import { FRIENDSHIP_REPOSITORY, type FriendshipRepository } from "../friendships/application/ports/friendship.repository";
 import { FriendshipsModule } from "../friendships/friendships.module";
@@ -52,6 +53,7 @@ import { MessagesController } from "./interface/http/messages.controller";
         SNAP_PURGE_SCHEDULER,
         MESSAGE_NOTIFIER,
         CLOCK,
+        ANALYTICS,
       ],
       useFactory: (
         messages: MessageRepository,
@@ -62,6 +64,7 @@ import { MessagesController } from "./interface/http/messages.controller";
         scheduler: SnapPurgeScheduler,
         notifier: MessageNotifier,
         clock: Clock,
+        analytics: Analytics,
       ) =>
         new MessagingUseCases(
           messages,
@@ -73,6 +76,7 @@ import { MessagesController } from "./interface/http/messages.controller";
           notifier,
           clock,
           new Logger(MessagingUseCases.name),
+          analytics,
         ),
     },
   ],

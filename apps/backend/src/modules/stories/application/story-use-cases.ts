@@ -7,6 +7,7 @@ import type {
   StoryItemView,
 } from "@snapcore/types";
 import { randomUUID } from "node:crypto";
+import { noAnalytics, type Analytics } from "../../../shared/domain/analytics";
 import type { Clock } from "../../../shared/domain/clock";
 import { NotFoundError } from "../../../shared/domain/errors";
 import type { AppLogger } from "../../../shared/domain/logger";
@@ -44,6 +45,7 @@ export class StoryUseCases {
     private readonly scheduler: StoryPurgeScheduler,
     private readonly clock: Clock,
     private readonly logger: AppLogger,
+    private readonly analytics: Analytics = noAnalytics,
   ) {}
 
   async publish(me: UserAccount, input: { uploadId: string; contentType: StoryContentType }): Promise<OwnStoryItemView> {
@@ -69,6 +71,7 @@ export class StoryUseCases {
     await this.bestEffort(`programmation de la purge de la story ${id}`, () =>
       this.scheduler.schedule(id, item.expiresAt),
     );
+    this.analytics.capture(me.id, "story_published", { content_type: input.contentType });
     return presentOwn(item, 0);
   }
 
@@ -113,6 +116,7 @@ export class StoryUseCases {
     if (item.authorId !== me.id) {
       await this.requireFriendAuthor(me, item.authorId);
       await this.views.record(item.id, me.id, item.expiresAt);
+      this.analytics.capture(me.id, "story_viewed");
     }
     const now = this.clock.now();
     const url = await this.storage.presignDownload(item.mediaKey, STORY_VIEW_URL_TTL_SECONDS);

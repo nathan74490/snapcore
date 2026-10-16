@@ -1,3 +1,4 @@
+import { noAnalytics, type Analytics } from "../../../../shared/domain/analytics";
 import { ForbiddenError, NotFoundError, UniqueViolationError } from "../../../../shared/domain/errors";
 import { parsePhoneNumber } from "../../domain/phone-number";
 import type { UserAccount } from "../../domain/user";
@@ -18,6 +19,7 @@ export class RegisterUser {
   constructor(
     private readonly users: UserRepository,
     private readonly identity: IdentityProvider,
+    private readonly analytics: Analytics = noAnalytics,
   ) {}
 
   async execute(input: RegisterUserInput): Promise<UserAccount> {
@@ -32,13 +34,15 @@ export class RegisterUser {
     const phoneNumber = input.phoneNumber ? parsePhoneNumber(input.phoneNumber) : null;
 
     try {
-      return await this.users.create({
+      const user = await this.users.create({
         username,
         firebaseUid: identity.firebaseUid,
         // Firebase est la source de vérité de l'email (ADR-014) : jamais pris dans le corps de la requête.
         email: identity.email,
         phoneNumber,
       });
+      this.analytics.capture(user.id, "user_registered", { with_phone: phoneNumber !== null });
+      return user;
     } catch (error) {
       if (!(error instanceof UniqueViolationError)) throw error;
       if (error.field === "firebaseUid") {

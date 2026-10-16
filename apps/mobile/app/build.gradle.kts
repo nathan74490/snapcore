@@ -27,6 +27,9 @@ android {
 
         manifestPlaceholders["cameraKitApiToken"] = localProperty("cameraKitApiToken")
         buildConfigField("String", "CAMERA_KIT_LENS_GROUP_ID", "\"${localProperty("cameraKitLensGroupId")}\"")
+        // Analytics PostHog (ADR-008) : clé de projet publique ; vide = aucun envoi.
+        buildConfigField("String", "POSTHOG_API_KEY", "\"${localProperty("posthogApiKey")}\"")
+        buildConfigField("String", "POSTHOG_HOST", "\"${localProperty("posthogHost").ifBlank { "https://eu.i.posthog.com" }}\"")
     }
 
     buildTypes {
@@ -99,6 +102,8 @@ dependencies {
     // Lenses visage en direct ; Camera Kit pilote toute la caméra (ADR-024).
     implementation(libs.camerakit)
     implementation(libs.camerakit.support.camerax)
+    // Analytics d'usage, avec le même identifiant que le backend (ADR-008).
+    implementation(libs.posthog.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

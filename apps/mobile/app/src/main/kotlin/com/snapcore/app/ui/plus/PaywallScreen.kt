@@ -63,7 +63,7 @@ private val DATE = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRENCH)
 // Paywall SnapCore+ (ADR-025). `returnedFromCheckout` : ouvert par le lien de retour du paiement.
 @Composable
 fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountChanged: (Account) -> Unit) {
-    val vm = containerViewModel { PaywallViewModel(it.accounts, it.subscriptions) }
+    val vm = containerViewModel { PaywallViewModel(it.accounts, it.subscriptions, analytics = it.analytics) }
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 

@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.AccountService
+import com.snapcore.app.domain.Analytics
+import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.SubscriptionService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,6 +34,7 @@ class PaywallViewModel(
     private val subscriptions: SubscriptionService,
     private val pollDelayMs: Long = 2_000,
     private val pollAttempts: Int = 15,
+    private val analytics: Analytics = NoAnalytics,
 ) : ViewModel() {
     private val _state = MutableStateFlow(PaywallState())
     val state: StateFlow<PaywallState> = _state.asStateFlow()
@@ -51,7 +54,10 @@ class PaywallViewModel(
         _state.update { it.copy(opening = true, error = null) }
         viewModelScope.launch {
             runCatching { subscriptions.checkoutUrl() }
-                .onSuccess { url -> _state.update { it.copy(opening = false, checkoutUrl = url, awaitingActivation = true) } }
+                .onSuccess { url ->
+                    analytics.capture("checkout_started")
+                    _state.update { it.copy(opening = false, checkoutUrl = url, awaitingActivation = true) }
+                }
                 .onFailure { e -> _state.update { it.copy(opening = false, error = e.message) } }
         }
     }

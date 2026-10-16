@@ -1,4 +1,5 @@
 import type { ConversationSummary, MessageView, SnapViewUrl } from "@snapcore/types";
+import { noAnalytics, type Analytics } from "../../../shared/domain/analytics";
 import { randomUUID } from "node:crypto";
 import type { Clock } from "../../../shared/domain/clock";
 import { ForbiddenError, GoneError, NotFoundError } from "../../../shared/domain/errors";
@@ -45,6 +46,7 @@ export class MessagingUseCases {
     private readonly notifier: MessageNotifier,
     private readonly clock: Clock,
     private readonly logger: AppLogger,
+    private readonly analytics: Analytics = noAnalytics,
   ) {}
 
   async sendText(me: UserAccount, friendId: string, rawContent: string): Promise<MessageView> {
@@ -63,6 +65,7 @@ export class MessagingUseCases {
       scheduledPurgeAt: null,
     });
     await this.notify(() => this.notifier.messageReceived(friendId, message.id));
+    this.analytics.capture(me.id, "chat_sent");
     return presentMessage(message);
   }
 
@@ -101,6 +104,7 @@ export class MessagingUseCases {
       this.purgeScheduler.schedule(id, scheduledPurgeAt),
     );
     await this.notify(() => this.notifier.messageReceived(friendId, id));
+    this.analytics.capture(me.id, "snap_sent", { content_type: input.contentType });
     return presentMessage(message);
   }
 
@@ -153,11 +157,13 @@ export class MessagingUseCases {
     const now = this.clock.now();
     if (await this.messages.markOpenedIfUnopened(message.id, now)) {
       await this.onFirstOpening(message, now);
+      this.analytics.capture(me.id, "snap_opened");
     } else {
       const openedAt = message.openedAt ?? (await this.messages.findById(message.id))?.openedAt ?? now;
-      if (!isWithinViewGracePeriod(openedAt, now) && !hasActiveSubscription(me, now)) {
-        throw new ForbiddenError("Ce Snap a déjà été vu");
-      }
+      const replay = !isWithinViewGracePeriod(openedAt, now);
+      if (replay && !hasActiveSubscription(me, now)) throw new ForbiddenError("Ce Snap a déjà été vu");
+      // Revoir un Snap déjà vu : l'avantage principal de SnapCore+ (ADR-009, ADR-008).
+      if (replay) this.analytics.capture(me.id, "snap_replayed");
     }
 
     const url = await this.storage.presignDownload(message.mediaKey, VIEW_URL_TTL_SECONDS);

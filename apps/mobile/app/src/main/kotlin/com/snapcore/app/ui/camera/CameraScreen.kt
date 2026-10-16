@@ -107,7 +107,6 @@ fun CameraScreen(
     // Permissions caméra et micro demandées au premier accès à l'écran caméra (ADR-011).
     LaunchedEffect(Unit) { if (!hasPermissions) launcher.launch(REQUIRED_PERMISSIONS) }
 
-    StatusBarIcons(dark = false)
     Box(modifier.fillMaxSize().background(Color.Black)) {
         if (hasPermissions) {
             CameraContent(onCaptured, lensMode, onLensModeChange)
@@ -133,6 +132,7 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val capturesDir = appContainer().capturesDir
+    val analytics = appContainer().analytics
     val scope = rememberCoroutineScope()
 
     var flash by remember { mutableStateOf(false) }
@@ -166,6 +166,7 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
             .collect { index ->
                 val lens = lenses.getOrNull(index - 1)
                 selectedLens = lens
+                lens?.let { analytics.capture("lens_selected", mapOf("lens" to it.name.orEmpty())) }
                 // Une Lens visage se joue sur la caméra frontale.
                 if (lens?.facingPreference == LensesComponent.Lens.Facing.FRONT) front = true
                 onLensModeChange(index > 0)
@@ -188,6 +189,7 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
                 bitmap.recycle()
                 busy = false
                 if (saved) {
+                    analytics.capture("snap_captured", mapOf("media" to "photo", "lens" to (selectedLens != null)))
                     onCaptured(CapturedMedia(file, MediaKind.PHOTO))
                 } else {
                     file.delete()
@@ -202,6 +204,7 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
             recording = null
             recordProgress = 0f
             if (file.length() > 0) {
+                analytics.capture("snap_captured", mapOf("media" to "video", "lens" to (selectedLens != null)))
                 onCaptured(CapturedMedia(file, MediaKind.VIDEO))
             } else {
                 file.delete()

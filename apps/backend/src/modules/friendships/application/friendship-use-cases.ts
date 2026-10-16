@@ -1,4 +1,5 @@
 import type { FriendshipListItem, UserSearchResult } from "@snapcore/types";
+import { noAnalytics, type Analytics } from "../../../shared/domain/analytics";
 import type { Clock } from "../../../shared/domain/clock";
 import {
   ConflictError,
@@ -28,6 +29,7 @@ export class FriendshipUseCases {
     private readonly users: UserRepository,
     private readonly notifier: FriendshipNotifier,
     private readonly clock: Clock,
+    private readonly analytics: Analytics = noAnalytics,
   ) {}
 
   async searchByUsername(me: UserAccount, rawUsername: string): Promise<UserSearchResult> {
@@ -108,6 +110,7 @@ export class FriendshipUseCases {
     });
     if (!accepted) throw new NotFoundError(REQUEST_NOT_FOUND);
     await this.notifier.friendRequestAccepted(requester.id, accepted.id);
+    this.analytics.capture(me.id, "friend_request_accepted");
     return present(accepted, requester);
   }
 
