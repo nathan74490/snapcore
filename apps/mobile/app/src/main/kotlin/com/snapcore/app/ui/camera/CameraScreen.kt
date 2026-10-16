@@ -15,7 +15,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,24 +43,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -79,13 +86,15 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.Closeable
 import java.io.File
 import java.util.UUID
+import kotlin.math.roundToInt
 
 private const val MAX_VIDEO_MS = 60_000L // limite d'un snap vidéo (ADR-011)
 private val LENS_LOADING = Color(0xFF3CC8AE)
+// Distance entre le bouton de capture et le cadenas du mode mains libres.
+private val LOCK_OFFSET = 96.dp
 
 private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
 
@@ -95,6 +104,7 @@ fun CameraScreen(
     modifier: Modifier = Modifier,
     lensMode: Boolean = false,
     onLensModeChange: (Boolean) -> Unit = {},
+    onRecordingChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     fun granted() = REQUIRED_PERMISSIONS.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
@@ -105,7 +115,7 @@ fun CameraScreen(
 
     Box(modifier.fillMaxSize().background(Color.Black)) {
         if (hasPermissions) {
-            CameraContent(onCaptured, lensMode, onLensModeChange)
+            CameraContent(onCaptured, lensMode, onLensModeChange, onRecordingChange)
         } else {
             Column(
                 Modifier.align(Alignment.Center).padding(32.dp),
@@ -124,7 +134,12 @@ fun CameraScreen(
 @Composable
 // `lensMode` : une Lens est active ; l'accueil remplace alors sa barre de navigation par la barre
 // « ✕ | Pour vous », dont le ✕ remet `lensMode` à false (ADR-024).
-private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean, onLensModeChange: (Boolean) -> Unit) {
+private fun CameraContent(
+    onCaptured: (CapturedMedia) -> Unit,
+    lensMode: Boolean,
+    onLensModeChange: (Boolean) -> Unit,
+    onRecordingChange: (Boolean) -> Unit,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val capturesDir = appContainer().capturesDir
@@ -135,6 +150,8 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
     var front by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf<Closeable?>(null) }
     var recordProgress by remember { mutableFloatStateOf(0f) }
+    // Mains libres : le doigt a glissé jusqu'au cadenas, la vidéo continue après le relâchement.
+    var handsFree by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     // Token refusé : Camera Kit ferme sa session, la caméra reste noire. Message affiché en permanence.
@@ -170,7 +187,9 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
     }
     // ✕ de la barre du bas : retour à la première position, sans Lens.
     LaunchedEffect(lensMode) { if (!lensMode && lensList.centeredIndex() != 0) lensList.animateScrollToItem(0) }
-    DisposableEffect(Unit) { onDispose { onLensModeChange(false) } }
+    DisposableEffect(Unit) { onDispose { onLensModeChange(false); onRecordingChange(false) } }
+    // Pendant l'enregistrement, l'accueil masque sa barre du haut et ses onglets, comme Snapchat.
+    LaunchedEffect(recording != null) { onRecordingChange(recording != null) }
 
     fun newFile(extension: String) = File(capturesDir, "${UUID.randomUUID()}.$extension")
 
@@ -199,6 +218,7 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
         recording = camera.startVideo { file ->
             recording = null
             recordProgress = 0f
+            handsFree = false
             if (file.length() > 0) {
                 analytics.capture("snap_captured", mapOf("media" to "video", "lens" to (selectedLens != null)))
                 onCaptured(CapturedMedia(file, MediaKind.VIDEO))
@@ -243,8 +263,8 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
     )
 
     Box(Modifier.fillMaxSize().statusBarsPadding()) {
-        Column(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            IconButton(onClick = { front = !front }, enabled = recording == null) {
+        if (recording == null) Column(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            IconButton(onClick = { front = !front }) {
                 FigmaAsset("14-588_imgIconFlip", "Changer de caméra", tint = Color.White)
             }
             IconButton(onClick = { flash = !flash }) {
@@ -286,21 +306,33 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
                         lensList,
                         scrollEnabled = recording == null,
                         onTap = { index -> scope.launch { lensList.animateScrollToItem(index) } },
-                        modifier = Modifier.fillMaxWidth(),
+                        // Pendant l'enregistrement, seul le bouton de capture reste à l'écran, comme dans Snapchat.
+                        modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = if (recording != null) 0f else 1f },
                     )
                 }
-                // Au-dessus du carrousel : la Lens au centre apparaît dans l'anneau de capture.
-                CaptureButton(recording != null, recordProgress, busy, lensLoading, ::takePhoto, ::startRecording, { recording?.close() })
-            }
-            // En mode Lens, les libellés s'effacent sans changer la mise en page : le carrousel ne bouge pas.
-            val labelsAlpha by animateFloatAsState(if (lensMode) 0f else 1f, label = "labels")
-            Column(Modifier.graphicsLayer { alpha = labelsAlpha }, horizontalAlignment = Alignment.CenterHorizontally) {
-                // Le mode en cours est en gras avec un point dessous : Snap au repos, Vidéo pendant l'enregistrement.
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
-                    CaptureModeLabel("Snap", active = recording == null, dot = Color.White)
-                    CaptureModeLabel("Vidéo", active = recording != null, dot = SnapColors.SnapRed)
+                if (recording != null) {
+                    Text(if (handsFree) "Appuie sur le bouton pour arrêter" else "Glisse vers la gauche pour filmer en mode mains libres",
+                        color = Color.White, fontSize = 14.sp, textAlign = TextAlign.Center,
+                        style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = .5f), blurRadius = 6f)),
+                        modifier = Modifier.align(Alignment.TopCenter).offset(y = (-64).dp).padding(horizontal = 48.dp))
+                    // Cadenas à gauche du bouton : y glisser le doigt passe en mode mains libres.
+                    if (!handsFree) Box(Modifier.offset(x = -LOCK_OFFSET).size(44.dp).background(Color.Black.copy(alpha = .35f), CircleShape), Alignment.Center) {
+                        FigmaAsset("17-1301_imgIconLock", "Mode mains libres", Modifier.size(22.dp), tint = Color.White)
+                    }
                 }
-                Text(if (recording != null) "Relâche pour arrêter" else "Appuie pour une photo, maintiens pour filmer",
+                // Au-dessus du carrousel : la Lens au centre apparaît dans l'anneau de capture.
+                CaptureButton(recording != null, handsFree, recordProgress, busy, lensLoading, ::takePhoto, ::startRecording,
+                    onStopVideo = { recording?.close() }, onHandsFree = { handsFree = true })
+            }
+            // En mode Lens et pendant l'enregistrement, les libellés s'effacent sans changer la mise en page.
+            val labelsAlpha by animateFloatAsState(if (lensMode || recording != null) 0f else 1f, label = "labels")
+            Column(Modifier.graphicsLayer { alpha = labelsAlpha }, horizontalAlignment = Alignment.CenterHorizontally) {
+                // Le mode en cours est en gras avec un point dessous.
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+                    CaptureModeLabel("Snap", active = true, dot = Color.White)
+                    CaptureModeLabel("Vidéo", active = false, dot = SnapColors.SnapRed)
+                }
+                Text("Appuie pour une photo, maintiens pour filmer",
                     color = Color.White.copy(alpha = .8f), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
             }
         }
@@ -318,40 +350,84 @@ private fun CaptureModeLabel(label: String, active: Boolean, dot: Color) {
     }
 }
 
-// Tap = photo ; appui maintenu = vidéo jusqu'au relâchement (ADR-011).
+// Tap = photo ; appui maintenu = vidéo jusqu'au relâchement (ADR-011). Comme dans Snapchat, le
+// bouton devient un disque jaune avec la progression sur son bord et un point qui suit le doigt ;
+// glisser jusqu'au cadenas passe en mains libres, un nouvel appui arrête alors la vidéo.
 @Composable
 private fun CaptureButton(
     recording: Boolean,
+    handsFree: Boolean,
     recordProgress: Float,
     busy: Boolean,
     lensLoading: Boolean,
     onPhoto: () -> Unit,
     onStartVideo: () -> Unit,
     onStopVideo: () -> Unit,
+    onHandsFree: () -> Unit,
 ) {
     val longPressTimeout = LocalViewConfiguration.current.longPressTimeoutMillis
+    val density = LocalDensity.current
+    val lockDistance = with(density) { (LOCK_OFFSET - 24.dp).toPx() }
+    val isHandsFree by rememberUpdatedState(handsFree)
+    val photo by rememberUpdatedState(onPhoto)
+    val start by rememberUpdatedState(onStartVideo)
+    val stop by rememberUpdatedState(onStopVideo)
+    val lock by rememberUpdatedState(onHandsFree)
+    var finger by remember { mutableStateOf(Offset.Zero) }
+    val diameter by animateDpAsState(if (recording) 104.dp else 86.dp, label = "captureSize")
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(86.dp)
-            .border(6.dp, if (recording) SnapColors.SnapRed else Color.White, CircleShape)
+            .size(diameter)
+            .then(if (recording) Modifier.background(SnapColors.Yellow, CircleShape) else Modifier.border(6.dp, Color.White, CircleShape))
             .semantics { contentDescription = "Prendre un snap ; maintenir pour filmer" }
             .pointerInput(busy) {
                 if (busy) return@pointerInput
-                detectTapGestures(onPress = {
-                    val releasedQuickly = withTimeoutOrNull(longPressTimeout) { tryAwaitRelease() }
-                    if (releasedQuickly != null) {
-                        if (releasedQuickly) onPhoto()
-                    } else {
-                        onStartVideo()
-                        tryAwaitRelease()
-                        onStopVideo()
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    if (isHandsFree) {
+                        if (waitForUpOrCancellation() != null) stop()
+                        return@awaitEachGesture
                     }
-                })
+                    var cancelled = false
+                    val released = withTimeoutOrNull(longPressTimeout) { cancelled = waitForUpOrCancellation() == null }
+                    if (released != null) {
+                        if (!cancelled) photo()
+                        return@awaitEachGesture
+                    }
+                    start()
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    var locked = false
+                    while (true) {
+                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                        if (change == null || !change.pressed) break
+                        change.consume()
+                        finger = change.position - center
+                        if (change.position.x - down.position.x < -lockDistance) {
+                            locked = true
+                            lock()
+                            break
+                        }
+                    }
+                    finger = Offset.Zero
+                    if (!locked) stop()
+                }
             },
     ) {
         if (recording) {
-            CircularProgressIndicator(progress = { recordProgress }, color = SnapColors.SnapRed, strokeWidth = 6.dp, modifier = Modifier.size(86.dp))
+            // Progression vers les 60 s, sur le bord du disque.
+            CircularProgressIndicator(progress = { recordProgress }, color = Color.Black.copy(alpha = .3f),
+                trackColor = Color.Transparent, strokeWidth = 6.dp, modifier = Modifier.fillMaxSize())
+            if (handsFree) {
+                Box(Modifier.size(28.dp).background(SnapColors.SnapRed, RoundedCornerShape(6.dp)))
+            } else {
+                // Le point suit le doigt sans sortir du disque.
+                val radius = with(density) { (diameter / 2 - 10.dp).toPx() }
+                val distance = finger.getDistance()
+                val dot = if (distance > radius) finger * (radius / distance) else finger
+                Box(Modifier.offset { IntOffset(dot.x.roundToInt(), dot.y.roundToInt()) }.size(16.dp)
+                    .background(Color(0xFFFFFF9E), CircleShape).border(1.5.dp, Color.Black.copy(alpha = .25f), CircleShape))
+            }
         }
         // Lens en cours de chargement : arc qui tourne autour de l'anneau, comme dans Snapchat.
         if (lensLoading && !recording) {

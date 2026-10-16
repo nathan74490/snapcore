@@ -58,6 +58,7 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
         derivedStateOf { abs(pager.currentPage + pager.currentPageOffsetFraction - CAMERA_TAB) < 1f }
     }
     var lensMode by remember { mutableStateOf(false) }
+    var recording by remember { mutableStateOf(false) }
     val navBackground by animateColorAsState(if (camera) Color.Black else Color.White, tween(180), label = "navBackground")
     val navInk by animateColorAsState(if (camera) Color.White else SnapColors.Ink, tween(180), label = "navInk")
     StatusBarIcons(dark = !camera)
@@ -67,7 +68,7 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             beyondViewportPageCount = 2,
             // Le carrousel des Lenses garde ses propres gestes ; fermer la Lens réactive les pages.
-            userScrollEnabled = !lensMode,
+            userScrollEnabled = !lensMode && !recording,
             key = { it },
         ) { page ->
             // La caméra est toujours le fond fixe. Chat et Stories sont des panneaux au-dessus :
@@ -84,8 +85,8 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
             if (page == CAMERA_TAB) {
                 CameraPageLifecycle(cameraVisible) {
                     Box(Modifier.fillMaxSize()) {
-                        CameraScreen(onCaptured, lensMode = lensMode, onLensModeChange = { lensMode = it })
-                        Row(Modifier.statusBarsPadding().fillMaxWidth().padding(start = 8.dp, end = 72.dp, top = 8.dp),
+                        CameraScreen(onCaptured, lensMode = lensMode, onLensModeChange = { lensMode = it }, onRecordingChange = { recording = it })
+                        if (!recording) Row(Modifier.statusBarsPadding().fillMaxWidth().padding(start = 8.dp, end = 72.dp, top = 8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Avatar(account.displayName, account.profilePhotoUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
                             IconButton(onClick = onOpenFriends) { FigmaAsset("14-588_imgIconSearch", "Rechercher", tint = Color.White) }
@@ -116,11 +117,12 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
         }
         Column(Modifier.background(navBackground).navigationBarsPadding()) {
             if (!camera) HorizontalDivider(color = SnapColors.Border, thickness = 1.dp)
-            AnimatedContent(camera && lensMode, transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) }, label = "bottomBar") { lensBar ->
+            // Pendant un enregistrement vidéo, la barre reste noire et vide, comme dans Snapchat.
+            AnimatedContent(camera && lensMode, Modifier.graphicsLayer { alpha = if (camera && recording) 0f else 1f }, transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) }, label = "bottomBar") { lensBar ->
                 if (lensBar) LensModeBar(onClose = { lensMode = false })
                 else Row(Modifier.fillMaxWidth().height(49.dp).padding(horizontal = 8.dp)) {
                     labels.forEachIndexed { index, label ->
-                        Column(Modifier.weight(1f).fillMaxHeight().clickable {
+                        Column(Modifier.weight(1f).fillMaxHeight().clickable(enabled = !(camera && recording)) {
                             scope.launch { pager.animateScrollToPage(index, animationSpec = tween(280, easing = FastOutSlowInEasing)) }
                         }.padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp)) {
