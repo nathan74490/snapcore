@@ -17,7 +17,10 @@ enum class MediaKind(
 /** Média capturé, stocké dans le cache privé de l'app, jamais dans la galerie (ADR-011). */
 data class CapturedMedia(val file: File, val kind: MediaKind)
 
-data class Friend(val id: String, val username: String, val photoUrl: String?)
+/** Le prénom est affiché partout ; le pseudo reste l'identifiant (recherche, ajout d'ami). */
+data class Friend(val id: String, val username: String, val photoUrl: String?, val firstName: String? = null) {
+    val displayName get() = firstName ?: username
+}
 
 sealed interface SendTarget {
     data class ToFriend(val friend: Friend) : SendTarget

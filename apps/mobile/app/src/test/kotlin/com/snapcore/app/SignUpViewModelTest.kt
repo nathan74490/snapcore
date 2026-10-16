@@ -40,6 +40,7 @@ class SignUpViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     private fun fillAllSteps(username: String = "Nathan") {
+        vm.onFirstName("  Nathan   Marie ")
         vm.onUsername(username)
         vm.next()
         vm.onEmail("nathan@snapcore.test")
@@ -57,6 +58,15 @@ class SignUpViewModelTest {
     }
 
     @Test
+    fun `refuse un prénom invalide sans quitter l'étape 1`() {
+        vm.onFirstName("Nathan2")
+        vm.onUsername("nathan")
+        vm.next()
+        assertEquals(1, vm.state.value.step)
+        assertNotNull(vm.state.value.firstNameError)
+    }
+
+    @Test
     fun `parcours complet, compte Firebase, inscription backend normalisée, session prête`() = runTest(dispatcher) {
         fillAllSteps()
         vm.next()
@@ -66,6 +76,7 @@ class SignUpViewModelTest {
         assertTrue(state.session is Session.Ready)
         assertEquals("nathan", accounts.registrations.single().username)
         assertEquals("+33612345678", accounts.registrations.single().phoneNumber)
+        assertEquals("Nathan Marie", accounts.registrations.single().firstName)
         assertNull(pending.value) // effacé après succès
     }
 

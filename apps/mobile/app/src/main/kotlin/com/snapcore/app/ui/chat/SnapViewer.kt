@@ -18,6 +18,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.common.util.UnstableApi
+import androidx.annotation.OptIn
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -48,7 +51,7 @@ fun SnapViewer(state: SnapViewerState, onClose: () -> Unit) {
                                 .build()
                         },
                         contentDescription = "Snap",
-                        contentScale = ContentScale.Fit,
+                        contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -59,6 +62,7 @@ fun SnapViewer(state: SnapViewerState, onClose: () -> Unit) {
 
 // Lecture en streaming depuis l'URL pré-signée (~1 min de validité) : ExoPlayer ne met rien en
 // cache disque sans configuration explicite. Le Snap se ferme à la fin de la vidéo.
+@OptIn(UnstableApi::class)
 @Composable
 private fun StreamedVideo(url: String, onEnded: () -> Unit) {
     val context = LocalContext.current
@@ -81,5 +85,5 @@ private fun StreamedVideo(url: String, onEnded: () -> Unit) {
             player.release()
         }
     }
-    AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false } }, modifier = Modifier.fillMaxSize())
+    AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM } }, modifier = Modifier.fillMaxSize())
 }

@@ -86,10 +86,12 @@ class LoginViewModel(private val auth: AuthService, private val resolver: Sessio
 
 data class SignUpState(
     val step: Int = 1,
+    val firstName: String = "",
     val username: String = "",
     val email: String = "",
     val phone: String = "",
     val password: String = "",
+    val firstNameError: String? = null,
     val usernameError: String? = null,
     val emailError: String? = null,
     val phoneError: String? = null,
@@ -103,7 +105,7 @@ data class SignUpState(
     /** Bouton « Continuer » grisé tant que le champ obligatoire de l'étape est vide (maquette 13:250). */
     val canContinue: Boolean
         get() = when (step) {
-            1 -> username.isNotBlank()
+            1 -> firstName.isNotBlank() && username.isNotBlank()
             2 -> email.isNotBlank()
             else -> firebaseAccountCreated || password.isNotBlank()
         }
@@ -121,6 +123,7 @@ class SignUpViewModel(
     private val _state = MutableStateFlow(SignUpState())
     val state: StateFlow<SignUpState> = _state.asStateFlow()
 
+    fun onFirstName(value: String) = _state.update { it.copy(firstName = value, firstNameError = null, error = null) }
     fun onUsername(value: String) = _state.update { it.copy(username = value, usernameError = null, error = null) }
     fun onEmail(value: String) = _state.update { it.copy(email = value, emailError = null, error = null) }
     fun onPhone(value: String) = _state.update { it.copy(phone = value, phoneError = null, error = null) }
@@ -131,9 +134,15 @@ class SignUpViewModel(
     fun next() {
         val s = _state.value
         when (s.step) {
-            1 -> AccountRules.usernameError(s.username)
-                ?.let { e -> _state.update { it.copy(usernameError = e) } }
-                ?: _state.update { it.copy(step = 2) }
+            1 -> {
+                val firstNameError = AccountRules.firstNameError(s.firstName)
+                val usernameError = AccountRules.usernameError(s.username)
+                if (firstNameError != null || usernameError != null) {
+                    _state.update { it.copy(firstNameError = firstNameError, usernameError = usernameError) }
+                } else {
+                    _state.update { it.copy(step = 2) }
+                }
+            }
             2 -> {
                 val emailError = AccountRules.emailError(s.email)
                 val phoneError = AccountRules.phoneError(s.phone)
@@ -168,6 +177,7 @@ class SignUpViewModel(
             val registration = PendingRegistration(
                 username = AccountRules.normalizeUsername(s.username),
                 phoneNumber = s.phone.takeIf { it.isNotBlank() }?.let(AccountRules::normalizePhone),
+                firstName = AccountRules.normalizeFirstName(s.firstName),
             )
             pending.save(registration)
             try {
@@ -194,6 +204,8 @@ class SignUpViewModel(
 // --- Fin d'inscription : compte Firebase sans compte SnapCore (ADR-015) ------------------------
 
 data class CompleteRegistrationState(
+    val firstName: String = "",
+    val firstNameError: String? = null,
     val username: String = "",
     val phone: String = "",
     val usernameError: String? = null,
@@ -213,15 +225,17 @@ class CompleteRegistrationViewModel(
 
     val email get() = auth.currentEmail
 
+    fun onFirstName(value: String) = _state.update { it.copy(firstName = value, firstNameError = null, error = null) }
     fun onUsername(value: String) = _state.update { it.copy(username = value, usernameError = null, error = null) }
     fun onPhone(value: String) = _state.update { it.copy(phone = value, phoneError = null, error = null) }
 
     fun submit() {
         val s = _state.value
+        val firstNameError = AccountRules.firstNameError(s.firstName)
         val usernameError = AccountRules.usernameError(s.username)
         val phoneError = AccountRules.phoneError(s.phone)
-        if (usernameError != null || phoneError != null) {
-            _state.update { it.copy(usernameError = usernameError, phoneError = phoneError) }
+        if (firstNameError != null || usernameError != null || phoneError != null) {
+            _state.update { it.copy(firstNameError = firstNameError, usernameError = usernameError, phoneError = phoneError) }
             return
         }
         _state.update { it.copy(loading = true, error = null) }
@@ -231,6 +245,7 @@ class CompleteRegistrationViewModel(
                     PendingRegistration(
                         AccountRules.normalizeUsername(s.username),
                         s.phone.takeIf { it.isNotBlank() }?.let(AccountRules::normalizePhone),
+                        AccountRules.normalizeFirstName(s.firstName),
                     ),
                 )
                 pending.clear()

@@ -45,6 +45,10 @@ import kotlin.math.abs
 private val SLOT = 74.dp
 private val ICON = 68.dp
 private const val SIDE_SCALE = 0.74f
+// L'anneau de capture (86) est plus large que l'icône au centre : sans ce décalage, la première Lens
+// le touche presque (≈ 6) alors que les suivantes sont espacées de ≈ 24. Les voisines s'écartent du
+// centre pour que tous les espaces soient égaux : SLOT - 86/2 - ICON·SIDE_SCALE/2 + PUSH = SLOT - ICON·SIDE_SCALE.
+private val PUSH = 18.dp
 
 /** Position du carrousel qui se trouve au centre (sous l'anneau de capture) ; 0 = aucune Lens. */
 fun LazyListState.centeredIndex(): Int {
@@ -107,13 +111,15 @@ private fun LensSlot(state: LazyListState, index: Int, onTap: (Int) -> Unit, con
             .graphicsLayer {
                 val info = state.layoutInfo
                 val item = info.visibleItemsInfo.firstOrNull { it.index == index }
-                val distance = if (item == null) 1f else {
+                val signed = if (item == null) 1f else {
                     val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
-                    (abs(item.offset + item.size / 2f - center) / item.size).coerceIn(0f, 1f)
+                    ((item.offset + item.size / 2f - center) / item.size).coerceIn(-1f, 1f)
                 }
+                val distance = abs(signed)
                 val scale = 1f - (1f - SIDE_SCALE) * distance
                 scaleX = scale
                 scaleY = scale
+                translationX = signed * PUSH.toPx()
                 // L'anneau « sans Lens » se confond avec le bouton de capture au centre : visible seulement à côté.
                 if (index == 0) alpha = distance
             }

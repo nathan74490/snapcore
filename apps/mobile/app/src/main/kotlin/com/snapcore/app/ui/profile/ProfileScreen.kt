@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -137,13 +138,15 @@ fun ProfileScreen(
                 }
                 Text("MON COMPTE", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 16.dp))
                 Column(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White)) {
+                    ProfileRow("Prénom", account.firstName ?: "Non renseigné", onEdit = { vm.startEditing(EditableField.FIRST_NAME) })
+                    HorizontalDivider(color = SnapColors.Border)
                     ProfileRow("Pseudo", account.username, onEdit = { vm.startEditing(EditableField.USERNAME) })
                     HorizontalDivider(color = SnapColors.Border)
                     // Email non vérifié : la ligne entière passe en rouge (maquette 17:1408), un appui renvoie le lien.
                     if (state.emailVerified == false) {
-                        ProfileRow("Email", account.email ?: "—", onEdit = vm::resendVerification, alert = true)
+                        ProfileRow("Email", account.email ?: "Non renseigné", onEdit = vm::resendVerification, alert = true)
                     } else {
-                        ProfileRow("Email", account.email ?: "—") {
+                        ProfileRow("Email", account.email ?: "Non renseigné") {
                             if (state.emailVerified == true) Icon(Icons.Filled.Verified, "Email vérifié", tint = SnapColors.ChatBlue)
                         }
                     }
@@ -174,7 +177,7 @@ fun ProfileScreen(
                     0f to Color(0xFF935499), .16f to Color(0xFF944F99), .31f to Color(0xFFBE63C4),
                     .52f to Color(0xFFF67AFF), .73f to Color(0xFFF274FA), .9f to Color(0xFFCD5FCF)))) {
                     Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 30.dp)) {
-                        EditableAvatar(account.username, account.profilePhotoUrl, state.photoBusy, vm::changePhoto, vm::removePhoto)
+                        EditableAvatar(account.displayName, account.profilePhotoUrl, state.photoBusy, vm::changePhoto, vm::removePhoto)
                     }
                     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 15.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween) {
@@ -187,9 +190,9 @@ fun ProfileScreen(
                     Box(Modifier.padding(top = 8.dp).size(36.dp, 5.dp).align(Alignment.CenterHorizontally).background(Color(0xFFC7C7CC), RoundedCornerShape(3.dp)))
                     Row(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Avatar(account.username, account.profilePhotoUrl, 75.dp)
+                        Avatar(account.displayName, account.profilePhotoUrl, 75.dp)
                         Column {
-                            Text(account.username, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                            Text(account.displayName, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                             Text("@${account.username}", color = SnapColors.Grey, fontSize = 16.sp)
                         }
                     }
@@ -214,7 +217,7 @@ fun ProfileScreen(
     state.editing?.let { field ->
         AlertDialog(
             onDismissRequest = vm::cancelEditing,
-            title = { Text(if (field == EditableField.USERNAME) "Modifier le pseudo" else "Modifier le téléphone") },
+            title = { Text(field.title) },
             text = {
                 OutlinedTextField(
                     value = state.draft,
@@ -222,7 +225,8 @@ fun ProfileScreen(
                     singleLine = true,
                     isError = state.draftError != null,
                     supportingText = state.draftError?.let { { Text(it) } },
-                    keyboardOptions = KeyboardOptions(keyboardType = if (field == EditableField.PHONE) KeyboardType.Phone else KeyboardType.Text),
+                    keyboardOptions = KeyboardOptions(keyboardType = if (field == EditableField.PHONE) KeyboardType.Phone else KeyboardType.Text,
+                        capitalization = if (field == EditableField.FIRST_NAME) KeyboardCapitalization.Words else KeyboardCapitalization.None),
                 )
             },
             confirmButton = { TextButton(onClick = vm::saveEditing, enabled = !state.saving) { Text("Enregistrer") } },

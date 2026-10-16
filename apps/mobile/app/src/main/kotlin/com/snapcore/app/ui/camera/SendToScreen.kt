@@ -123,11 +123,11 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
                 }
                 else -> item {
                     SnapCard {
-                        state.friends.filter { it.username.contains(query, ignoreCase = true) }.forEach { friend ->
+                        state.friends.filter { it.displayName.contains(query, ignoreCase = true) || it.username.contains(query, ignoreCase = true) }.forEach { friend ->
                             val target = SendTarget.ToFriend(friend)
                             TargetRow(
-                                label = friend.username,
-                                avatar = { Avatar(friend.username, friend.photoUrl, size = 40.dp) },
+                                label = friend.displayName,
+                                avatar = { Avatar(friend.displayName, friend.photoUrl, size = 40.dp) },
                                 checked = target in state.selected,
                                 failed = target in state.failures,
                                 onToggle = { if(!state.sending) vm.toggle(target) },

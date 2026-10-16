@@ -53,6 +53,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.RgbMatrix
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 import coil3.compose.AsyncImage
 import com.snapcore.app.domain.CameraFilter
 import com.snapcore.app.domain.CameraFilters
@@ -118,7 +119,7 @@ fun PreviewScreen(media: CapturedMedia, onDiscard: () -> Unit, onSendTo: (Captur
             MediaKind.PHOTO -> AsyncImage(
                 model = media.file,
                 contentDescription = "Snap",
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.Crop,
                 colorFilter = state.filter.matrix?.let { ColorFilter.colorMatrix(ComposeColorMatrix(it.toAndroidMatrix())) },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -197,7 +198,7 @@ private fun LoopingVideo(media: CapturedMedia, filter: CameraFilter) {
     }
     DisposableEffect(player) { onDispose { player.release() } }
     AndroidView(
-        factory = { PlayerView(it).apply { this.player = player; useController = false } },
+        factory = { PlayerView(it).apply { this.player = player; useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM } },
         modifier = Modifier.fillMaxSize(),
     )
 }

@@ -67,7 +67,7 @@ class ApiFriendsService(private val api: SnapCoreApi) : FriendsService {
     override suspend fun search(username: String): UserSearchResult {
         val result = apiCall { api.searchUser(username) }
         return UserSearchResult(
-            Friend(result.id, result.username, result.profilePhotoUrl),
+            Friend(result.id, result.username, result.profilePhotoUrl, result.firstName),
             runCatching { Relation.valueOf(result.relation) }.getOrDefault(Relation.NONE),
         )
     }
@@ -85,4 +85,4 @@ class ApiFriendsService(private val api: SnapCoreApi) : FriendsService {
     private fun toRequest(item: FriendshipItemDto) = FriendRequest(item.friendshipId, item.user.toFriend())
 }
 
-private fun PublicProfileDto.toFriend() = Friend(id, username, profilePhotoUrl)
+private fun PublicProfileDto.toFriend() = Friend(id, username, profilePhotoUrl, firstName)

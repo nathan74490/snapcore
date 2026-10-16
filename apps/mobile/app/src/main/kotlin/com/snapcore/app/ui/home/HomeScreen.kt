@@ -42,7 +42,7 @@ private val icons = listOf("Chat", "Camera", "Stories")
 @Composable
 fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
     onOpenProfile: () -> Unit, onOpenFriends: () -> Unit, onCaptured: (CapturedMedia) -> Unit,
-    onOpenConversation: (Friend) -> Unit, onOpenMyStory: () -> Unit, onPlayStory: (FriendStory) -> Unit,
+    onOpenConversation: (Friend, snapId: String?) -> Unit, onOpenMyStory: () -> Unit, onPlayStory: (FriendStory) -> Unit,
     modifier: Modifier = Modifier) {
     val pager = rememberPagerState(initialPage = selected, pageCount = { labels.size })
     val scope = rememberCoroutineScope()
@@ -87,7 +87,7 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                         CameraScreen(onCaptured, lensMode = lensMode, onLensModeChange = { lensMode = it })
                         Row(Modifier.statusBarsPadding().fillMaxWidth().padding(start = 8.dp, end = 72.dp, top = 8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(account.username, account.profilePhotoUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
+                            Avatar(account.displayName, account.profilePhotoUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
                             IconButton(onClick = onOpenFriends) { FigmaAsset("14-588_imgIconSearch", "Rechercher", tint = Color.White) }
                             Spacer(Modifier.weight(1f))
                             IconButton(onClick = onOpenFriends) { FigmaAsset("14-588_imgIconAddFriend", "Ajouter des amis", tint = Color.White) }
@@ -99,7 +99,7 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                     Row(Modifier.statusBarsPadding().fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.width(96.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Avatar(account.username, account.profilePhotoUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
+                            Avatar(account.displayName, account.profilePhotoUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
                             RoundAction("15-925_imgIconSearch", "Rechercher des amis", onOpenFriends)
                         }
                         Box(Modifier.weight(1f), Alignment.Center) { Text(labels[page], style = MaterialTheme.typography.titleLarge) }
@@ -124,7 +124,9 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                             scope.launch { pager.animateScrollToPage(index, animationSpec = tween(280, easing = FastOutSlowInEasing)) }
                         }.padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            FigmaAsset(if (index == pager.currentPage) "10-458_imgIcon${icons[index]}Active" else "15-925_imgIcon${icons[index]}", label, tint = navInk)
+                            // Tab Bar 10:458 : icône pleine pour l'onglet actif, contour pour les autres.
+                            val active = if (index == pager.currentPage) "Active" else ""
+                            FigmaAsset("10-458_imgIcon${icons[index]}$active", label, tint = navInk)
                             Text(label, fontSize = 11.sp, lineHeight = 14.sp,
                                 fontWeight = if (index == pager.currentPage) FontWeight.Bold else FontWeight.SemiBold, color = navInk)
                         }

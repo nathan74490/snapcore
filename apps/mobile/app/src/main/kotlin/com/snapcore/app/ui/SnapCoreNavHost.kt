@@ -86,7 +86,8 @@ private val HOME_TAB_SCREENS = listOf("Chat", "Camera", "Stories")
 @Serializable private data class PaywallRoute(val returnedFromCheckout: Boolean = false)
 // authorId = null : sa propre story.
 @Serializable private data class StoryPlayerRoute(val title: String, val authorId: String?, val startItemId: String? = null)
-@Serializable private data class ConversationRoute(val friendId: String, val username: String, val photoUrl: String?)
+// openSnapId : snap à lire dès l'ouverture, touché depuis la liste des chats.
+@Serializable private data class ConversationRoute(val friendId: String, val username: String, val photoUrl: String?, val firstName: String? = null, val openSnapId: String? = null)
 
 // Le média capturé transite par son chemin dans le cache privé de l'app (ADR-011).
 @Serializable private data class PreviewRoute(val path: String, val kind: MediaKind)
@@ -217,19 +218,19 @@ fun SnapCoreNavHost(
                     onOpenProfile = { navController.navigate(ProfileRoute) },
                     onOpenFriends = { navController.navigate(FriendsRoute) },
                     onCaptured = { media -> navController.navigate(PreviewRoute(media.file.absolutePath, media.kind)) },
-                    onOpenConversation = { f ->
+                    onOpenConversation = { f, snapId ->
                         if (!openingChat) {
                             openingChat = true
                             navigationScope.launch {
                                 chatBackdrop = runCatching { homeLayer.toImageBitmap() }.getOrNull()
                                 swipeDismissed = false
-                                navController.navigate(ConversationRoute(f.id, f.username, f.photoUrl))
+                                navController.navigate(ConversationRoute(f.id, f.username, f.photoUrl, f.firstName, snapId))
                                 openingChat = false
                             }
                         }
                     },
                     onOpenMyStory = { navController.navigate(MyStoryRoute) },
-                    onPlayStory = { story -> navController.navigate(StoryPlayerRoute(story.author.username, story.author.id)) },
+                    onPlayStory = { story -> navController.navigate(StoryPlayerRoute(story.author.displayName, story.author.id)) },
                 )
             }
         }
@@ -263,12 +264,13 @@ fun SnapCoreNavHost(
             val me = account
             if (me == null) StartScreen(onSession = ::go)
             else ConversationScreen(
-                Friend(route.friendId, route.username, route.photoUrl),
+                Friend(route.friendId, route.username, route.photoUrl, route.firstName),
                 me.id,
                 backdrop = chatBackdrop,
                 onSwipeBack = { swipeDismissed = true; navController.popBackStack() },
                 onBack = navController::popBackStack,
                 onOpenPlus = { navController.navigate(PaywallRoute()) },
+                openSnapId = route.openSnapId,
             )
         }
         composable<MyStoryRoute> {

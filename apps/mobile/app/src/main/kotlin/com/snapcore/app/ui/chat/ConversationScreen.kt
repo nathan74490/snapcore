@@ -12,6 +12,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import com.snapcore.app.ui.components.FigmaAsset
@@ -68,15 +70,17 @@ import com.snapcore.app.ui.theme.SnapColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit, backdrop: ImageBitmap? = null, onSwipeBack: () -> Unit = onBack) {
-    val vm = containerViewModel { ConversationViewModel(friend, myId, it.chat, it.realtime.events) }
+fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit, backdrop: ImageBitmap? = null, onSwipeBack: () -> Unit = onBack, openSnapId: String? = null) {
+    val vm = containerViewModel { ConversationViewModel(friend, myId, it.chat, it.realtime.events, openSnapId) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val composerFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     // Le clavier arrive après le panneau : aucune variation de largeur pendant le glissement.
+    // Ouvert sur un snap : pas de clavier par-dessus la lecture.
     LaunchedEffect(friend.id, lifecycleOwner) {
+        if (openSnapId != null) return@LaunchedEffect
         lifecycleOwner.lifecycle.withResumed {
             composerFocus.requestFocus()
             keyboard?.show()
@@ -113,8 +117,8 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                 Column(Modifier.background(Color.White).statusBarsPadding()) {
                     Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBack) { FigmaAsset("15-1124_imgIconChevronLeft", "Retour") }
-                        Avatar(friend.username, friend.photoUrl, 48.dp)
-                        Text(friend.username, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                        Avatar(friend.displayName, friend.photoUrl, 48.dp)
+                        Text(friend.displayName, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp).weight(1f))
                     }
                     HorizontalDivider(color = SnapColors.Border, thickness = .5.dp)
                 }
@@ -130,14 +134,14 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
 
                     BasicTextField(value = state.draft, onValueChange = vm::onDraft,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = { if(state.draft.isNotBlank() && !state.sending) vm.send() }),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { if(state.draft.isNotBlank()) vm.send() }),
                         maxLines = 4,
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue),
                         modifier = Modifier.focusRequester(composerFocus).weight(1f).heightIn(min = 40.dp).background(SnapColors.Control, RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
                         decorationBox = { field -> Box { if(state.draft.isEmpty()) Text("Envoyer un Chat", color = SnapColors.Muted, style = MaterialTheme.typography.bodyLarge); field() } })
                     // Grisé tant qu'il n'y a rien à envoyer : la teinte suit l'état, pas seulement le clic.
-                    val canSend = state.draft.isNotBlank() && !state.sending
+                    val canSend = state.draft.isNotBlank()
                     IconButton(onClick = vm::send, enabled = canSend) {
                         Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = if (canSend) SnapColors.ChatBlue else SnapColors.Disabled)
                     }
@@ -155,7 +159,7 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                 ) {
                     items(state.messages, key = { it.id }) { message ->
-                        MessageRow(message, myId, friend.username) { vm.open(message) }
+                        MessageRow(message, myId, friend.displayName) { vm.open(message) }
                     }
                 }
             }
@@ -163,9 +167,11 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
 
     }
 
+    // Snap ouvert depuis la liste des chats : le fermer y ramène directement.
+    val closeViewer = { vm.closeViewer(); if (openSnapId != null) onBack() }
     state.viewer?.let { viewer ->
-        BackHandler(onBack = vm::closeViewer)
-        SnapViewer(viewer, onClose = vm::closeViewer)
+        BackHandler(onBack = closeViewer)
+        SnapViewer(viewer, onClose = closeViewer)
     }
 }
 
@@ -204,6 +210,7 @@ private fun MessageRow(message: ChatMessage, myId: String, friendName: String, o
                 message.content.orEmpty(),
                 modifier = Modifier
                     .widthIn(max = 280.dp)
+                    .alpha(if (message.pending) .6f else 1f)
                     .background(if (mine) Color(0x1FF23C57) else Color(0x1F0EADFF), RoundedCornerShape(12.dp))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )

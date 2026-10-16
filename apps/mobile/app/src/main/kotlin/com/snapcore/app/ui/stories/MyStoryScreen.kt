@@ -111,8 +111,8 @@ fun MyStoryScreen(onBack: () -> Unit, onPlay: (StoryItem) -> Unit) {
                     else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         viewers.forEach { friend ->
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Avatar(friend.username, friend.photoUrl, size = 32.dp)
-                                Text(friend.username)
+                                Avatar(friend.displayName, friend.photoUrl, size = 32.dp)
+                                Text(friend.displayName)
                             }
                         }
                     }

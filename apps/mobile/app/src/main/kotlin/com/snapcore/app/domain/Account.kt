@@ -11,12 +11,16 @@ data class Account(
     val isPremium: Boolean,
     /** Fin de la période SnapCore+ payée (ADR-025) ; null si jamais abonné. */
     val premiumUntil: Instant? = null,
-)
+    /** Absent pour les comptes créés avant l'ajout du prénom. */
+    val firstName: String? = null,
+) {
+    val displayName get() = firstName ?: username
+}
 
 // Données saisies à l'inscription, conservées localement jusqu'à ce que POST /auth/register
 // réussisse : si l'app est fermée entre la création du compte Firebase et cet appel, elle le
 // rejoue au lancement suivant (ADR-015).
-data class PendingRegistration(val username: String, val phoneNumber: String?)
+data class PendingRegistration(val username: String, val phoneNumber: String?, val firstName: String = "")
 
 // Mêmes règles que le backend (apps/backend/src/modules/identity/domain) : la validation côté
 // app n'est qu'un confort, le backend reste la référence.
@@ -32,6 +36,14 @@ object AccountRules {
     fun usernameError(raw: String): String? =
         if (USERNAME.matches(normalizeUsername(raw))) null
         else "3 à 15 caractères, commence par une lettre (lettres, chiffres, . _ -)"
+
+    // Même règle que le backend (identity/domain/first-name.ts).
+    private val FIRST_NAME = Regex("""^(?=.*\p{L})[\p{L} '’-]{1,30}$""")
+
+    fun normalizeFirstName(raw: String) = raw.trim().replace(Regex("""\s+"""), " ")
+
+    fun firstNameError(raw: String): String? =
+        if (FIRST_NAME.matches(normalizeFirstName(raw))) null else "1 à 30 caractères : lettres, espaces, apostrophes ou tirets"
 
     fun normalizePhone(raw: String) = raw.replace(Regex("[\\s.\\-()]"), "")
 

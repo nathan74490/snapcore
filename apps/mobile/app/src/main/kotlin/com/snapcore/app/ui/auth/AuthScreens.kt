@@ -175,20 +175,30 @@ fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
     LaunchedEffect(state.session) { state.session?.let(onSession) }
 
     val title = when (state.step) {
-        1 -> "Choisis ton pseudo"
+        1 -> "Comment tu t'appelles ?"
         2 -> "Tes coordonnées"
         else -> if (state.firebaseAccountCreated) "Finalise ton inscription" else "Choisis un mot de passe"
     }
     FormScaffold(title, onBack = { if (state.step == 1) onBack() else vm.back() }, progress = state.step / SignUpState.STEPS.toFloat(),
         action = { PrimaryButton(if (state.step < SignUpState.STEPS) "Continuer" else "S'inscrire", vm::next, enabled = state.canContinue, loading = state.loading) }) {
         when (state.step) {
-            1 -> SnapTextField(
-                state.username,
-                vm::onUsername,
-                "Pseudo",
-                error = state.usernameError,
-                supporting = "Tu pourras le changer plus tard",
-            )
+            1 -> {
+                SnapTextField(
+                    state.firstName,
+                    vm::onFirstName,
+                    "Prénom",
+                    error = state.firstNameError,
+                    supporting = "C'est ce que tes amis verront",
+                    capitalizeWords = true,
+                )
+                SnapTextField(
+                    state.username,
+                    vm::onUsername,
+                    "Pseudo",
+                    error = state.usernameError,
+                    supporting = "Tu pourras le changer plus tard",
+                )
+            }
             2 -> {
                 SnapTextField(
                     state.email,
@@ -232,6 +242,7 @@ fun CompleteRegistrationScreen(onSession: (Session) -> Unit) {
 
     FormScaffold("Termine ton inscription", onBack = vm::signOut) {
         Text("Connecté avec ${vm.email ?: "ton compte"}", color = SnapColors.Grey, textAlign = TextAlign.Center)
+        SnapTextField(state.firstName, vm::onFirstName, "Prénom", error = state.firstNameError, capitalizeWords = true)
         SnapTextField(state.username, vm::onUsername, "Pseudo", error = state.usernameError)
         SnapTextField(state.phone, vm::onPhone, "Téléphone (facultatif)", error = state.phoneError, keyboardType = KeyboardType.Phone)
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

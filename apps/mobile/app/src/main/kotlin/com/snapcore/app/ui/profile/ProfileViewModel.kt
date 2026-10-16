@@ -18,7 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class EditableField { USERNAME, PHONE }
+enum class EditableField(val title: String) {
+    FIRST_NAME("Modifier le prénom"), USERNAME("Modifier le pseudo"), PHONE("Modifier le téléphone")
+}
 
 data class ProfileState(
     val account: Account? = null,
@@ -63,7 +65,11 @@ class ProfileViewModel(
 
     fun startEditing(field: EditableField) {
         val account = _state.value.account ?: return
-        val current = if (field == EditableField.USERNAME) account.username else account.phoneNumber.orEmpty()
+        val current = when (field) {
+            EditableField.FIRST_NAME -> account.firstName.orEmpty()
+            EditableField.USERNAME -> account.username
+            EditableField.PHONE -> account.phoneNumber.orEmpty()
+        }
         _state.update { it.copy(editing = field, draft = current, draftError = null) }
     }
 
@@ -74,7 +80,11 @@ class ProfileViewModel(
     fun saveEditing() {
         val s = _state.value
         val field = s.editing ?: return
-        val error = if (field == EditableField.USERNAME) AccountRules.usernameError(s.draft) else AccountRules.phoneError(s.draft)
+        val error = when (field) {
+            EditableField.FIRST_NAME -> AccountRules.firstNameError(s.draft)
+            EditableField.USERNAME -> AccountRules.usernameError(s.draft)
+            EditableField.PHONE -> AccountRules.phoneError(s.draft)
+        }
         if (error != null || (field == EditableField.PHONE && s.draft.isBlank())) {
             _state.update { it.copy(draftError = error ?: "Numéro de téléphone requis") }
             return
@@ -82,10 +92,11 @@ class ProfileViewModel(
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             try {
-                val updated = if (field == EditableField.USERNAME) {
-                    accounts.updateProfile(username = AccountRules.normalizeUsername(s.draft), phoneNumber = null)
-                } else {
-                    accounts.updateProfile(username = null, phoneNumber = AccountRules.normalizePhone(s.draft))
+                val updated = when (field) {
+                    EditableField.FIRST_NAME ->
+                        accounts.updateProfile(username = null, phoneNumber = null, firstName = AccountRules.normalizeFirstName(s.draft))
+                    EditableField.USERNAME -> accounts.updateProfile(username = AccountRules.normalizeUsername(s.draft), phoneNumber = null)
+                    EditableField.PHONE -> accounts.updateProfile(username = null, phoneNumber = AccountRules.normalizePhone(s.draft))
                 }
                 _state.update { it.copy(account = updated, editing = null, saving = false, message = "Profil mis à jour") }
             } catch (e: ApiException) {

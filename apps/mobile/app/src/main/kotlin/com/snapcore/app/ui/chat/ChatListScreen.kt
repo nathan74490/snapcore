@@ -26,11 +26,14 @@ import com.snapcore.app.ui.components.*
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
 
+// Toutes les icônes de la liste à la taille de celles de l'en-tête (24).
+private val ICON = 24.dp
+
 private fun Conversation.unread(myId: String) = lastMessage?.let { !it.isFrom(myId) && it.openedAt == null && !it.mediaPurged } == true
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> Unit, modifier: Modifier = Modifier) {
+fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAddFriends: () -> Unit, modifier: Modifier = Modifier) {
     val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events) }
     val state by vm.state.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableIntStateOf(0) }
@@ -38,13 +41,15 @@ fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> U
     val visible = state.conversations.filter { when(filter) { 1 -> it.unread(myId); 2 -> it.lastMessage == null; else -> true } }
     SnapRefresh(state.loading && state.conversations.isNotEmpty(), vm::refresh, modifier.fillMaxSize()) {
       Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().height(52.dp).padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Même marge latérale (12) que l'en-tête et les lignes de conversation.
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("Tous", "Non lus", "Nouveaux").forEachIndexed { index, label ->
                 Row(Modifier.clip(RoundedCornerShape(18.dp)).background(if(filter == index) SnapColors.Selected else Color.Transparent)
-                    .clickable { filter = index }.padding(horizontal = 14.dp, vertical = 6.dp),
+                    .clickable { filter = index }.heightIn(min = 36.dp).padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(label, fontSize = 17.sp, color = if(filter == index) Color(0xFF0A6EA8) else SnapColors.Grey)
+                    Text(label, fontSize = 16.sp, fontWeight = if(filter == index) FontWeight.Bold else FontWeight.SemiBold,
+                        color = if(filter == index) Color(0xFF0A6EA8) else SnapColors.Grey)
                     if(index == 1 && unread > 0) Box(Modifier.size(22.dp).background(Color(0xFF0D4B70), CircleShape), Alignment.Center) {
                         Text(unread.toString(), color = Color.White, style = MaterialTheme.typography.labelMedium)
                     }
@@ -58,17 +63,19 @@ fun ChatListScreen(myId: String, onOpen: (Friend) -> Unit, onAddFriends: () -> U
                     Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }
                 }
                 items(visible, key = { it.friend.id }) { conversation ->
-                    ConversationRow(conversation, myId) { onOpen(conversation.friend) }
+                    // Nouveau snap reçu : il s'ouvre directement, comme dans Snapchat.
+                    val snap = conversation.lastMessage?.takeIf { canTryToOpen(it, myId) && it.openedAt == null }
+                    ConversationRow(conversation, myId) { onOpen(conversation.friend, snap?.id) }
                 }
                 if(visible.isEmpty() && !state.loading) item {
                     Text(if(filter == 1) "Tous tes chats sont lus." else if(filter == 2) "Aucune nouvelle conversation." else "Retrouve tes amis ici pour commencer à discuter.",
                         modifier = Modifier.fillMaxWidth().padding(24.dp), color = SnapColors.Grey, textAlign = TextAlign.Center)
                 }
                 item {
-                    Text("Ajouter des amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 10.dp, top = 24.dp, bottom = 12.dp))
-                    Row(Modifier.fillMaxWidth().clickable(onClick = onAddFriends).padding(horizontal = 16.dp, vertical = 12.dp),
+                    Text("Ajouter des amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 24.dp, bottom = 8.dp))
+                    Row(Modifier.fillMaxWidth().clickable(onClick = onAddFriends).padding(horizontal = 12.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.size(48.dp).background(SnapColors.Control, CircleShape), Alignment.Center) { FigmaAsset("17-1301_imgIconAddFriend") }
+                        Box(Modifier.size(48.dp).background(SnapColors.Control, CircleShape), Alignment.Center) { FigmaAsset("17-1301_imgIconAddFriend", modifier = Modifier.size(ICON)) }
                         Column(Modifier.weight(1f)) {
                             Text("Trouver mes amis", style = MaterialTheme.typography.bodyLarge)
                             Text("Rechercher un pseudo", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
@@ -92,11 +99,11 @@ private fun ConversationRow(conversation: Conversation, myId: String, onClick: (
     val unread = conversation.unread(myId)
     // Chat Row 11:281 : nom toujours en Regular 18 ; seul le statut non lu passe en gras et en couleur,
     // l'horodatage reste à part en gris clair.
-    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick).padding(start = 10.dp, end = 16.dp),
+    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Avatar(conversation.friend.username, conversation.friend.photoUrl, 48.dp)
+        Avatar(conversation.friend.displayName, conversation.friend.photoUrl, 48.dp)
         Column(Modifier.weight(1f)) {
-            Text(conversation.friend.username, fontSize = 18.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(conversation.friend.displayName, fontSize = 18.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if(last != null) {
                     val status = statusOf(last, myId)
@@ -108,7 +115,7 @@ private fun ConversationRow(conversation: Conversation, myId: String, onClick: (
                 } else Text("Appuie pour discuter", color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        FigmaAsset("15-925_imgIconChat2", tint = SnapColors.Ink)
+        FigmaAsset("15-925_imgIconChat2", modifier = Modifier.size(ICON), tint = SnapColors.Ink)
     }
     HorizontalDivider(color = SnapColors.Border, thickness = 1.dp)
 }

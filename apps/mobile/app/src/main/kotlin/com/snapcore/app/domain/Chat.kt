@@ -13,6 +13,8 @@ data class ChatMessage(
     val createdAt: Instant,
     val openedAt: Instant?,
     val mediaPurged: Boolean,
+    /** Chat affiché avant la réponse du backend (interface optimiste), jamais reçu de l'API. */
+    val pending: Boolean = false,
 ) {
     val isSnap get() = type != ChatContentType.TEXT
     fun isFrom(userId: String) = senderId == userId
@@ -47,6 +49,7 @@ fun statusOf(message: ChatMessage, myId: String): MessageStatus {
         ChatContentType.TEXT -> StatusColor.BLUE
     }
     val label = when {
+        message.pending -> "Envoi…"
         sent && opened -> "Ouvert"
         sent -> "Envoyé"
         opened -> "Reçu"

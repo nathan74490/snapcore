@@ -122,17 +122,18 @@ data class UserDto(
     val phoneNumber: String? = null,
     val email: String? = null,
     val premiumUntil: String? = null,
+    val firstName: String? = null,
 )
 
 @Serializable
 data class CheckoutDto(val url: String)
 
 @Serializable
-data class RegisterRequest(val username: String, val phoneNumber: String? = null)
+data class RegisterRequest(val username: String, val firstName: String, val phoneNumber: String? = null)
 
 // Champs absents = inchangés ; `phoneNumber = null` explicite n'est pas utilisé en V1.
 @Serializable
-data class UpdateProfileRequest(val username: String? = null, val phoneNumber: String? = null)
+data class UpdateProfileRequest(val username: String? = null, val phoneNumber: String? = null, val firstName: String? = null)
 
 // Corps d'erreur renvoyé par DomainExceptionFilter côté backend.
 @Serializable
@@ -164,7 +165,7 @@ data class MessageDto(val id: String, val contentType: String, val createdAt: St
 data class OwnStoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewCount: Int)
 
 @Serializable
-data class PublicProfileDto(val id: String, val username: String, val profilePhotoUrl: String? = null)
+data class PublicProfileDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val firstName: String? = null)
 
 @Serializable
 data class FriendshipItemDto(
@@ -176,7 +177,7 @@ data class FriendshipItemDto(
 )
 
 @Serializable
-data class UserSearchResultDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val relation: String)
+data class UserSearchResultDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val relation: String, val firstName: String? = null)
 
 @Serializable
 data class FriendRequestBody(val username: String)

@@ -17,10 +17,10 @@ class ApiAccountService(private val api: SnapCoreApi) : AccountService {
     override suspend fun me() = apiCall { api.me() }.toAccount()
 
     override suspend fun register(registration: PendingRegistration) =
-        apiCall { api.register(RegisterRequest(registration.username, registration.phoneNumber)) }.toAccount()
+        apiCall { api.register(RegisterRequest(registration.username, registration.firstName, registration.phoneNumber)) }.toAccount()
 
-    override suspend fun updateProfile(username: String?, phoneNumber: String?) =
-        apiCall { api.updateProfile(UpdateProfileRequest(username, phoneNumber)) }.toAccount()
+    override suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String?) =
+        apiCall { api.updateProfile(UpdateProfileRequest(username, phoneNumber, firstName)) }.toAccount()
 
     override suspend fun deleteAccount() = apiCall { api.deleteAccount() }
 
@@ -39,6 +39,7 @@ private fun UserDto.toAccount(): Account {
         profilePhotoUrl = profilePhotoUrl,
         isPremium = isPlusActive(subscriptionTier, until, Instant.now()),
         premiumUntil = until,
+        firstName = firstName,
     )
 }
 

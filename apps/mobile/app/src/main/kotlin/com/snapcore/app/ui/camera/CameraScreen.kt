@@ -29,10 +29,6 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.FlashOff
-import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -249,10 +245,11 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
     Box(Modifier.fillMaxSize().statusBarsPadding()) {
         Column(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             IconButton(onClick = { front = !front }, enabled = recording == null) {
-                Icon(Icons.Filled.Cameraswitch, "Changer de caméra", tint = Color.White)
+                FigmaAsset("14-588_imgIconFlip", "Changer de caméra", tint = Color.White)
             }
             IconButton(onClick = { flash = !flash }) {
-                if(flash) Icon(Icons.Filled.FlashOn, "Désactiver le flash", tint = Color.White)
+                // Mêmes icônes Figma de 30 que la recherche et l'ajout d'amis : la taille ne change pas au clic.
+                if(flash) FigmaAsset("14-588_imgIconFlashOn", "Désactiver le flash", tint = Color.White)
                 else FigmaAsset("14-588_imgIconFlashOff", "Activer le flash", tint = Color.White)
             }
         }
@@ -298,14 +295,26 @@ private fun CameraContent(onCaptured: (CapturedMedia) -> Unit, lensMode: Boolean
             // En mode Lens, les libellés s'effacent sans changer la mise en page : le carrousel ne bouge pas.
             val labelsAlpha by animateFloatAsState(if (lensMode) 0f else 1f, label = "labels")
             Column(Modifier.graphicsLayer { alpha = labelsAlpha }, horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Snap", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("Vidéo", color = if(recording != null) SnapColors.SnapRed else Color(0xFF9B9B9B), fontSize = 18.sp)
+                // Le mode en cours est en gras avec un point dessous : Snap au repos, Vidéo pendant l'enregistrement.
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+                    CaptureModeLabel("Snap", active = recording == null, dot = Color.White)
+                    CaptureModeLabel("Vidéo", active = recording != null, dot = SnapColors.SnapRed)
                 }
-                Text("Maintenir pour filmer", color = Color.White.copy(alpha = .7f), fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                Text(if (recording != null) "Relâche pour arrêter" else "Appuie pour une photo, maintiens pour filmer",
+                    color = Color.White.copy(alpha = .8f), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
             }
         }
 
+    }
+}
+
+@Composable
+private fun CaptureModeLabel(label: String, active: Boolean, dot: Color) {
+    val shadow = TextStyle(shadow = Shadow(Color.Black.copy(alpha = .5f), blurRadius = 6f))
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, color = if (active) Color.White else Color.White.copy(alpha = .75f), fontSize = 17.sp,
+            fontWeight = if (active) FontWeight.Bold else FontWeight.SemiBold, style = shadow)
+        Box(Modifier.padding(top = 3.dp).size(5.dp).background(if (active) dot else Color.Transparent, CircleShape))
     }
 }
 

@@ -61,10 +61,11 @@ class FakeAccounts : AccountService {
             .also { account = it }
     }
 
-    override suspend fun updateProfile(username: String?, phoneNumber: String?): Account {
+    override suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String?): Account {
         if (username != null && username in takenUsernames) throw ApiException(409, "Ce pseudo est déjà pris")
         val current = account!!
-        return current.copy(username = username ?: current.username, phoneNumber = phoneNumber ?: current.phoneNumber)
+        return current.copy(username = username ?: current.username, phoneNumber = phoneNumber ?: current.phoneNumber,
+            firstName = firstName ?: current.firstName)
             .also { account = it }
     }
 

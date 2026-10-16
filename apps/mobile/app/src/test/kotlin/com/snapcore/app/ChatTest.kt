@@ -87,13 +87,14 @@ class StatusIconTest {
 class FakeChat : ChatService {
     var messages = mutableListOf<ChatMessage>()
     var markReadCalls = 0
+    var sendError: Exception? = null
     var openResult: SnapOpenResult = SnapOpenResult.Ready("https://r2.test/snap", ChatContentType.SNAP_PHOTO)
     val opened = mutableListOf<String>()
 
     override suspend fun conversations() = emptyList<Conversation>()
     override suspend fun messages(friendId: String) = messages.toList()
     override suspend fun sendText(friendId: String, content: String) =
-        message(ChatContentType.TEXT, ME, id = "sent-${messages.size}").copy(content = content).also { messages.add(0, it) }
+        sendError?.let { throw it } ?: message(ChatContentType.TEXT, ME, id = "sent-${messages.size}").copy(content = content).also { messages.add(0, it) }
     override suspend fun markRead(friendId: String) {
         markReadCalls++
     }
@@ -185,5 +186,48 @@ class ConversationViewModelTest {
 
         assertEquals("coucou", vm.state.value.messages.first().content)
         assertEquals("", vm.state.value.draft)
+    }
+
+    @Test
+    fun `un Chat envoye s'affiche tout de suite, avant la reponse du backend`() = runTest(dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onDraft("salut")
+        vm.send()
+
+        val shown = vm.state.value.messages.first()
+        assertEquals("salut", shown.content)
+        assertTrue(shown.pending)
+        assertEquals("", vm.state.value.draft)
+
+        advanceUntilIdle()
+        assertFalse(vm.state.value.messages.first().pending)
+        assertEquals(1, vm.state.value.messages.size)
+    }
+
+    @Test
+    fun `echec d'envoi, le Chat disparait et le texte revient dans le champ`() = runTest(dispatcher) {
+        chat.sendError = Exception("Réseau indisponible")
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onDraft("salut")
+        vm.send()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.messages.isEmpty())
+        assertEquals("salut", vm.state.value.draft)
+        assertEquals("Réseau indisponible", vm.state.value.error)
+    }
+
+    @Test
+    fun `ouverte depuis la liste, la conversation lance la lecture du nouveau snap`() = runTest(dispatcher) {
+        val snap = message(ChatContentType.SNAP_PHOTO, FRIEND)
+        chat.messages += snap
+        val vm = ConversationViewModel(Friend(FRIEND, "testeur", null), ME, chat, events, openOnLoad = snap.id)
+        assertEquals(SnapViewerState.Loading, vm.state.value.viewer)
+        advanceUntilIdle()
+
+        assertEquals(listOf(snap.id), chat.opened)
+        assertTrue(vm.state.value.viewer is SnapViewerState.Showing)
     }
 }

@@ -9,7 +9,7 @@ import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.sp
 import com.snapcore.app.R
 
-/** Tokens from Snapchat iOS – Dec 2024, Figma file 3FKjYfJBszywgA8U2p4vUt. */
+/** Tokens from Snapchat iOS (Dec 2024), Figma file 3FKjYfJBszywgA8U2p4vUt. */
 object SnapColors {
     val Yellow = Color(0xFFFFFC00)
     val Black = Color(0xFF000000)

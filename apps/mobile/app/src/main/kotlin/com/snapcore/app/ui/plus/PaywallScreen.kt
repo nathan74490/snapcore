@@ -156,7 +156,7 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                 else -> {
                     // Button 9:43, style Yellow : pilule 50pt, texte #16191C.
                     PrimaryButton(
-                        "S'abonner — ${SnapCorePlus.PRICE_LABEL}", vm::subscribe,
+                        "S'abonner pour ${SnapCorePlus.PRICE_LABEL}", vm::subscribe,
                         loading = state.opening, container = SnapColors.Yellow, content = SnapColors.Ink,
                     )
                     Text(

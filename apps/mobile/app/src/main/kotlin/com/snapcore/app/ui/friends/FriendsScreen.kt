@@ -1,5 +1,6 @@
 package com.snapcore.app.ui.friends
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -135,9 +136,13 @@ private fun PersonRow(user: Friend, actions: @Composable () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Avatar(user.username, user.photoUrl, size = 56.dp)
-        Text(user.username, style = MaterialTheme.typography.bodyLarge, maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Avatar(user.displayName, user.photoUrl, size = 56.dp)
+        // Prénom en titre ; le pseudo reste visible, c'est lui qu'on recherche pour ajouter un ami.
+        Column(Modifier.weight(1f)) {
+            Text(user.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (user.firstName != null) Text("@${user.username}", style = MaterialTheme.typography.bodySmall, color = SnapColors.Grey, maxLines = 1)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
     }
 }

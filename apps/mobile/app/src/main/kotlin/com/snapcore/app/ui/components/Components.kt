@@ -33,6 +33,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
@@ -80,6 +81,7 @@ fun SnapTextField(
     password: Boolean = false,
     enabled: Boolean = true,
     supporting: String? = null,
+    capitalizeWords: Boolean = false,
 ) {
 
     Column(modifier.fillMaxWidth()) {
@@ -91,7 +93,8 @@ fun SnapTextField(
         BasicTextField(value, onValueChange, singleLine = true, enabled = enabled,
             textStyle = androidx.compose.material3.MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
             visualTransformation = if(password) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(keyboardType = if(password) KeyboardType.Password else keyboardType),
+            keyboardOptions = KeyboardOptions(keyboardType = if(password) KeyboardType.Password else keyboardType,
+                capitalization = if(capitalizeWords) KeyboardCapitalization.Words else KeyboardCapitalization.None),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue),
             modifier = Modifier.fillMaxWidth().height(50.dp).onFocusChanged { focused = it.isFocused }
                 .border(if(focused) 1.5.dp else 1.dp, if(error != null) SnapColors.SnapRed else if(focused) SnapColors.Grey else SnapColors.Field, RoundedCornerShape(8.dp))
