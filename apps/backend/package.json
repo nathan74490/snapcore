@@ -6,7 +6,8 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "lint": "tsc --noEmit -p tsconfig.json",
+    "seed:demo": "tsc -p tsconfig.scripts.json && node --enable-source-maps dist-scripts/scripts/seed-demo.js",
+    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json",
     "test": "jest",
     "test:integration": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --runInBand --testRegex \"\\.int-spec\\.ts$\" --setupFiles \"<rootDir>/test/integration-setup.ts\" --globalSetup \"<rootDir>/test/integration-global-setup.ts\""
   },

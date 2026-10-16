@@ -14,6 +14,19 @@ npm run dev -w @snapcore/backend
 Firebase Admin (ADR-015) : renseigner `FIREBASE_SERVICE_ACCOUNT_PATH` (JSON du compte de
 service du projet Firebase) ou `GOOGLE_APPLICATION_CREDENTIALS`.
 
+## Données de démo
+
+```bash
+npm run seed:demo -w @snapcore/backend    # backend de dev lancé à côté (ses workers traitent les purges)
+```
+
+`scripts/seed-demo.ts` peuple la base pour tester l'app avec les comptes `nathan` et `rober` (qui doivent
+exister) : 8 comptes de démo (Firebase email/mot de passe en `@snapcore.test`, mot de passe commun
+`SnapDemo2026!`), amitiés, 2 demandes en attente vers nathan, stories avec vignette, conversations
+antidatées, snaps non ouverts et chats non lus. Tout passe par les vrais cas d'usage (upload pré-signé
+vers R2 puis promotion, purges programmées). Idempotent, ne supprime jamais rien ; seuls les envois
+récents sont notifiés (push / temps réel). Médias générés avec ffmpeg (`FFMPEG_PATH`, sinon le PATH).
+
 ## Tests
 
 ```bash
