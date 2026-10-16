@@ -29,3 +29,4 @@ Liste des Architecture Decision Records du projet.
 | [ADR-023](./ADR-023-registre-anomalies.md) | Registre des anomalies détectées hors du périmètre en cours, à traiter plus tard | Accepté |
 | [ADR-024](./ADR-024-lenses-camera-kit.md) | Lenses visage en direct : Snap Camera Kit sur l'écran caméra | Accepté |
 | [ADR-025](./ADR-025-paywall-snapcoreplus.md) | Paywall SnapCore+ : Web Purchase Link RevenueCat, webhook vers le backend | Accepté |
+| [ADR-026](./ADR-026-vignettes-stories.md) | Vignettes des stories : fabriquées par l'app, servies par le backend sans compter de vue | Accepté |

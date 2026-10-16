@@ -80,6 +80,7 @@ export class ModerationUseCases {
     if (!item) throw new NotFoundError("Élément de story introuvable");
 
     await this.storage.delete({ area: "private", key: item.mediaKey });
+    if (item.thumbnailKey) await this.storage.delete({ area: "private", key: item.thumbnailKey });
     await this.stories.delete(item.id);
     await this.bestEffort(`nettoyage des vues de ${item.id}`, () => this.storyViews.clear(item.id));
     await this.bestEffort(`retrait du job de purge ${item.id}`, () => this.storyPurge.cancel(item.id));

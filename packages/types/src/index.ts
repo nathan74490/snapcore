@@ -154,6 +154,9 @@ export interface StoryFeedEntry {
   author: PublicUserProfile;
   items: StoryItemView[];
   hasUnviewed: boolean;
+  // Vignette du premier élément non vu (sinon du plus récent) ayant une vignette, URL
+  // pré-signée courte ; absente si aucun élément n'en a. Ne compte aucune vue (ADR-026).
+  thumbnailUrl?: string;
 }
 
 // Élément de ma propre story, avec le nombre de vues (voir ADR-013).
@@ -163,6 +166,7 @@ export interface OwnStoryItemView {
   createdAt: string;
   expiresAt: string;
   viewCount: number;
+  thumbnailUrl?: string;    // vignette pré-signée, absente sans vignette (ADR-026)
 }
 
 // Compte membre de l'équipe Alpvengers avec accès au backoffice, entièrement

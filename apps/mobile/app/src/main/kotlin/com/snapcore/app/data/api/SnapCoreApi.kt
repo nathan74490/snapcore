@@ -156,13 +156,13 @@ data class UploadInstructions(
 data class SendSnapRequest(val uploadId: String, val contentType: String)
 
 @Serializable
-data class PublishStoryRequest(val uploadId: String, val contentType: String)
+data class PublishStoryRequest(val uploadId: String, val contentType: String, val thumbnailUploadId: String? = null)
 
 @Serializable
 data class MessageDto(val id: String, val contentType: String, val createdAt: String)
 
 @Serializable
-data class OwnStoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewCount: Int)
+data class OwnStoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewCount: Int, val thumbnailUrl: String? = null)
 
 @Serializable
 data class PublicProfileDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val firstName: String? = null)
@@ -208,7 +208,7 @@ data class SnapViewUrlDto(val url: String, val expiresAt: String)
 data class StoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewed: Boolean)
 
 @Serializable
-data class StoryFeedEntryDto(val author: PublicProfileDto, val items: List<StoryItemDto>, val hasUnviewed: Boolean)
+data class StoryFeedEntryDto(val author: PublicProfileDto, val items: List<StoryItemDto>, val hasUnviewed: Boolean, val thumbnailUrl: String? = null)
 
 @Serializable
 data class DeviceTokenRequest(val token: String)

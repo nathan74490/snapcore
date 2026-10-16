@@ -1,6 +1,7 @@
 package com.snapcore.app.domain
 
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 
 // Type de média capturé, et sa correspondance avec les contrats du backend (ADR-009, ADR-013, ADR-016).
 enum class MediaKind(
@@ -38,12 +39,21 @@ interface MediaUploader {
 
 interface SnapService {
     suspend fun sendSnap(friendId: String, uploadId: String, messageContentType: String)
-    suspend fun publishStory(uploadId: String, storyContentType: String)
+    suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String? = null)
+}
+
+/** Usage d'upload de la vignette d'une story (ADR-026). */
+const val STORY_THUMBNAIL_PURPOSE = "STORY_THUMBNAIL"
+
+/** Petite image JPEG d'une story (photo réduite ou première image de la vidéo), fabriquée sur le téléphone (ADR-026). */
+interface StoryThumbnailMaker {
+    /** @return un fichier temporaire, ou null si le média ne s'y prête pas. */
+    suspend fun make(media: CapturedMedia): File?
 }
 
 // Envoie un média capturé à des amis et/ou à sa story. Un upload par cible : le backend copie
 // chaque upload confirmé vers sa propre clé (messages/<id>, stories/<id>).
-class MediaPublisher(private val uploader: MediaUploader, private val snaps: SnapService) {
+class MediaPublisher(private val uploader: MediaUploader, private val snaps: SnapService, private val thumbnails: StoryThumbnailMaker? = null) {
     suspend fun publish(media: CapturedMedia, targets: Set<SendTarget>): SendReport {
         val succeeded = mutableSetOf<SendTarget>()
         val failed = mutableMapOf<SendTarget, String>()
@@ -56,7 +66,7 @@ class MediaPublisher(private val uploader: MediaUploader, private val snaps: Sna
                     }
                     SendTarget.ToStory -> {
                         val uploadId = uploader.upload(media.file, media.kind.contentType, media.kind.storyUploadPurpose)
-                        snaps.publishStory(uploadId, media.kind.storyContentType)
+                        snaps.publishStory(uploadId, media.kind.storyContentType, uploadThumbnail(media))
                     }
                 }
                 succeeded += target
@@ -67,6 +77,26 @@ class MediaPublisher(private val uploader: MediaUploader, private val snaps: Sna
         // Fichier local supprimé seulement une fois TOUT confirmé ; sinon conservé pour réessayer (ADR-011).
         if (failed.isEmpty()) media.file.delete()
         return SendReport(succeeded, failed)
+    }
+
+    // La vignette n'est qu'un confort d'affichage : sans elle, la story part quand même (ADR-026).
+    private suspend fun uploadThumbnail(media: CapturedMedia): String? {
+        val file = try {
+            thumbnails?.make(media)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } ?: return null
+        return try {
+            uploader.upload(file, "image/jpeg", STORY_THUMBNAIL_PURPOSE)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } finally {
+            file.delete()
+        }
     }
 }
 

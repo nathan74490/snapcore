@@ -82,14 +82,16 @@ describe("Modération (ADR-021)", () => {
     return id;
   }
 
-  async function story(author: UserAccount) {
+  async function story(author: UserAccount, withThumbnail = false) {
     const id = randomUUID();
     storage.simulateUpload(`stories/${id}`, 10, "image/jpeg");
+    if (withThumbnail) storage.simulateUpload(`story-thumbnails/${id}`, 10, "image/jpeg");
     await stories.create({
       id,
       authorId: author.id,
       mediaKey: `stories/${id}`,
       contentType: "PHOTO",
+      thumbnailKey: withThumbnail ? `story-thumbnails/${id}` : null,
       createdAt: clock.now(),
       expiresAt: new Date(clock.now().getTime() + 24 * HOUR),
     });
@@ -156,14 +158,15 @@ describe("Modération (ADR-021)", () => {
     });
   });
 
-  it("suppression d'un élément de story : média, ligne et vues supprimés, job retiré", async () => {
-    const id = await story(alice);
+  it("suppression d'un élément de story : média, vignette, ligne et vues supprimés, job retiré", async () => {
+    const id = await story(alice, true);
     await views.record(id, bob.id);
 
     await moderation.deleteStoryItem(id, MOD, "Violence");
 
     expect(stories.rows.has(id)).toBe(false);
     expect(storage.has({ area: "private", key: `stories/${id}` })).toBe(false);
+    expect(storage.has({ area: "private", key: `story-thumbnails/${id}` })).toBe(false);
     expect(views.sets.has(id)).toBe(false);
     expect(storyPurge.cancelled).toEqual([id]);
   });

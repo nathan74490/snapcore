@@ -42,7 +42,7 @@ export class InMemoryAccountDeletionRepository implements AccountDeletionReposit
       profilePhotoUrl: user.profilePhotoUrl,
       privateKeys: [
         ...messages.flatMap((m) => (m.mediaKey ? [m.mediaKey] : [])),
-        ...stories.map((s) => s.mediaKey),
+        ...stories.flatMap((s) => (s.thumbnailKey ? [s.mediaKey, s.thumbnailKey] : [s.mediaKey])),
       ],
     });
     // Simule un échec de la transaction APRÈS la persistance des clés : rien n'est supprimé.

@@ -141,6 +141,7 @@ model StoryItem {
   author        User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
   mediaKey      String           // clé d'objet R2, lue via URL pré-signée à la demande, jamais via CDN (ADR-013, ADR-016)
   contentType   StoryContentType // voir ADR-013
+  thumbnailKey  String?          // vignette privée story-thumbnails/<id>, fabriquée par l'app ; null sans vignette (ADR-026)
   createdAt     DateTime         @default(now())
   expiresAt     DateTime         // createdAt + 24h ; déclenche le job BullMQ de purge (ADR-017)
 

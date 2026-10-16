@@ -36,7 +36,7 @@ Firebase n'y donne accès. Corps : `{ moderatorId, reason }` (ou `{ moderatorId 
 | POST | `/admin/users/:userId/suspend` | Suspension réversible : invisible des autres, connexion refusée (403), temps réel coupé |
 | POST | `/admin/users/:userId/reactivate` | Réactivation |
 | POST | `/admin/messages/:messageId/redact` | Rédaction : texte ou média vidé (objet R2 supprimé), job de purge retiré, ligne conservée |
-| DELETE | `/admin/stories/:storyItemId` | Suppression d'un élément de story (média, ligne, vues, job de purge) |
+| DELETE | `/admin/stories/:storyItemId` | Suppression d'un élément de story (média, vignette, ligne, vues, job de purge) |
 | POST | `/admin/reports/:reportId/close` | Signalement `RESOLVED` ou `DISMISSED` |
 
 ## Temps réel (Socket.io)
@@ -109,9 +109,9 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | POST | `/conversations/:friendId/messages/snap` | Snap `{ uploadId, contentType }` (upload `SNAP_PHOTO` / `SNAP_VIDEO`) | 009, 016 |
 | POST | `/conversations/:friendId/read` | Marque les Chats reçus comme lus | 009 |
 | POST | `/messages/:messageId/view` | Ouvre un Snap : URL ~1 min, vue unique, grâce 5 min, SnapCore+ | 009 |
-| GET | `/stories` | Stories de mes amis (non vues d'abord) | 013 |
-| GET | `/stories/me` | Ma story + nombre de vues par élément | 013 |
-| POST | `/stories` | Publie un élément `{ uploadId, contentType }` (upload `STORY_PHOTO` / `STORY_VIDEO`) | 013, 016 |
+| GET | `/stories` | Stories de mes amis (non vues d'abord), `thumbnailUrl` de l'anneau sans compter de vue | 013, 026 |
+| GET | `/stories/me` | Ma story + nombre de vues et `thumbnailUrl` par élément | 013, 026 |
+| POST | `/stories` | Publie un élément `{ uploadId, contentType, thumbnailUploadId? }` (upload `STORY_PHOTO` / `STORY_VIDEO`, vignette `STORY_THUMBNAIL` facultative) | 013, 016, 026 |
 | POST | `/stories/:storyId/view` | URL de lecture ~1 min, enregistre la vue | 013 |
 | GET | `/stories/:storyId/viewers` | Qui a vu mon élément (auteur uniquement) | 013 |
 | DELETE | `/stories/:storyId` | Retire un élément avant expiration | 013 |

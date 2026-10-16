@@ -45,13 +45,14 @@ describe("Stories (Postgres, Redis et BullMQ réels)", () => {
     await redis.quit();
   });
 
-  const item = (createdAt: number, lifetimeMs: number): StoryItem => {
+  const item = (createdAt: number, lifetimeMs: number, withThumbnail = false): StoryItem => {
     const id = randomUUID();
     return {
       id,
       authorId,
       mediaKey: `stories/${id}`,
       contentType: "PHOTO",
+      thumbnailKey: withThumbnail ? `story-thumbnails/${id}` : null,
       createdAt: new Date(createdAt),
       expiresAt: new Date(createdAt + lifetimeMs),
     };
@@ -60,12 +61,14 @@ describe("Stories (Postgres, Redis et BullMQ réels)", () => {
   it("ne liste que les éléments non expirés, du plus ancien au plus récent", async () => {
     const now = Date.now();
     const old = await stories.create(item(now - 2000, 60_000));
-    const recent = await stories.create(item(now - 1000, 60_000));
+    const recent = await stories.create(item(now - 1000, 60_000, true));
     const expired = await stories.create(item(now - 90_000, 60_000));
 
     const visible = await stories.listVisibleByAuthors([authorId], new Date(now));
 
     expect(visible.map((s) => s.id)).toEqual([old.id, recent.id]);
+    // thumbnailKey relue telle quelle, null pour un élément sans vignette (ADR-026).
+    expect(visible.map((s) => s.thumbnailKey)).toEqual([null, `story-thumbnails/${recent.id}`]);
     expect(await stories.findExpiredIds(new Date(now), 10)).toEqual([expired.id]);
   });
 
@@ -82,7 +85,7 @@ describe("Stories (Postgres, Redis et BullMQ réels)", () => {
     expect(await views.viewers(id)).toEqual([]);
   });
 
-  it("le worker purge un élément à expiration : média, ligne et vues supprimés", async () => {
+  it("le worker purge un élément à expiration : média, vignette, ligne et vues supprimés", async () => {
     const connection = bullmqConnection(redisUrl);
     const queueName = `it-story-purge-${randomUUID().slice(0, 8)}`;
     const queue = new Queue(queueName, { connection });
@@ -110,8 +113,9 @@ describe("Stories (Postgres, Redis et BullMQ réels)", () => {
     await worker.onModuleInit();
 
     try {
-      const story = await stories.create(item(Date.now(), 500));
+      const story = await stories.create(item(Date.now(), 500, true));
       storage.simulateUpload(story.mediaKey, 10, "image/jpeg");
+      storage.simulateUpload(story.thumbnailKey!, 10, "image/jpeg");
       await views.record(story.id, "viewer-1", story.expiresAt);
       await scheduler.schedule(story.id, story.expiresAt);
       expect(await (await queue.getJob(purgeJobId("story", story.id)))?.getState()).toBe("delayed");
@@ -123,6 +127,7 @@ describe("Stories (Postgres, Redis et BullMQ réels)", () => {
 
       expect(await stories.findById(story.id)).toBeNull();
       expect(storage.has({ area: "private", key: story.mediaKey })).toBe(false);
+      expect(storage.has({ area: "private", key: story.thumbnailKey! })).toBe(false);
       expect(await redis.exists(`story:views:${story.id}`)).toBe(0);
     } finally {
       await worker.onApplicationShutdown();

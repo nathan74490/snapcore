@@ -61,7 +61,8 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     bob = await users.seed("bob");
   });
 
-  // Données d'Alice : un Snap envoyé, un Snap reçu (déjà purgé), un Chat texte, une story, sa photo.
+  // Données d'Alice : un Snap envoyé, un Snap reçu (déjà purgé), un Chat texte, une story avec
+  // vignette (ADR-026), une story sans vignette, sa photo.
   async function seedAliceData() {
     const snap = async (from: UserAccount, to: UserAccount, mediaKey: string | null) => {
       const id = randomUUID();
@@ -80,15 +81,19 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     await snap(alice, bob, "messages/sent");
     await snap(bob, alice, "messages/received");
     await snap(alice, bob, null);
-    storage.simulateUpload("stories/s1", 10, "image/jpeg");
-    await stories.create({
-      id: "s1",
-      authorId: alice.id,
-      mediaKey: "stories/s1",
-      contentType: "PHOTO",
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 1000),
-    });
+    for (const [id, thumbnailKey] of [["s1", "story-thumbnails/s1"], ["s2", null]] as const) {
+      storage.simulateUpload(`stories/${id}`, 10, "image/jpeg");
+      if (thumbnailKey) storage.simulateUpload(thumbnailKey, 10, "image/jpeg");
+      await stories.create({
+        id,
+        authorId: alice.id,
+        mediaKey: `stories/${id}`,
+        contentType: "PHOTO",
+        thumbnailKey,
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 1000),
+      });
+    }
   }
 
   function jobContext() {
@@ -122,7 +127,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
       await originalDelete(object);
     };
 
-    await expect(useCases.runJob(jobContext())).resolves.toEqual({ kind: "deleted", removedObjects: 4 });
+    await expect(useCases.runJob(jobContext())).resolves.toEqual({ kind: "deleted", removedObjects: 6 });
 
     expect(steps).toEqual([
       "abonnement",
@@ -131,6 +136,8 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
       "r2:messages/sent",
       "r2:messages/received",
       "r2:stories/s1",
+      "r2:story-thumbnails/s1",
+      "r2:stories/s2",
       "r2:profiles/alice/photo",
     ]);
     expect(users.rows.has(alice.id)).toBe(false);
@@ -189,7 +196,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     expect(users.rows.has(alice.id)).toBe(false); // étape (c) déjà faite
 
     steps = [];
-    await expect(useCases.runJob(context)).resolves.toEqual({ kind: "deleted", removedObjects: 4 });
+    await expect(useCases.runJob(context)).resolves.toEqual({ kind: "deleted", removedObjects: 6 });
     expect(steps).toEqual([]); // ni abonnement ni Firebase rejoués : la ligne n'existe plus
     expect([...storage.objects.keys()]).toEqual([]);
   });

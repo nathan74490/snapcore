@@ -5,6 +5,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -82,7 +89,13 @@ fun MyStoryScreen(onBack: () -> Unit, onPlay: (StoryItem) -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Icon(if (item.kind == MediaKind.VIDEO) Icons.Filled.Videocam else Icons.Filled.Photo, null, tint = SnapColors.SnapPurple)
+                    // Vignette de l'élément (ADR-026), sinon l'icône de son type, à la même place.
+                    Box(Modifier.size(width = 40.dp, height = 56.dp), Alignment.Center) {
+                        if (item.thumbnailUrl != null) {
+                            AsyncImage(item.thumbnailUrl, null, contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).background(SnapColors.Control))
+                        } else Icon(if (item.kind == MediaKind.VIDEO) Icons.Filled.Videocam else Icons.Filled.Photo, null, tint = SnapColors.SnapPurple)
+                    }
                     Column(Modifier.weight(1f)) {
                         Text(publishedLabel(item.createdAt), style = MaterialTheme.typography.bodyLarge)
                         // Chaque élément expire 24 h après SA publication (ADR-013).

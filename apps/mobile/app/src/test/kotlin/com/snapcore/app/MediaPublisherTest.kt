@@ -9,6 +9,7 @@ import com.snapcore.app.domain.MediaPublisher
 import com.snapcore.app.domain.MediaUploader
 import com.snapcore.app.domain.SendTarget
 import com.snapcore.app.domain.SnapService
+import com.snapcore.app.domain.StoryThumbnailMaker
 import com.snapcore.app.domain.UserSearchResult
 import com.snapcore.app.ui.camera.SendToViewModel
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,7 @@ class RecordingUploader : MediaUploader {
 class RecordingSnaps : SnapService {
     val snaps = mutableListOf<Pair<String, String>>() // friendId → contentType
     val stories = mutableListOf<String>()
+    val thumbnails = mutableListOf<String?>() // thumbnailUploadId de chaque story
     val failingFriends = mutableSetOf<String>()
 
     override suspend fun sendSnap(friendId: String, uploadId: String, messageContentType: String) {
@@ -44,8 +46,9 @@ class RecordingSnaps : SnapService {
         snaps += friendId to messageContentType
     }
 
-    override suspend fun publishStory(uploadId: String, storyContentType: String) {
+    override suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String?) {
         stories += storyContentType
+        thumbnails += thumbnailUploadId
     }
 }
 
@@ -118,5 +121,30 @@ class MediaPublisherTest {
         assertEquals(listOf("a", "b"), snaps.snaps.map { it.first }) // alice n'a reçu qu'un seul snap
         assertTrue(vm.state.value.done)
         assertFalse(file.exists())
+    }
+
+    @Test
+    fun `une story part avec sa vignette, envoyée en STORY_THUMBNAIL puis supprimée`() = runTest(dispatcher) {
+        val thumbnail = File.createTempFile("thumb", ".jpg").apply { writeText("jpeg") }
+        val maker = object : StoryThumbnailMaker {
+            override suspend fun make(media: CapturedMedia) = thumbnail
+        }
+        MediaPublisher(uploader, snaps, maker).publish(CapturedMedia(file, MediaKind.PHOTO), setOf(SendTarget.ToStory))
+
+        assertEquals(listOf("STORY_PHOTO", "STORY_THUMBNAIL"), uploader.uploads)
+        assertEquals(listOf<String?>("upload-2"), snaps.thumbnails)
+        assertFalse("vignette temporaire supprimée", thumbnail.exists())
+    }
+
+    @Test
+    fun `sans vignette possible, la story part quand même`() = runTest(dispatcher) {
+        val maker = object : StoryThumbnailMaker {
+            override suspend fun make(media: CapturedMedia): File = error("vidéo illisible")
+        }
+        val report = MediaPublisher(uploader, snaps, maker).publish(CapturedMedia(file, MediaKind.VIDEO), setOf(SendTarget.ToStory))
+
+        assertTrue(report.allSucceeded)
+        assertEquals(listOf("VIDEO"), snaps.stories)
+        assertEquals(listOf<String?>(null), snaps.thumbnails)
     }
 }

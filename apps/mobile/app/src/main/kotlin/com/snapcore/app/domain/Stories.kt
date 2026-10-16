@@ -10,9 +10,11 @@ data class StoryItem(
     val expiresAt: Instant,
     val viewed: Boolean = false,
     val viewCount: Int = 0,
+    /** URL courte de la vignette, qui ne compte pas de vue (ADR-026) ; null sans vignette. */
+    val thumbnailUrl: String? = null,
 )
 
-data class FriendStory(val author: Friend, val items: List<StoryItem>, val hasUnviewed: Boolean) {
+data class FriendStory(val author: Friend, val items: List<StoryItem>, val hasUnviewed: Boolean, val thumbnailUrl: String? = null) {
     val lastPostedAt get() = items.maxOf { it.createdAt }
 }
 

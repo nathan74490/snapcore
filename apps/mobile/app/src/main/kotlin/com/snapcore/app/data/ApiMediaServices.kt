@@ -54,8 +54,8 @@ class ApiSnapService(private val api: SnapCoreApi) : SnapService {
         apiCall { api.sendSnap(friendId, SendSnapRequest(uploadId, messageContentType)) }
     }
 
-    override suspend fun publishStory(uploadId: String, storyContentType: String) {
-        apiCall { api.publishStory(PublishStoryRequest(uploadId, storyContentType)) }
+    override suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String?) {
+        apiCall { api.publishStory(PublishStoryRequest(uploadId, storyContentType, thumbnailUploadId)) }
     }
 }
 

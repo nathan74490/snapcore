@@ -15,11 +15,12 @@ class ApiStoryService(private val api: SnapCoreApi) : StoryService {
             author = Friend(entry.author.id, entry.author.username, entry.author.profilePhotoUrl, entry.author.firstName),
             items = entry.items.map { StoryItem(it.id, kindOf(it.contentType), Instant.parse(it.createdAt), Instant.parse(it.expiresAt), it.viewed) },
             hasUnviewed = entry.hasUnviewed,
+            thumbnailUrl = entry.thumbnailUrl,
         )
     }
 
     override suspend fun mine() = apiCall { api.myStory() }.map {
-        StoryItem(it.id, kindOf(it.contentType), Instant.parse(it.createdAt), Instant.parse(it.expiresAt), viewCount = it.viewCount)
+        StoryItem(it.id, kindOf(it.contentType), Instant.parse(it.createdAt), Instant.parse(it.expiresAt), viewCount = it.viewCount, thumbnailUrl = it.thumbnailUrl)
     }
 
     override suspend fun viewUrl(item: StoryItem) = apiCall { api.viewStory(item.id) }.url

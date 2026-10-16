@@ -9,6 +9,7 @@ import com.snapcore.app.data.ApiSnapService
 import com.snapcore.app.data.ApiStoryService
 import com.snapcore.app.data.ApiSubscriptionService
 import com.snapcore.app.data.BitmapProfilePhotoPreparer
+import com.snapcore.app.data.BitmapStoryThumbnailMaker
 import com.snapcore.app.data.DataStorePendingRegistrationStore
 import com.snapcore.app.data.FirebaseAuthService
 import com.snapcore.app.data.MediaFilterRenderer
@@ -78,7 +79,6 @@ class AppContainer(context: Context) {
 
     val friends: FriendsService = ApiFriendsService(api)
     val mediaUploader: MediaUploader = R2MediaUploader(api, storageClient)
-    val mediaPublisher = MediaPublisher(mediaUploader, ApiSnapService(api))
 
     val chat: ChatService = ApiChatService(api)
     val stories: StoryService = ApiStoryService(api)
@@ -96,6 +96,9 @@ class AppContainer(context: Context) {
     val capturesDir: File = File(context.cacheDir, "captures").apply { mkdirs() }
 
     val profilePhotoPreparer: ProfilePhotoPreparer = BitmapProfilePhotoPreparer(context.applicationContext, capturesDir)
+
+    // Après capturesDir : la vignette d'une story y est écrite le temps de l'envoi (ADR-026).
+    val mediaPublisher = MediaPublisher(mediaUploader, ApiSnapService(api), BitmapStoryThumbnailMaker(capturesDir))
 
     /** Analytics PostHog (ADR-008) ; sans clé dans local.properties, rien n'est envoyé. */
     val analytics: Analytics =
