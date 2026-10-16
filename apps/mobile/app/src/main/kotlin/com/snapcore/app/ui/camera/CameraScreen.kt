@@ -89,12 +89,16 @@ import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.io.File
 import java.util.UUID
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 private const val MAX_VIDEO_MS = 60_000L // limite d'un snap vidéo (ADR-011)
 private val LENS_LOADING = Color(0xFF3CC8AE)
 // Distance entre le bouton de capture et le cadenas du mode mains libres.
 private val LOCK_OFFSET = 96.dp
+// Zoom en glissant vers le haut pendant une vidéo : maximum atteint après ZOOM_DISTANCE.
+private const val MAX_ZOOM = 4f
+private val ZOOM_DISTANCE = 320.dp
 
 private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
 
@@ -219,6 +223,7 @@ private fun CameraContent(
             recording = null
             recordProgress = 0f
             handsFree = false
+            camera.setZoom(1f)
             if (file.length() > 0) {
                 analytics.capture("snap_captured", mapOf("media" to "video", "lens" to (selectedLens != null)))
                 onCaptured(CapturedMedia(file, MediaKind.VIDEO))
@@ -322,7 +327,7 @@ private fun CameraContent(
                 }
                 // Au-dessus du carrousel : la Lens au centre apparaît dans l'anneau de capture.
                 CaptureButton(recording != null, handsFree, recordProgress, busy, lensLoading, ::takePhoto, ::startRecording,
-                    onStopVideo = { recording?.close() }, onHandsFree = { handsFree = true })
+                    onStopVideo = { recording?.close() }, onHandsFree = { handsFree = true }, onZoom = camera::setZoom)
             }
             // En mode Lens et pendant l'enregistrement, les libellés s'effacent sans changer la mise en page.
             val labelsAlpha by animateFloatAsState(if (lensMode || recording != null) 0f else 1f, label = "labels")
@@ -352,7 +357,8 @@ private fun CaptureModeLabel(label: String, active: Boolean, dot: Color) {
 
 // Tap = photo ; appui maintenu = vidéo jusqu'au relâchement (ADR-011). Comme dans Snapchat, le
 // bouton devient un disque jaune avec la progression sur son bord et un point qui suit le doigt ;
-// glisser jusqu'au cadenas passe en mains libres, un nouvel appui arrête alors la vidéo.
+// glisser vers le haut zoome ; glisser jusqu'au cadenas passe en mains libres, un nouvel appui
+// arrête alors la vidéo.
 @Composable
 private fun CaptureButton(
     recording: Boolean,
@@ -364,15 +370,19 @@ private fun CaptureButton(
     onStartVideo: () -> Unit,
     onStopVideo: () -> Unit,
     onHandsFree: () -> Unit,
+    onZoom: (Float) -> Unit,
 ) {
     val longPressTimeout = LocalViewConfiguration.current.longPressTimeoutMillis
     val density = LocalDensity.current
     val lockDistance = with(density) { (LOCK_OFFSET - 24.dp).toPx() }
+    val zoomStart = with(density) { 16.dp.toPx() }
+    val zoomDistance = with(density) { ZOOM_DISTANCE.toPx() }
     val isHandsFree by rememberUpdatedState(handsFree)
     val photo by rememberUpdatedState(onPhoto)
     val start by rememberUpdatedState(onStartVideo)
     val stop by rememberUpdatedState(onStopVideo)
     val lock by rememberUpdatedState(onHandsFree)
+    val zoom by rememberUpdatedState(onZoom)
     var finger by remember { mutableStateOf(Offset.Zero) }
     val diameter by animateDpAsState(if (recording) 104.dp else 86.dp, label = "captureSize")
     Box(
@@ -398,12 +408,18 @@ private fun CaptureButton(
                     start()
                     val center = Offset(size.width / 2f, size.height / 2f)
                     var locked = false
+                    // Trajet cumulé du doigt : le bouton grossit pendant le geste, ses coordonnées locales bougent.
+                    var travel = Offset.Zero
                     while (true) {
                         val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
                         if (change == null || !change.pressed) break
                         change.consume()
                         finger = change.position - center
-                        if (change.position.x - down.position.x < -lockDistance) {
+                        // Glisser vers le haut zoome, comme dans Snapchat : de 1x au bouton à MAX_ZOOM plus haut.
+                        travel += change.position - change.previousPosition
+                        val up = -travel.y
+                        zoom(MAX_ZOOM.pow(((up - zoomStart) / zoomDistance).coerceIn(0f, 1f)))
+                        if (up < lockDistance && travel.x < -lockDistance) {
                             locked = true
                             lock()
                             break
