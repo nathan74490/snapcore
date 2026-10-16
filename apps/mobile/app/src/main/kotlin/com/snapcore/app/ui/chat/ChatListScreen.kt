@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.*
 import com.snapcore.app.ui.components.*
@@ -36,6 +37,9 @@ private fun Conversation.unread(myId: String) = lastMessage?.let { !it.isFrom(my
 fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAddFriends: () -> Unit, onSnapTo: (Friend) -> Unit, modifier: Modifier = Modifier) {
     val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events) }
     val state by vm.state.collectAsStateWithLifecycle()
+    // Au retour d'une conversation : le snap ouvert ou les chats lus ne déclenchent un événement temps
+    // réel que chez l'expéditeur, la liste se recharge donc elle-même (BUG-011 d'ADR-023).
+    LifecycleResumeEffect(Unit) { vm.refresh(); onPauseOrDispose {} }
     var filter by rememberSaveable { mutableIntStateOf(0) }
     val unread = state.conversations.count { it.unread(myId) }
     val visible = state.conversations.filter { when(filter) { 1 -> it.unread(myId); 2 -> it.lastMessage == null; else -> true } }

@@ -27,6 +27,7 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 | BUG-008 | Faible | Documentation | `docs/impl/purge-bullmq.md` cite un fichier de test qui n'existe plus | Corrigé (branche feat/v1-finitions) |
 | BUG-009 | Moyenne | Backend / suppression de compte | La suppression d'un compte n'annule pas son abonnement SnapCore+ | Corrigé (branche feat/v1-finitions) |
 | BUG-010 | Faible | Mobile / chat | Le bouton flottant « Nouveau chat » masque le bouton « Ajouter » quand la liste est courte | Corrigé (branche feat/v1-finitions) |
+| BUG-011 | Moyenne | Mobile / chat | Un snap ouvert reste « Nouveau snap » dans la liste Chat jusqu'à un rafraîchissement manuel | Corrigé (branche feat/v1-finitions) |
 
 ### BUG-001 : Une vidéo de 60 s sans filtre dépasse la limite de 60 Mo
 - **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/camera/CameraScreen.kt` (`videoCaptureQualitySelector = QualitySelector.from(Quality.HD)`), limite dans `apps/backend/src/modules/media/domain/media-purpose.ts` (`SNAP_VIDEO`/`STORY_VIDEO` : 60 Mo).
@@ -98,6 +99,12 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - **Piste** : retirer le bouton « Ajouter » de la ligne (toute la ligne est déjà cliquable) ou réserver la place du bouton flottant à droite de cette ligne.
 - **Correction** : le bouton « Ajouter » est retiré de la ligne « Trouver mes amis », qui reste cliquable en entier. Le côté droit de la ligne est vide, le bouton flottant ne recouvre plus rien. Vérifié sur Galaxy A54.
 
+### BUG-011 : Un snap ouvert reste « Nouveau snap » dans la liste Chat
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/chat/ChatListScreen.kt` (`ChatListViewModel` ne se recharge que sur un événement temps réel), événements `snap.opened` et `texts.read` publiés à l'expéditeur seulement (`event-message.notifier.ts`).
+- **Constat** (Galaxy A54, signalé par l'utilisateur) : après avoir ouvert puis fermé un snap reçu, la ligne de la conversation garde « Nouveau snap » et le compteur « Non lus » ne baisse pas tant que la liste n'est pas tirée vers le bas.
+- **Impact** : l'utilisateur croit avoir un snap non vu ; la liste ne reflète pas ce qu'il vient de faire.
+- **Correction** : la liste Chat se recharge à chaque retour au premier plan de l'accueil (retour d'une conversation, réouverture de l'app), comme la page Stories. Vérifié sur Galaxy A54 : le snap passe à « Reçu » et « Non lus » baisse dès la fermeture.
+
 ## Alternatives
 - **Corriger chaque anomalie dès qu'elle est trouvée** : rien n'est oublié, mais la fonctionnalité en cours se retrouve mêlée à des changements sans rapport, plus difficiles à relire et à annuler. Écarté.
 - **Un outil de suivi externe (issues GitHub, Notion)** : plus adapté à une équipe nombreuse, mais sépare le registre du code alors que tout le reste des décisions vit dans `docs/adr`. Écarté pour l'instant ; le registre pourra y être migré si le projet grandit.
@@ -114,6 +121,7 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - Cet ADR n'est pas une décision d'architecture au sens strict, mais un outil de suivi ; il est rangé avec les ADR pour rester à côté des décisions qu'il référence.
 
 ## Historique
+- Révision 6 : BUG-011 relevé et corrigé.
 - Révision 5 : BUG-010 corrigé.
 - Révision 4 : ajout de BUG-010 (relevé pendant les retours du formateur).
 - Révision 3 : BUG-002 à BUG-009 corrigés (finitions de la V1).
