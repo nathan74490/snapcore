@@ -53,15 +53,22 @@ export interface ModeratorSession {
 }
 
 /**
+ * Modérateur de la session, s'il existe encore en base ; null sinon. Un compte supprimé depuis
+ * l'ouverture de la session (JWT encore valide) n'est plus considéré comme connecté.
+ */
+export async function currentModerator(): Promise<ModeratorSession | null> {
+  const session = await getServerSession(authOptions);
+  const id = (session?.user as { id?: string } | undefined)?.id;
+  if (!id || !session?.user?.email) return null;
+  return prisma.moderator.findUnique({ where: { id }, select: { id: true, email: true } });
+}
+
+/**
  * Session du modérateur connecté, ou redirection vers /login. À appeler dans CHAQUE page ET
  * chaque action serveur : une action serveur est un point d'entrée HTTP à part entière.
  */
 export async function requireModerator(): Promise<ModeratorSession> {
-  const session = await getServerSession(authOptions);
-  const id = (session?.user as { id?: string } | undefined)?.id;
-  if (!id || !session?.user?.email) redirect("/login");
-  // Un compte supprimé depuis l'ouverture de la session ne doit plus pouvoir agir.
-  const moderator = await prisma.moderator.findUnique({ where: { id }, select: { id: true, email: true } });
+  const moderator = await currentModerator();
   if (!moderator) redirect("/login");
   return moderator;
 }

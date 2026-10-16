@@ -3,7 +3,7 @@
 Ce document couvre la mécanique BullMQ concrète qui met en œuvre les décisions d'ADR-017 (identifiants déterministes, jamais de suppression/réajout naïf, le balayage de rattrapage passe toujours par le même job normal). Contrairement à l'ADR, ce document est attendu comme changeant avec les versions de BullMQ effectivement installées — à revérifier avant implémentation et à chaque montée de version majeure, plutôt que de figer des noms d'API dans une décision d'architecture.
 
 ## Vérifié sur bullmq 5.81.5 (implémentation initiale)
-Chaque point de ce document est couvert par `apps/backend/src/modules/messages/infrastructure/bullmq/purge-bullmq.int-spec.ts`, qui tourne contre un vrai Redis : à relancer après toute montée de version (`npm run test:integration -w @snapcore/backend`).
+Chaque point de ce document est couvert par `apps/backend/src/modules/purge/infrastructure/purge-bullmq.int-spec.ts`, qui tourne contre un vrai Redis : à relancer après toute montée de version (`npm run test:integration -w @snapcore/backend`).
 - Un `jobId` contenant `:` est refusé (`Custom Id cannot contain :`) : le séparateur `-` est bien nécessaire.
 - `changeDelay` prend un délai relatif et lève `JobNotInState` si le job n'est pas `delayed` : l'adaptateur vérifie l'état avant l'appel.
 - Un `queue.add` sur l'identifiant d'un job en échec conservé est bien ignoré sans erreur ; `job.retry()` le remet en `waiting`.

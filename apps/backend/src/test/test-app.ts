@@ -2,7 +2,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../app.module";
 import { configureApp } from "../app.setup";
-import { ACCOUNT_DELETION_REPOSITORY, DELETION_JOB_QUEUE } from "../modules/account-deletion/application/ports";
+import { ACCOUNT_DELETION_REPOSITORY, DELETION_JOB_QUEUE, SUBSCRIPTION_CANCELLER } from "../modules/account-deletion/application/ports";
 import { ACCOUNT_DELETION_QUEUE, AccountDeletionWorker } from "../modules/account-deletion/infrastructure/bullmq-deletion";
 import { FRIENDSHIP_REPOSITORY } from "../modules/friendships/application/ports/friendship.repository";
 import { IDENTITY_PROVIDER } from "../modules/identity/application/ports/identity-provider.port";
@@ -94,6 +94,8 @@ export async function createTestApp(
     .useValue(world.moderation)
     .overrideProvider(SUBSCRIPTION_REPOSITORY)
     .useValue(world.subscriptions)
+    .overrideProvider(SUBSCRIPTION_CANCELLER)
+    .useValue({ cancelFor: async () => undefined })
     .overrideProvider(PUSH_SENDER)
     .useValue(world.push)
     .overrideProvider(DEVICE_TOKEN_REPOSITORY)

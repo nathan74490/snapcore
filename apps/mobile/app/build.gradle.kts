@@ -1,4 +1,6 @@
+import java.io.ByteArrayOutputStream
 import java.util.Properties
+import javax.inject.Inject
 
 plugins {
     alias(libs.plugins.android.application)
@@ -109,14 +111,38 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
 }
 
-// Redirige le port 3000 de l'appareil connecté vers le backend local (voir API_BASE_URL) à chaque
+// Redirige le port 3000 de chaque appareil connecté vers le backend local (voir API_BASE_URL) à chaque
 // build de debug, y compris depuis le bouton ▶ d'Android Studio. Nécessaire car un redémarrage
-// d'adb (ouverture d'Android Studio, rebranchement du câble) efface cette redirection.
-val adbReverse = tasks.register<Exec>("adbReverse") {
-    val adb = androidComponents.sdkComponents.adb
-    executable(adb.get().asFile)
-    args("reverse", "tcp:3000", "tcp:3000")
-    // Aucun appareil branché (build CI, émulateur éteint) : ne bloque pas le build.
-    isIgnoreExitValue = true
+// d'adb (ouverture d'Android Studio, rebranchement du câble) efface cette redirection. Sans `-s`,
+// `adb reverse` refuse d'agir dès que deux appareils sont branchés (BUG-004 d'ADR-023).
+abstract class AdbReverseTask : DefaultTask() {
+    @get:Internal abstract val adb: RegularFileProperty
+    @get:Inject abstract val execOperations: ExecOperations
+
+    @TaskAction
+    fun reverse() {
+        val adbPath = adb.get().asFile.absolutePath
+        val devices = ByteArrayOutputStream()
+        execOperations.exec {
+            commandLine(adbPath, "devices")
+            standardOutput = devices
+            isIgnoreExitValue = true
+        }
+        // Lignes « <série>	device » ; aucun appareil (build CI, émulateur éteint) : rien à faire.
+        val serials = devices.toString().lines().drop(1).mapNotNull { line ->
+            line.split("	").takeIf { it.size == 2 && it[1].trim() == "device" }?.get(0)
+        }
+        serials.forEach { serial ->
+            execOperations.exec {
+                commandLine(adbPath, "-s", serial, "reverse", "tcp:3000", "tcp:3000")
+                isIgnoreExitValue = true
+            }
+        }
+        logger.lifecycle("adb reverse tcp:3000 sur ${serials.size} appareil(s)")
+    }
+}
+
+val adbReverse = tasks.register<AdbReverseTask>("adbReverse") {
+    adb.set(androidComponents.sdkComponents.adb)
 }
 tasks.matching { it.name == "preDebugBuild" }.configureEach { dependsOn(adbReverse) }

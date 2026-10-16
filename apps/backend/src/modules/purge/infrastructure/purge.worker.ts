@@ -22,7 +22,7 @@ export class PurgeWorker implements OnModuleInit, OnApplicationShutdown {
 
   async onModuleInit(): Promise<void> {
     if (!this.enabled) {
-      this.logger.warn("Worker de purge désactivé (PURGE_WORKER_ENABLED=false)");
+      this.logger.warn("Worker de purge désactivé (WORKERS_ENABLED=false)");
       return;
     }
     // Planificateur idempotent : relancer l'application ne crée pas un second balayage.

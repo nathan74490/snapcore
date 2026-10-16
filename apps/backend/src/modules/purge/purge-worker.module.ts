@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { Queue } from "bullmq";
+import { workersEnabled } from "../../shared/infrastructure/workers";
 import { SnapPurgeUseCases } from "../messages/application/snap-purge-use-cases";
 import { MessagesModule } from "../messages/messages.module";
 import { StoryUseCases } from "../stories/application/story-use-cases";
@@ -23,7 +24,7 @@ import { PurgeModule, redisUrlFrom } from "./purge.module";
             message: { run: (id) => snaps.runPurgeJob(id), sweepOverdue: () => snaps.sweepOverdue() },
             story: { run: (id) => stories.runPurgeJob(id), sweepOverdue: () => stories.sweepOverdue() },
           },
-          config.get("PURGE_WORKER_ENABLED") !== "false",
+          workersEnabled(config),
         ),
     },
   ],
