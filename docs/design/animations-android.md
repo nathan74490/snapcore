@@ -41,3 +41,9 @@ La référence Screen_Recording_20261016_091957_Snapchat.mp4 précise l’ordre 
 Révision du 16 octobre : remplacement du pictogramme par un personnage vectoriel expressif, dessiné à partir de la vidéo 084235. Le clin d’œil et la langue sont visibles pendant le tirage ; au relâchement, les deux yeux s’ouvrent et un jet arc-en-ciel sort de la bouche. La trajectoire accompagne la remontée de la liste pour éviter que celle-ci masque le personnage avant son envol.
 
 Compilation et installation réussies sur le Galaxy A54. Vérification par enregistrement ADB et extraction des images intermédiaires : deux actualisations du Chat, deux des Stories, tirage court annulé, disparition complète du personnage et de la bande jaune. Aucun message AndroidRuntime d’erreur pendant le parcours. Les tests unitaires et le lint mentionnés plus haut concernent la révision précédente ; cette retouche visuelle a été vérifiée sur appareil.
+
+## Démarrage Halloween
+
+Personnage vectoriel blanc, chapeau violet et orange, faucille argentée, fond violet nuit et braises discrètes. Le thème Android 12+ présente également le personnage dès l’écran système. Pendant la résolution réelle de la session, le fantôme flotte et trois points pulsent. Après au moins 1,2 seconde de présentation et seulement une fois la session résolue : recul de 160 ms, zoom accéléré de 620 ms jusqu’à couvrir la fenêtre, puis fondu de 180 ms vers l’accueil. Le dessin vectoriel reste net à grande échelle. Les erreurs de connexion conservent le bouton Réessayer ; la destination reste déterminée par la session existante.
+
+Validation Galaxy A54 : lancement à froid, arrivée sur l’accueil, accès au Chat, retour depuis l’arrière-plan sans rejouer l’intro. Enregistrement relu image par image ; aucun crash AndroidRuntime observé. Cette animation est activée à chaque démarrage réel, sans restriction de date automatique.

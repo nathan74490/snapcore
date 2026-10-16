@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SnapCore" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#150F25</item>
+        <item name="android:windowSplashScreenBackground">#150F25</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/halloween_ghost</item>
+    </style>
+</resources>

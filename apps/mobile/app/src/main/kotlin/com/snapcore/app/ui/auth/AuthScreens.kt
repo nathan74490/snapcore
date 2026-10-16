@@ -62,20 +62,17 @@ import com.snapcore.app.ui.theme.SnapColors
 fun StartScreen(onSession: (Session) -> Unit) {
     val vm = containerViewModel { StartViewModel(it.sessionResolver) }
     val state by vm.state.collectAsStateWithLifecycle()
-    LaunchedEffect(state) { (state as? StartState.Resolved)?.let { onSession(it.session) } }
-    StatusBarIcons(dark = true) // fond jaune : icônes sombres, quel que soit le thème du téléphone
+    StatusBarIcons(dark = false)
 
-    Box(Modifier.fillMaxSize().background(SnapColors.Yellow), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF150F25)), contentAlignment = Alignment.Center) {
         when (val s = state) {
             is StartState.Failed -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                Text(s.message, color = SnapColors.Black, textAlign = TextAlign.Center)
+                Text(s.message, color = Color.White, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(16.dp))
                 PrimaryButton("Réessayer", vm::resolve, container = SnapColors.Black)
             }
-            else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Logo()
-                Spacer(Modifier.height(24.dp))
-                CircularProgressIndicator(color = SnapColors.Black)
+            else -> HalloweenStartup(ready = s is StartState.Resolved) {
+                (s as? StartState.Resolved)?.let { onSession(it.session) }
             }
         }
     }

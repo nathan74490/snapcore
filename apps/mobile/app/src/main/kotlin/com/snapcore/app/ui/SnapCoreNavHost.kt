@@ -169,7 +169,7 @@ fun SnapCoreNavHost(
     }
 
     NavHost(navController, startDestination = StartRoute) {
-        composable<StartRoute> { StartScreen(onSession = ::go) }
+        composable<StartRoute>(exitTransition = { fadeOut(tween(180)) }) { StartScreen(onSession = ::go) }
         composable<WelcomeRoute> {
             WelcomeScreen(
                 onLogin = { navController.navigate(LoginRoute) },
@@ -180,6 +180,10 @@ fun SnapCoreNavHost(
         composable<SignUpRoute> { SignUpScreen(onBack = navController::popBackStack, onSession = ::go) }
         composable<CompleteRegistrationRoute> { CompleteRegistrationScreen(onSession = ::go) }
         composable<HomeRoute>(
+            enterTransition = {
+                if (initialState.destination.hasRoute<StartRoute>()) fadeIn(tween(180))
+                else fadeIn(tween(220))
+            },
             exitTransition = {
                 if (targetState.destination.hasRoute<ConversationRoute>())
                     slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 }
