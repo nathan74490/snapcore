@@ -1,7 +1,7 @@
 # ADR-019 — Suppression de compte : Firebase, R2 et cascade sur les données liées
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Supprimer un compte doit couper l'accès immédiatement, ne jamais laisser le compte se recréer tout seul, ne laisser aucun média orphelin sur R2, et ne pas continuer à prélever un abonnement SnapCore+ actif — tout en restant cohérent si une étape échoue en cours de route.
@@ -53,6 +53,8 @@ Le champ `Friendship.blockedBy` reste en `onDelete: SetNull`, mais ce cas ne peu
 - Révision 3 (revue technique) : la collecte des `mediaKey` est déplacée de la requête HTTP initiale vers la même transaction que la suppression de la ligne `User`, pour fermer la fenêtre où un ami pouvait encore envoyer un média au compte entre-temps ; le compte "en suppression" est désormais traité comme inexistant pour les autres utilisateurs (envoi refusé, profil masqué, absent des listes d'amis) ; réessais du job rendus quasi illimités avec alerte au-delà de 24h, au lieu d'un nombre de tentatives borné.
 - Révision 4 (revue technique) : ajout d'un verrou `SELECT ... FOR UPDATE` sur la transaction de l'étape (c), la fenêtre entre collecte et suppression n'étant pas rigoureusement fermée par le seul blocage applicatif en `READ COMMITTED` ; reconnaissance d'un risque marginal résiduel (crash entre le commit de la transaction et la persistance des clés dans le job) accepté plutôt que traité ; recommandation de centraliser le filtre `deletionRequestedAt IS NULL` dans un seul point du code (port de dépôt ou extension Prisma) plutôt que de le répéter par endpoint ; correction d'une phrase obsolète dans les Alternatives qui citait encore l'ancien comportement de recréation automatique d'ADR-015.
 - Révision 5 (revue technique) : le risque résiduel identifié en révision 4 (crash entre le commit et la persistance des clés) se referme entièrement en appelant `job.updateData(...)` À L'INTÉRIEUR de la transaction, entre le `SELECT ... FOR UPDATE` et le `DELETE`, plutôt qu'après son commit — aucune complexité ajoutée, juste un réordonnancement de deux appels déjà prévus. Ajout d'une note sur une courte fenêtre où l'email/pseudo restent occupés par l'ancienne ligne `User` entre la suppression du compte Firebase et celle de la ligne (voir Conséquences négatives).
+- Révision 6 (implémentation) : canal de l'alerte « job encore en échec après 24h » fixé. Le backend l'écrit dans ses logs en niveau ERROR (`ALERTE : Suppression de compte <id> toujours en échec après 24h`), et le tableau de bord du backoffice (ADR-020) liste les comptes dont la suppression a été demandée il y a plus de 24 h et qui existent encore : la dernière étape du job supprimant la ligne `User`, leur présence suffit à signaler un job bloqué, sans table ni état supplémentaire. Pas de notification active (email, Slack) en V1.
+- Révision 7 (implémentation) : l'étape (a) annule réellement l'abonnement SnapCore+ via l'API v2 de RevenueCat (abonnements Web Billing encore en renouvellement, ADR-025) ; idempotente, et une erreur RevenueCat fait réessayer le job comme les autres étapes.
 
 ## Liens
 - ADR liés : ADR-004, ADR-007, ADR-009, ADR-012, ADR-013, ADR-015, ADR-016, ADR-018

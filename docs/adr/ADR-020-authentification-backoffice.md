@@ -1,7 +1,7 @@
 # ADR-020 — Authentification du backoffice : comptes modérateurs internes, distincts des comptes Firebase
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Le backoffice (`apps/backoffice`, Next.js) est réservé à l'équipe Alpvengers pour la modération — ce ne sont pas des utilisateurs de l'app, mais des membres de l'équipe. Aucun mécanisme d'authentification n'existe encore pour eux : ADR-015 couvre uniquement les comptes Firebase des utilisateurs finaux, et ADR-004 se contente d'indiquer que le backoffice partage Prisma/PostgreSQL avec le backend, sans préciser comment un modérateur s'y connecte.

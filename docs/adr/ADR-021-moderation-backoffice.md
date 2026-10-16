@@ -1,7 +1,7 @@
 # ADR-021 — Modération : signalements, suspension de compte, suppression ciblée de contenu
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Le backoffice a besoin d'actions de modération concrètes, aucune n'étant encore définie : traiter un signalement, suspendre un compte problématique sans passer par la suppression définitive (ADR-019, déclenchée par l'utilisateur lui-même et irréversible), supprimer un contenu isolé signalé sans suspendre tout le compte, et permettre à un modérateur de consulter librement un profil même sans signalement préalable (par exemple pour enquêter sur un signalement reçu par un autre canal). Il faut aussi trancher la frontière entre le backoffice (lecture directe PostgreSQL via Prisma, ADR-004) et le backend NestJS pour les actions qui ont des effets de bord (nettoyage R2, jobs BullMQ de purge, ADR-016, ADR-017).

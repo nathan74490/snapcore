@@ -1,7 +1,7 @@
 # ADR-009 — Modèle de message complet et statut (couleurs/icônes façon Snapchat)
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 SnapCore doit reproduire exactement le système d'icônes colorées de Snapchat dans la liste de discussion, qui indique en un coup d'œil le type de contenu, le sens (envoyé/reçu) et le statut (non ouvert / ouvert / expiré) du dernier message d'une conversation :

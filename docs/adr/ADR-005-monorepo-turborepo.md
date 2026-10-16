@@ -1,7 +1,7 @@
 # ADR-005 — Monorepo unique piloté par Turborepo, application mobile hors périmètre
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Les formateurs imposent un seul dépôt Git contenant l'intégralité du projet (mobile, backend, backoffice). Le backend et le backoffice partagent des types et un schéma de données en TypeScript, ce qui posait un problème de duplication et de synchronisation manuelle s'ils étaient développés dans des dépôts séparés.

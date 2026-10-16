@@ -1,7 +1,7 @@
 # ADR-010 — Onboarding : téléphone et email collectés, email vérifié via Firebase, téléphone non vérifié
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 L'onboarding de SnapCore doit reproduire le formulaire d'inscription de Snapchat (numéro de téléphone et email demandés en plus du pseudo). Une vérification par code (SMS et/ou email) nécessiterait un service d'envoi tiers facturé au message (SMS) ou au-delà d'un petit forfait gratuit (email), ce qui va à l'encontre de la contrainte du projet de ne générer aucun frais réel.

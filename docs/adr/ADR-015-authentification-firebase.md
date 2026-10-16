@@ -1,7 +1,7 @@
 # ADR-015 — Authentification : Firebase Authentication (email/mot de passe) avec vérification d'email
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 L'onboarding (ADR-010) collecte téléphone et email sans vérification, mais aucune décision n'avait encore été prise sur l'authentification elle-même : comment un utilisateur se connecte, comment son mot de passe est stocké, comment son identité est vérifiée à chaque requête. L'écran de référence (Mobbin) montre une étape "Set a password" dans la création de compte.

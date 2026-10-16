@@ -1,7 +1,7 @@
 # ADR-006 — Passerelle temps réel Socket.io + pub/sub Redis pour le chat
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Le chat et la livraison des snaps nécessitent une communication en temps réel entre clients, avec la possibilité de faire tourner plusieurs instances du backend en parallèle pour la montée en charge, dans une logique de "faire comme si l'app allait être publiée".

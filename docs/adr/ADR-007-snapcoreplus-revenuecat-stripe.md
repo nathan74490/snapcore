@@ -1,7 +1,7 @@
 # ADR-007 — SnapCore+ : RevenueCat + Stripe (mode test) comme moyen de paiement
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 SnapCore+ doit proposer un abonnement premium. Le projet ne sera jamais publié sur le Google Play Store, ce qui lève l'obligation d'utiliser Google Play Billing (règle propre à la distribution via le Store). La contrainte du projet est de ne générer aucun frais réel.

@@ -1,7 +1,7 @@
 # ADR-017 — Purge automatique des Snaps expirés : job BullMQ, exception SnapCore+
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 ADR-013 (story) et le principe d'éphémérité (ADR-003) supposent un job BullMQ de purge des médias expirés, dont le fonctionnement exact — programmation, reprogrammation à l'ouverture, exception SnapCore+, résilience face à un redémarrage ou une perte de jobs — doit être précisé une fois pour toutes ici.

@@ -1,10 +1,10 @@
 # ADR-003 — Séparation des données éphémères (Redis) et durables (PostgreSQL)
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
-SnapCore manipule à la fois des données qui doivent disparaître automatiquement (présence temps réel de l'utilisateur, position sur la carte) et des données qui doivent être conservées durablement (comptes, amis, messages, statut d'ouverture des snaps, contenus explicitement sauvegardés dans Memories). Le statut de vue d'un snap (`openedAt`) n'est plus un exemple de donnée éphémère Redis : il est stocké en base Postgres sur la ligne `Message` elle-même (voir ADR-009), car il doit rester consultable durablement (icône grisée) même après la purge du média.
+SnapCore manipule à la fois des données qui doivent disparaître automatiquement (présence temps réel de l'utilisateur, et plus tard la position sur la carte, Snap Map n'étant pas prévu en V1) et des données qui doivent être conservées durablement (comptes, amis, messages, statut d'ouverture des snaps, contenus explicitement sauvegardés dans Memories). Le statut de vue d'un snap (`openedAt`) n'est plus un exemple de donnée éphémère Redis : il est stocké en base Postgres sur la ligne `Message` elle-même (voir ADR-009), car il doit rester consultable durablement (icône grisée) même après la purge du média.
 
 ## Décision
 Stocker toute donnée à durée de vie limitée dans Redis avec une expiration (TTL) automatique, et réserver PostgreSQL aux données explicitement durables.

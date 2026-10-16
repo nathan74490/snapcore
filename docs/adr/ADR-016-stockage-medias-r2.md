@@ -1,7 +1,7 @@
 # ADR-016 — Stockage des médias : Cloudflare R2, upload via préfixe temporaire, CDN public pour le profil uniquement
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Plusieurs ADR (ADR-011 caméra, ADR-013 story, ADR-014 profil) supposaient un pipeline média sans jamais le documenter : où sont stockés les médias, comment un upload est confirmé, comment un objet abandonné en cours d'upload est nettoyé, et comment distinguer contenu public (profil) et privé/éphémère (snaps, stories).

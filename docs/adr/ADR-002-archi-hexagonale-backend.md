@@ -1,7 +1,7 @@
 # ADR-002 — Architecture hexagonale pour le backend NestJS
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Le backend centralise toute la logique métier de SnapCore (comptes, amis, snaps, stories, modération) et doit rester facile à faire évoluer et à tester, tout en accueillant plusieurs adaptateurs (API REST, temps réel Socket.io, jobs BullMQ).

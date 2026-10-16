@@ -1,7 +1,7 @@
 # ADR-018 — Notifications push : Firebase Cloud Messaging, suivi des tokens et de la présence
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Le chat (ADR-006) et la gestion des amis (ADR-012) reposent sur la passerelle temps réel Socket.io quand l'utilisateur est connecté, mais rien ne réveille l'app quand elle est fermée ou en arrière-plan. Une première version de cet ADR ne précisait ni comment le backend obtient le token de chaque appareil, ni comment il sait si un utilisateur est connecté quand plusieurs instances du serveur tournent en parallèle.

@@ -1,7 +1,7 @@
 # ADR-022 — Filtres : filtres couleur choisis sur l'aperçu après la capture, Lenses visage en direct en V2
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Les filtres font partie de l'identité de Snapchat, et ADR-001 justifiait déjà le choix du natif par l'accès performant à la caméra « pour les filtres AR ». Aucun ADR ne décidait pourtant comment ils fonctionnent : quel type de filtre, à quel moment il est choisi, et ce qui est réellement envoyé au destinataire — le média brut avec un « filtre à appliquer » à la lecture, ou un média déjà filtré.

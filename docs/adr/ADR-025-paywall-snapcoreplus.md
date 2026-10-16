@@ -1,7 +1,7 @@
 # ADR-025 — Paywall SnapCore+ : Web Purchase Link RevenueCat, webhook vers le backend
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 ADR-007 a retenu RevenueCat + Stripe (mode test) pour l'abonnement SnapCore+, plutôt que Google Play Billing. Les avantages d'un abonnement existent déjà côté backend : un Snap reçu peut être revu et son média conservé tant que le destinataire est abonné, et l'expéditeur en est notifié (ADR-009, ADR-017). Mais rien ne permet de s'abonner : `User.subscriptionTier` et `User.premiumUntil` ne sont alimentés nulle part.

@@ -1,7 +1,7 @@
 # ADR-024 — Lenses visage en direct : Snap Camera Kit sur l'écran caméra
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 ADR-022 a réservé l'écran caméra en direct aux **Lenses** (effets qui suivent le visage : oreilles de chien, lunettes…), les filtres couleur se choisissant après la capture, sur l'aperçu. Il laissait ouvert le choix de la technologie : Snap Camera Kit, ou une détection de visage (ML Kit) avec des accessoires dessinés par l'app.

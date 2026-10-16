@@ -1,7 +1,7 @@
 # ADR-014 — Profil simple avec photo, entièrement modifiable (y compris le pseudo)
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 SnapCore doit proposer un écran de profil simple pour ce premier lot de fonctionnalités : pseudo et photo de profil, avec possibilité pour l'utilisateur de modifier l'ensemble de ces informations, y compris son propre pseudo — contrairement au vrai Snapchat où le pseudo est figé après inscription. Il faut décider du stockage de la photo, de son traitement avant envoi, et de la façon de garantir l'unicité du pseudo lors d'une modification.

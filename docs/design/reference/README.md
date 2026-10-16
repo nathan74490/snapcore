@@ -14,7 +14,7 @@ SnapCore, qui restera plus simple (V1) que l'app originale.
 
 | Fichier | Fonctionnalité (ADR) | Ce qu'il montre |
 |---|---|---|
-| `onboarding-creation-compte-mdp.png` | Onboarding (ADR-010) | Étape de création de compte (mot de passe) — structure "Step X of 5" à adapter à notre flow simplifié sans vérification |
+| `onboarding-creation-compte-mdp.png` | Onboarding (ADR-010) | Étape de création de compte (mot de passe) — structure "Step X of 5" à adapter à notre flow en 3 étapes (pseudo, email et téléphone, mot de passe) ; email vérifié par Firebase sans bloquer l'accès, téléphone non vérifié (ADR-010, ADR-015) |
 | `accueil-camera-ui-complete.png` | Accueil / Caméra (ADR-011) | Écran caméra complet : bouton capture central, flash/retournement caméra à droite, barre de navigation Map/Chat/Camera/Stories/Spotlight en bas |
 | `chat-liste-conversations.png` | Chat + messages (ADR-009) | Liste de conversations avec icônes de statut (carré plein/vide, flèche) à côté de chaque contact |
 | `amis-nouvelle-conversation-multi.png` | Gestion des amis (ADR-012) | Sélection multiple d'amis pour démarrer une conversation — utile pour la recherche par pseudo en V1 |

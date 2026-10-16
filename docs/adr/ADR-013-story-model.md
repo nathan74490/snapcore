@@ -1,7 +1,7 @@
 # ADR-013 — Story : un STORY_ITEM par snap ajouté, expiration et vues réutilisant les mécanismes existants
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 SnapCore doit proposer les stories : une succession de snaps publiés par un utilisateur, visibles par ses amis pendant 24h, avec disparition automatique du contenu et de la liste des personnes ayant vu chaque snap. Le projet dispose déjà d'un worker BullMQ de purge des médias expirés (ADR-017).
