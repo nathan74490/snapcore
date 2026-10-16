@@ -32,6 +32,7 @@ describe("Stories (Postgres, Redis et BullMQ réels)", () => {
     await prisma.user.deleteMany();
     const author = await new PrismaUserRepository(prisma).create({
       username: "auteur",
+      firstName: "Auteur",
       firebaseUid: `uid-${randomUUID()}`,
       email: null,
       phoneNumber: null,

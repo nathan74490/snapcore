@@ -6,6 +6,12 @@ export class UpdateProfileDto {
   @MaxLength(64)
   username?: string;
 
+  // Le prénom ne peut pas être retiré (pas de null), seulement modifié.
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  firstName?: string;
+
   // null retire le numéro ; absent le laisse inchangé.
   @ValidateIf((_dto, value) => value !== null && value !== undefined)
   @IsString()

@@ -4,6 +4,7 @@ export const USER_REPOSITORY = Symbol("UserRepository");
 
 export interface NewUser {
   username: string;
+  firstName: string;
   firebaseUid: string;
   email: string | null;
   phoneNumber: string | null;
@@ -11,6 +12,7 @@ export interface NewUser {
 
 export interface ProfilePatch {
   username?: string;
+  firstName?: string;
   phoneNumber?: string | null;
   email?: string | null;
 }

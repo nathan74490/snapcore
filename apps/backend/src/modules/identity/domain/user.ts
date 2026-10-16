@@ -3,6 +3,7 @@ import type { ModerationStatus, PublicUserProfile, SubscriptionTier } from "@sna
 export interface UserAccount {
   id: string;
   username: string;
+  firstName: string | null; // null pour les comptes créés avant son introduction
   firebaseUid: string;
   profilePhotoUrl: string | null;
   phoneNumber: string | null;
@@ -25,10 +26,11 @@ export function hasActiveSubscription(user: Pick<UserAccount, "subscriptionTier"
   return user.subscriptionTier === "premium" && user.premiumUntil !== null && user.premiumUntil > now;
 }
 
-export function toPublicProfile(user: Pick<UserAccount, "id" | "username" | "profilePhotoUrl">): PublicUserProfile {
+export function toPublicProfile(user: Pick<UserAccount, "id" | "username" | "firstName" | "profilePhotoUrl">): PublicUserProfile {
   return {
     id: user.id,
     username: user.username,
+    ...(user.firstName ? { firstName: user.firstName } : {}),
     ...(user.profilePhotoUrl ? { profilePhotoUrl: user.profilePhotoUrl } : {}),
   };
 }

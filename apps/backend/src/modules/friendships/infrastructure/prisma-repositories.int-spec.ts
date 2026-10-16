@@ -16,7 +16,7 @@ describe("Dépôts Prisma (Postgres réel)", () => {
   const useCases = new FriendshipUseCases(friendships, users, new RecordingFriendshipNotifier(), new FixedClock());
 
   const newUser = (username: string) =>
-    users.create({ username, firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
+    users.create({ username, firstName: "Test", firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
 
   let alice: UserAccount;
   let bob: UserAccount;

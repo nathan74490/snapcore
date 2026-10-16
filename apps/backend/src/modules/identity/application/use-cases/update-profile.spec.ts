@@ -1,4 +1,4 @@
-import { ConflictError } from "../../../../shared/domain/errors";
+import { ConflictError, ValidationError } from "../../../../shared/domain/errors";
 import { FakeIdentityProvider } from "../../../../test/fakes";
 import { InMemoryUserRepository } from "../../../../test/in-memory-user.repository";
 import { SyncEmailFromIdentityProvider } from "./sync-email";
@@ -35,6 +35,21 @@ describe("UpdateProfile", () => {
     const updated = await updateProfile.execute(user, { phoneNumber: null });
 
     expect(updated.phoneNumber).toBeNull();
+  });
+
+  it("permet de changer de prénom (espaces superflus retirés, casse conservée)", async () => {
+    const user = await users.seed("nathan");
+
+    const updated = await updateProfile.execute(user, { firstName: "  Marie  Ève " });
+
+    expect(updated.firstName).toBe("Marie Ève");
+  });
+
+  it("refuse un prénom invalide sans modifier la ligne", async () => {
+    const user = await users.seed("nathan");
+
+    await expect(updateProfile.execute(user, { firstName: "<script>" })).rejects.toThrow(ValidationError);
+    expect(users.rows.get(user.id)!.firstName).toBe("Nathan");
   });
 });
 

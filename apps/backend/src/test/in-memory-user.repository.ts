@@ -57,7 +57,9 @@ export class InMemoryUserRepository implements UserRepository {
 
   /** Raccourci de test : crée directement un compte actif. */
   async seed(username: string, overrides: Partial<UserAccount> = {}): Promise<UserAccount> {
-    const user = await this.create({ username, firebaseUid: `uid-${username}`, email: null, phoneNumber: null });
+    // Prénom dérivé du pseudo ("alice" -> "Alice") pour vérifier sa propagation dans les profils publics.
+    const firstName = username.charAt(0).toUpperCase() + username.slice(1);
+    const user = await this.create({ username, firstName, firebaseUid: `uid-${username}`, email: null, phoneNumber: null });
     const seeded = { ...user, ...overrides };
     this.rows.set(user.id, seeded);
     return { ...seeded };

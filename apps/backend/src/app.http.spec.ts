@@ -34,7 +34,7 @@ describe("API HTTP", () => {
     const res = await request(app.getHttpServer())
       .post("/auth/register")
       .set("Authorization", `Bearer ${token}`)
-      .send({ username });
+      .send({ username, firstName: username.charAt(0).toUpperCase() + username.slice(1) });
     expect(res.status).toBe(200);
     return { token, id: res.body.id as string };
   };
@@ -120,7 +120,7 @@ describe("API HTTP", () => {
 
     const me = await request(app.getHttpServer()).get("/me").set("Authorization", `Bearer ${token}`).expect(200);
 
-    expect(me.body).toMatchObject({ username: "nathan", email: "nathan@example.com", subscriptionTier: "free" });
+    expect(me.body).toMatchObject({ username: "nathan", firstName: "Nathan", email: "nathan@example.com", subscriptionTier: "free" });
     expect(me.body.firebaseUid).toBeUndefined();
   });
 
@@ -159,7 +159,7 @@ describe("API HTTP", () => {
     const friends = await http.get("/friendships").set("Authorization", `Bearer ${alice.token}`).expect(200);
 
     expect(friends.body).toEqual([
-      expect.objectContaining({ status: "ACCEPTED", user: { id: bob.id, username: "bob" } }),
+      expect.objectContaining({ status: "ACCEPTED", user: { id: bob.id, username: "bob", firstName: "Bob" } }),
     ]);
   });
 
@@ -170,7 +170,28 @@ describe("API HTTP", () => {
     await request(app.getHttpServer())
       .post("/auth/register")
       .set("Authorization", `Bearer ${token}`)
-      .send({ username: "ALICE" })
+      .send({ username: "ALICE", firstName: "Alice" })
       .expect(409);
+  });
+
+  it("le prénom est obligatoire à l'inscription et validé", async () => {
+    const token = identity.addAccount("uid-1");
+    const http = request(app.getHttpServer());
+
+    await http.post("/auth/register").set("Authorization", `Bearer ${token}`).send({ username: "nathan" }).expect(400);
+    await http.post("/auth/register").set("Authorization", `Bearer ${token}`).send({ username: "nathan", firstName: "N4than" }).expect(400);
+    expect(users.rows.size).toBe(0);
+  });
+
+  it("le prénom est modifiable depuis le profil", async () => {
+    const { token } = await register("uid-1", "nathan");
+
+    const res = await request(app.getHttpServer())
+      .patch("/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ firstName: "Jean-Marc" })
+      .expect(200);
+
+    expect(res.body).toMatchObject({ username: "nathan", firstName: "Jean-Marc" });
   });
 });

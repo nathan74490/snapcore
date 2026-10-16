@@ -91,6 +91,7 @@ export async function getUserDetail(id: string) {
     where: { id },
     select: {
       ...userSummary,
+      firstName: true,
       email: true,
       phoneNumber: true,
       subscriptionTier: true,

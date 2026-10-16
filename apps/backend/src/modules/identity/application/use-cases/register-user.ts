@@ -1,5 +1,6 @@
 import { noAnalytics, type Analytics } from "../../../../shared/domain/analytics";
 import { ForbiddenError, NotFoundError, UniqueViolationError } from "../../../../shared/domain/errors";
+import { parseFirstName } from "../../domain/first-name";
 import { parsePhoneNumber } from "../../domain/phone-number";
 import type { UserAccount } from "../../domain/user";
 import { parseUsername } from "../../domain/username";
@@ -11,6 +12,7 @@ import { SUSPENDED_MESSAGE } from "./resolve-current-user";
 export interface RegisterUserInput {
   idToken: string;
   username: string;
+  firstName: string;
   phoneNumber?: string;
 }
 
@@ -31,11 +33,13 @@ export class RegisterUser {
     if (existing) return this.alreadyRegistered(existing);
 
     const username = parseUsername(input.username);
+    const firstName = parseFirstName(input.firstName);
     const phoneNumber = input.phoneNumber ? parsePhoneNumber(input.phoneNumber) : null;
 
     try {
       const user = await this.users.create({
         username,
+        firstName,
         firebaseUid: identity.firebaseUid,
         // Firebase est la source de vérité de l'email (ADR-014) : jamais pris dans le corps de la requête.
         email: identity.email,

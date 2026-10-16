@@ -8,6 +8,7 @@ export function presentSelf(user: UserAccount): User {
     username: user.username,
     subscriptionTier: user.subscriptionTier,
     moderationStatus: user.moderationStatus,
+    ...(user.firstName ? { firstName: user.firstName } : {}),
     ...(user.profilePhotoUrl ? { profilePhotoUrl: user.profilePhotoUrl } : {}),
     ...(user.phoneNumber ? { phoneNumber: user.phoneNumber } : {}),
     ...(user.email ? { email: user.email } : {}),

@@ -10,6 +10,7 @@ export type ModerationStatus = "ACTIVE" | "SUSPENDED";
 export interface User {
   id: string;
   username: string;             // normalisé en minuscules, modifiable depuis le profil, unicité revérifiée (voir ADR-014)
+  firstName?: string;           // prénom affiché à la place du pseudo ; absent pour les comptes créés avant son introduction
   // firebaseUid (lien vers le compte Firebase Authentication) n'est jamais exposé dans les types partagés app/backoffice (voir ADR-015)
   profilePhotoUrl?: string;     // URL publique CDN, recadrée/redimensionnée côté app avant upload (voir ADR-014, ADR-016)
   phoneNumber?: string;         // collecté à l'onboarding, jamais vérifié (voir ADR-010)
@@ -90,6 +91,7 @@ export interface DeviceToken {
 export interface PublicUserProfile {
   id: string;
   username: string;
+  firstName?: string; // absent pour les comptes créés avant son introduction : afficher le pseudo à la place
   profilePhotoUrl?: string;
 }
 

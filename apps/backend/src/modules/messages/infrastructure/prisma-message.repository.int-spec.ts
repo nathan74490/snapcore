@@ -15,7 +15,7 @@ describe("PrismaMessageRepository (Postgres réel)", () => {
   let carol: UserAccount;
 
   const newUser = (username: string) =>
-    users.create({ username, firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
+    users.create({ username, firstName: "Test", firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
 
   const text = (from: UserAccount, to: UserAccount, content: string, at: string): NewMessage => ({
     id: randomUUID(),

@@ -52,6 +52,7 @@ model User {
   id                String    @id @default(uuid())
   username          String    @unique // normalisé en minuscules, modifiable, unicité revérifiée (ADR-014)
   firebaseUid       String    @unique // identifiant du compte Firebase Authentication (ADR-015)
+  firstName         String?             // prénom affiché à la place du pseudo ; null pour les comptes créés avant son introduction
   profilePhotoUrl   String?             // URL publique CDN, recadrée/redimensionnée côté app avant upload (ADR-014, ADR-016)
   phoneNumber       String?   @unique // collecté à l'onboarding, jamais vérifié (ADR-010)
   email             String?   @unique // copie de lecture de l'email Firebase ; Firebase reste la source de vérité pour la connexion, tout changement passe par verifyBeforeUpdateEmail avant mise à jour ici (ADR-014, ADR-015)
