@@ -5,6 +5,7 @@ import { AccountDeletionModule } from "./modules/account-deletion/account-deleti
 import { AvatarsModule } from "./modules/avatars/avatars.module";
 import { FriendshipsModule } from "./modules/friendships/friendships.module";
 import { IdentityModule } from "./modules/identity/identity.module";
+import { LocationModule } from "./modules/location/location.module";
 import { MessagesModule } from "./modules/messages/messages.module";
 import { ModerationModule } from "./modules/moderation/moderation.module";
 import { PurgeWorkerModule } from "./modules/purge/purge-worker.module";
@@ -27,6 +28,7 @@ import { SharedModule } from "./shared/shared.module";
     ModerationModule,
     SubscriptionsModule,
     AvatarsModule,
+    LocationModule,
   ],
   controllers: [HealthController],
 })

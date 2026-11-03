@@ -6,6 +6,7 @@ import com.snapcore.app.data.AndroidContactsReader
 import com.snapcore.app.data.ApiAccountService
 import com.snapcore.app.data.ApiChatService
 import com.snapcore.app.data.ApiFriendsService
+import com.snapcore.app.data.ApiMapService
 import com.snapcore.app.data.ApiSnapService
 import com.snapcore.app.data.ApiStoryService
 import com.snapcore.app.data.ApiSubscriptionService
@@ -13,6 +14,7 @@ import com.snapcore.app.data.BitmapProfilePhotoPreparer
 import com.snapcore.app.data.BitmapStoryThumbnailMaker
 import com.snapcore.app.data.DataStorePendingRegistrationStore
 import com.snapcore.app.data.FirebaseAuthService
+import com.snapcore.app.data.FusedLocationProvider
 import com.snapcore.app.data.MediaFilterRenderer
 import com.snapcore.app.data.PostHogAnalytics
 import com.snapcore.app.data.PostHogExperiments
@@ -28,6 +30,9 @@ import com.snapcore.app.domain.ContactsReader
 import com.snapcore.app.domain.Experiments
 import com.snapcore.app.domain.FilterRenderer
 import com.snapcore.app.domain.FriendsService
+import com.snapcore.app.domain.LocationProvider
+import com.snapcore.app.domain.LocationReporter
+import com.snapcore.app.domain.MapService
 import com.snapcore.app.domain.MediaPublisher
 import com.snapcore.app.domain.MediaUploader
 import com.snapcore.app.domain.NoAnalytics
@@ -93,6 +98,11 @@ class AppContainer(context: Context) {
     val chat: ChatService = ApiChatService(api)
     val stories: StoryService = ApiStoryService(api)
 
+    // Snap Map (ADR-031) : position envoyée seulement app ouverte, jamais en mode fantôme.
+    val map: MapService = ApiMapService(api)
+    val location: LocationProvider = FusedLocationProvider(context.applicationContext)
+    val locationReporter = LocationReporter(map, location)
+
     // Notifications push (ADR-018).
     val devices = FcmDeviceRegistry(api, firebaseAuth)
     val pushDetails = PushDetailsResolver(api)
@@ -108,7 +118,8 @@ class AppContainer(context: Context) {
     val profilePhotoPreparer: ProfilePhotoPreparer = BitmapProfilePhotoPreparer(context.applicationContext, capturesDir)
 
     // Après capturesDir : la vignette d'une story y est écrite le temps de l'envoi (ADR-026).
-    val mediaPublisher = MediaPublisher(mediaUploader, ApiSnapService(api), BitmapStoryThumbnailMaker(capturesDir))
+    // Une story part avec la position du téléphone, sauf en mode fantôme (ADR-031).
+    val mediaPublisher = MediaPublisher(mediaUploader, ApiSnapService(api), BitmapStoryThumbnailMaker(capturesDir), locationReporter::positionForStory)
 
     /** Durée de vie de l'app : ce qui doit survivre à la fermeture d'un écran (envois en arrière-plan). */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

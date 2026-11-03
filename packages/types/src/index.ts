@@ -213,6 +213,60 @@ export interface OwnStoryItemView {
   thumbnailUrl?: string;    // vignette pré-signée, absente sans vignette (ADR-026)
 }
 
+// Corps de POST /stories (voir ADR-013, ADR-026, ADR-031). latitude et longitude vont ensemble (les deux
+// ou aucune, sinon 400 ; null vaut absence) ; stockées arrondies à 3 décimales (~100 m), et seulement si l'auteur n'est pas
+// en mode fantôme au moment de la publication (sinon ignorées).
+export interface PublishStoryRequest {
+  uploadId: string;
+  contentType: StoryContentType;
+  thumbnailUploadId?: string;
+  latitude?: number;        // -90 à 90
+  longitude?: number;       // -180 à 180
+}
+
+// Snap Map (voir ADR-031). Mode de partage de MA position avec mes amis ; GHOST (mode fantôme) par défaut.
+// FRIENDS_EXCEPT : tous mes amis sauf ceux de `friendIds` ; ONLY_FRIENDS : uniquement ceux de `friendIds`.
+export type LocationSharingMode = "GHOST" | "ALL_FRIENDS" | "FRIENDS_EXCEPT" | "ONLY_FRIENDS";
+
+// Réponse de GET /me/location-sharing et corps / réponse de PUT /me/location-sharing.
+// `friendIds` : amis ACCEPTED exclus (FRIENDS_EXCEPT) ou autorisés (ONLY_FRIENDS) ; la liste est conservée
+// quel que soit le mode. À l'écriture : dédupliquée, 2000 au plus (400 au-delà), filtrée en silence aux
+// amis actuels, et remplace l'ancienne. Ordre non significatif.
+export interface LocationSharingSettings {
+  mode: LocationSharingMode;
+  friendIds: string[];
+}
+
+// Corps de PUT /me/location (204). En mode fantôme, rien n'est stocké. Position éphémère : Redis
+// uniquement, oubliée 8 h après la dernière mise à jour (ADR-003).
+export interface UpdateLocationRequest {
+  latitude: number;         // -90 à 90
+  longitude: number;        // -180 à 180
+}
+
+// Un élément de GET /map/friends : un ami qui me rend visible sa position, mise à jour il y a moins de 8 h.
+export interface FriendLocation {
+  user: PublicUserProfile;
+  latitude: number;
+  longitude: number;
+  updatedAt: string;
+}
+
+// Un élément de GET /map/stories : élément de story géolocalisé encore visible d'un ami qui me rend
+// visible sa position. Vignette et `viewed` comme dans GET /stories (ADR-026) ; lecture par
+// POST /stories/:id/view.
+export interface MapStory {
+  id: string;
+  author: PublicUserProfile;
+  contentType: StoryContentType;
+  latitude: number;         // arrondie à 3 décimales (~100 m)
+  longitude: number;
+  createdAt: string;
+  expiresAt: string;
+  thumbnailUrl?: string;
+  viewed: boolean;
+}
+
 // Compte membre de l'équipe Alpvengers avec accès au backoffice, entièrement
 // distinct d'un compte Firebase utilisateur final (voir ADR-020). Le hash du
 // mot de passe n'est jamais inclus dans ce type partagé, réservé côté serveur.

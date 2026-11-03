@@ -10,6 +10,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // SDK Mapbox de la Snap Map (ADR-031), téléchargeable sans jeton secret.
+        maven { url = uri("https://api.mapbox.com/downloads/v2/releases/maven") }
     }
 }
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { FakeIdentityProvider, FixedClock } from "../../../test/fakes";
 import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "../../../test/in-memory-account-deletion";
 import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
+import { InMemoryLocationStore } from "../../../test/in-memory-location";
 import { InMemoryObjectStorage, silentLogger } from "../../../test/in-memory-media";
 import { InMemoryMessageRepository } from "../../../test/in-memory-messages";
 import { RecordingRealtime } from "../../../test/in-memory-notifications";
@@ -24,6 +25,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
   let identity: FakeIdentityProvider;
   let storage: InMemoryObjectStorage;
   let realtime: RecordingRealtime;
+  let locations: InMemoryLocationStore;
   let steps: string[];
   let useCases: AccountDeletionUseCases;
   let alice: UserAccount;
@@ -39,6 +41,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     identity = new FakeIdentityProvider();
     storage = new InMemoryObjectStorage();
     realtime = new RecordingRealtime();
+    locations = new InMemoryLocationStore();
     steps = [];
     const subscriptions: SubscriptionCanceller = { cancelFor: async () => void steps.push("abonnement") };
     const deleteAccount = identity.deleteAccount.bind(identity);
@@ -56,6 +59,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
       realtime,
       new FixedClock(),
       silentLogger,
+      locations,
     );
     alice = await users.seed("alice", { profilePhotoUrl: urls.urlFor("profiles/alice/photo") });
     bob = await users.seed("bob");
@@ -90,6 +94,8 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
         mediaKey: `stories/${id}`,
         contentType: "PHOTO",
         thumbnailKey,
+        latitude: null,
+        longitude: null,
         createdAt: new Date(),
         expiresAt: new Date(Date.now() + 1000),
       });
@@ -116,6 +122,18 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     expect(await users.findActiveById(alice.id)).toBeNull(); // inexistant pour tous
     expect(queue.enqueued).toEqual([{ userId: alice.id, firebaseUid: alice.firebaseUid }]);
     expect(realtime.disconnected).toEqual([alice.id]);
+  });
+
+  it("la demande efface aussi la position de la Snap Map, sans bloquer si Redis échoue (ADR-031)", async () => {
+    await locations.save(alice.id, { latitude: 45.9, longitude: 6.12, updatedAt: new Date() });
+    await useCases.request(alice);
+    expect(locations.entries.has(alice.id)).toBe(false);
+
+    locations.remove = async () => {
+      throw new Error("Redis indisponible");
+    };
+    await expect(useCases.request(bob)).resolves.toBeUndefined();
+    expect(queue.enqueued.map((job) => job.userId)).toContain(bob.id);
   });
 
   it("exécute les étapes dans l'ordre : abonnement → Firebase → base (clés avant suppression) → R2", async () => {

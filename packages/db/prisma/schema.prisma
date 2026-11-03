@@ -48,6 +48,13 @@ enum ReportStatus {
   DISMISSED
 }
 
+enum LocationSharingMode {
+  GHOST            // voir ADR-031 : mode fantôme, valeur par défaut (confidentialité d'abord)
+  ALL_FRIENDS
+  FRIENDS_EXCEPT   // tous les amis sauf ceux de LocationShareRule
+  ONLY_FRIENDS     // uniquement les amis de LocationShareRule
+}
+
 model User {
   id                String    @id @default(uuid())
   username          String    @unique // normalisé en minuscules, modifiable, unicité revérifiée (ADR-014)
@@ -69,6 +76,7 @@ model User {
   suspendedById     String?
   suspendedBy       Moderator? @relation("UserSuspendedBy", fields: [suspendedById], references: [id], onDelete: SetNull)
   suspensionReason  String?
+  locationSharing   LocationSharingMode @default(GHOST) // partage de position sur la Snap Map ; la position elle-même n'est jamais en base, seulement dans Redis avec TTL (ADR-003, ADR-031)
 
   sentMessages         Message[]     @relation("MessageSender")
   receivedMessages     Message[]     @relation("MessageRecipient")
@@ -79,6 +87,8 @@ model User {
   deviceTokens         DeviceToken[]
   reportsMade          Report[]      @relation("ReportsMade")
   reportsReceived      Report[]      @relation("ReportsReceivedAsUser")
+  locationShareRules   LocationShareRule[] @relation("LocationShareRuleOwner")
+  locationShareTargets LocationShareRule[] @relation("LocationShareRuleFriend")
 }
 
 model Message {
@@ -147,11 +157,25 @@ model StoryItem {
   thumbnailKey  String?          // vignette privée story-thumbnails/<id>, fabriquée par l'app ; null sans vignette (ADR-026)
   createdAt     DateTime         @default(now())
   expiresAt     DateTime         // createdAt + 24h ; déclenche le job BullMQ de purge (ADR-017)
+  latitude      Float?           // position de publication arrondie à 3 décimales (~100 m), seulement si l'auteur ne partageait pas en mode fantôme (ADR-031)
+  longitude     Float?
 
   reports Report[]
 
   @@index([authorId])
   @@index([expiresAt])
+}
+
+// Liste d'amis du partage de position (ADR-031) : exclus en FRIENDS_EXCEPT, autorisés en ONLY_FRIENDS.
+// Conservée quel que soit le mode, pour qu'un retour à l'un de ces modes la retrouve.
+model LocationShareRule {
+  ownerId  String
+  owner    User   @relation("LocationShareRuleOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  friendId String
+  friend   User   @relation("LocationShareRuleFriend", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@id([ownerId, friendId])
+  @@index([friendId])
 }
 
 model DeviceToken {

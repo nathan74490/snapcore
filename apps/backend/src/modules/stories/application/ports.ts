@@ -1,3 +1,5 @@
+import type { LocationSharingMode } from "@snapcore/types";
+import type { FriendshipWithUser } from "../../friendships/application/ports/friendship.repository";
 import type { StoryItem } from "../domain/story-item";
 
 export const STORY_REPOSITORY = Symbol("StoryRepository");
@@ -24,6 +26,14 @@ export interface StoryViewStore {
   viewers(storyId: string): Promise<string[]>;
   counts(storyIds: string[]): Promise<Map<string, number>>;
   clear(storyId: string): Promise<void>;
+}
+
+// Règle de visibilité de la Snap Map (ADR-031), fournie par le module location (LocationVisibility).
+export interface StoryLocationPolicy {
+  /** Mode de partage de l'auteur, lu au moment de la publication. */
+  modeOf(userId: string): Promise<LocationSharingMode>;
+  /** Parmi `friends`, ceux qui rendent leur position (et leurs stories géolocalisées) visible à `viewerId`. */
+  visibleFriends(viewerId: string, friends: FriendshipWithUser[]): Promise<FriendshipWithUser[]>;
 }
 
 // Même job de purge que les Snaps, exécuté à expiresAt (ADR-013, ADR-017).

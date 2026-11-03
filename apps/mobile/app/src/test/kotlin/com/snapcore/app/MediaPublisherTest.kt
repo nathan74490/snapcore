@@ -53,7 +53,7 @@ class RecordingSnaps : SnapService {
         snaps += friendId to messageContentType
     }
 
-    override suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String?) {
+    override suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String?, location: com.snapcore.app.domain.GeoPoint?) {
         stories += storyContentType
         thumbnails += thumbnailUploadId
     }

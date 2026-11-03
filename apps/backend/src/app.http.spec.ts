@@ -358,4 +358,111 @@ describe("API HTTP", () => {
       await http.get("/avatars/avataaars.png").query({ top: "bob" }).expect(400);
     });
   });
+
+  describe("Snap Map (ADR-031)", () => {
+    const befriend = async (a: { token: string }, b: { token: string }, username: string) => {
+      const http = request(app.getHttpServer());
+      const sent = await http.post("/friendships/requests").set("Authorization", `Bearer ${a.token}`).send({ username });
+      await http.post(`/friendships/requests/${sent.body.friendshipId}/accept`).set("Authorization", `Bearer ${b.token}`).expect(200);
+    };
+
+    const publishStory = async (token: string, extra: object) => {
+      const http = request(app.getHttpServer());
+      const ticket = await http
+        .post("/media/uploads")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ purpose: "STORY_PHOTO", contentType: "image/jpeg", contentLength: 1000 })
+        .expect(201);
+      world.storage.simulateUpload(`tmp/${ticket.body.uploadId}`, 1000, "image/jpeg");
+      return http.post("/stories").set("Authorization", `Bearer ${token}`).send({ uploadId: ticket.body.uploadId, contentType: "PHOTO", ...extra });
+    };
+
+    it("réglages : GHOST par défaut, validation du corps, liste filtrée aux amis", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      const carol = await register("uid-c", "carol");
+      await befriend(alice, bob, "bob");
+      const http = request(app.getHttpServer());
+      const auth = { Authorization: `Bearer ${alice.token}` };
+
+      await http.get("/me/location-sharing").expect(401);
+      await http.get("/me/location-sharing").set(auth).expect(200, { mode: "GHOST", friendIds: [] });
+
+      const saved = await http
+        .put("/me/location-sharing")
+        .set(auth)
+        .send({ mode: "FRIENDS_EXCEPT", friendIds: [bob.id, bob.id, carol.id] })
+        .expect(200);
+      expect(saved.body).toEqual({ mode: "FRIENDS_EXCEPT", friendIds: [bob.id] });
+      await http.get("/me/location-sharing").set(auth).expect(200, saved.body);
+
+      await http.put("/me/location-sharing").set(auth).send({ mode: "INVISIBLE", friendIds: [] }).expect(400);
+      await http.put("/me/location-sharing").set(auth).send({ mode: "GHOST" }).expect(400);
+      await http.put("/me/location-sharing").set(auth).send({ mode: "GHOST", friendIds: [1] }).expect(400);
+      const tooMany = Array.from({ length: 2001 }, (_, i) => `id-${i}`);
+      await http.put("/me/location-sharing").set(auth).send({ mode: "ONLY_FRIENDS", friendIds: tooMany }).expect(400);
+    });
+
+    it("position : 204, ignorée en mode fantôme, visible des amis sur GET /map/friends", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      await befriend(alice, bob, "bob");
+      const http = request(app.getHttpServer());
+      const auth = { Authorization: `Bearer ${alice.token}` };
+      const position = { latitude: 45.899247, longitude: 6.129384 };
+
+      await http.put("/me/location").set(auth).send({ latitude: 91, longitude: 0 }).expect(400);
+      await http.put("/me/location").set(auth).send({ latitude: 45 }).expect(400);
+      await http.put("/me/location").set(auth).send({ latitude: "45", longitude: "6" }).expect(400);
+
+      await http.put("/me/location").set(auth).send(position).expect(204);
+      expect(world.locations.entries.has(alice.id)).toBe(false); // mode fantôme par défaut
+
+      await http.put("/me/location-sharing").set(auth).send({ mode: "ALL_FRIENDS", friendIds: [] }).expect(200);
+      await http.put("/me/location").set(auth).send(position).expect(204);
+
+      const map = await http.get("/map/friends").set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect(map.body).toEqual([
+        { user: { id: alice.id, username: "alice", firstName: "Alice" }, ...position, updatedAt: expect.any(String) },
+      ]);
+      await http.get("/map/friends").set(auth).expect(200, []);
+
+      await http.put("/me/location-sharing").set(auth).send({ mode: "GHOST", friendIds: [] }).expect(200);
+      expect(world.locations.entries.has(alice.id)).toBe(false);
+      await http.get("/map/friends").set("Authorization", `Bearer ${bob.token}`).expect(200, []);
+    });
+
+    it("stories : coordonnées facultatives (les deux ou aucune), GET /map/stories", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      await befriend(alice, bob, "bob");
+      const http = request(app.getHttpServer());
+
+      expect((await publishStory(alice.token, { latitude: 45.9 })).status).toBe(400);
+      expect((await publishStory(alice.token, { latitude: 45.9, longitude: 200 })).status).toBe(400);
+      expect((await publishStory(alice.token, { latitude: null, longitude: null })).status).toBe(201); // null = absent
+
+      await http.put("/me/location-sharing").set("Authorization", `Bearer ${alice.token}`).send({ mode: "ALL_FRIENDS", friendIds: [] }).expect(200);
+      const published = await publishStory(alice.token, { latitude: 45.899247, longitude: 6.129384 });
+      expect(published.status).toBe(201);
+      await publishStory(alice.token, {}); // sans position
+
+      const map = await http.get("/map/stories").set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect(map.body).toEqual([
+        {
+          id: published.body.id,
+          author: { id: alice.id, username: "alice", firstName: "Alice" },
+          contentType: "PHOTO",
+          latitude: 45.899,
+          longitude: 6.129,
+          createdAt: published.body.createdAt,
+          expiresAt: published.body.expiresAt,
+          viewed: false,
+        },
+      ]);
+
+      await http.post(`/stories/${published.body.id}/view`).set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect((await http.get("/map/stories").set("Authorization", `Bearer ${bob.token}`)).body[0].viewed).toBe(true);
+    });
+  });
 });

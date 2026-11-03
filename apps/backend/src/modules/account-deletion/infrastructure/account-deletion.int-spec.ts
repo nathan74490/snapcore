@@ -1,4 +1,5 @@
 import { Queue } from "bullmq";
+import Redis from "ioredis";
 import { randomUUID } from "node:crypto";
 import { systemClock } from "../../../shared/domain/clock";
 import { PrismaService } from "../../../shared/infrastructure/prisma/prisma.service";
@@ -7,6 +8,7 @@ import { InMemoryObjectStorage, silentLogger } from "../../../test/in-memory-med
 import { RecordingRealtime } from "../../../test/in-memory-notifications";
 import type { UserAccount } from "../../identity/domain/user";
 import { PrismaUserRepository } from "../../identity/infrastructure/prisma-user.repository";
+import { locationKey, RedisLocationStore } from "../../location/infrastructure/redis-location.store";
 import { PublicMediaUrls } from "../../media/domain/public-media-urls";
 import { bullmqConnection } from "../../purge/infrastructure/purge-queue";
 import { AccountDeletionUseCases } from "../application/account-deletion-use-cases";
@@ -71,6 +73,8 @@ describe("Suppression de compte (Postgres et BullMQ réels)", () => {
     const connection = bullmqConnection(process.env.REDIS_URL ?? "redis://localhost:6379");
     const queueName = `it-account-deletion-${randomUUID().slice(0, 8)}`;
     const queue = new Queue(queueName, { connection });
+    const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
+    const locations = new RedisLocationStore(redis);
     const storage = new InMemoryObjectStorage();
     const identity = new FakeIdentityProvider();
     const useCases = new AccountDeletionUseCases(
@@ -83,6 +87,7 @@ describe("Suppression de compte (Postgres et BullMQ réels)", () => {
       new RecordingRealtime(),
       systemClock,
       silentLogger,
+      locations,
     );
     const alerts: string[] = [];
     const worker = new AccountDeletionWorker(new Queue(queueName, { connection }), connection, useCases, {
@@ -92,6 +97,14 @@ describe("Suppression de compte (Postgres et BullMQ réels)", () => {
     try {
       const sent = await snapTo(bob.id, alice.id);
       storage.simulateUpload(sent.mediaKey!, 10, "image/jpeg");
+      // Snap Map (ADR-031) : position Redis et listes de partage dans les deux sens.
+      await locations.save(alice.id, { latitude: 45.9, longitude: 6.12, updatedAt: new Date() });
+      await prisma.locationShareRule.createMany({
+        data: [
+          { ownerId: alice.id, friendId: bob.id },
+          { ownerId: bob.id, friendId: alice.id },
+        ],
+      });
       // R2 échoue une fois APRÈS la suppression en base : le rejeu doit s'appuyer sur les clés du job.
       storage.failNextDelete = true;
 
@@ -109,8 +122,11 @@ describe("Suppression de compte (Postgres et BullMQ réels)", () => {
       expect(identity.deletedAccounts.has(alice.firebaseUid)).toBe(true);
       expect(storage.has({ area: "private", key: sent.mediaKey! })).toBe(false);
       expect(await prisma.user.findUnique({ where: { id: bob.id } })).not.toBeNull();
+      expect(await redis.exists(locationKey(alice.id))).toBe(0);
+      expect(await prisma.locationShareRule.count()).toBe(0); // cascade des deux côtés
       expect(alerts).toEqual([]);
     } finally {
+      await redis.quit();
       await worker.onApplicationShutdown();
       const cleanup = new Queue(queueName, { connection });
       await cleanup.obliterate({ force: true });

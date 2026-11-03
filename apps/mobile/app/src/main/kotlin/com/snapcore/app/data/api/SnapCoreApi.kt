@@ -49,6 +49,22 @@ interface SnapCoreApi {
     @DELETE("me/avatar")
     suspend fun removeAvatar()
 
+    // --- Snap Map (ADR-031) ---
+    @PUT("me/location")
+    suspend fun updateLocation(@Body body: LocationDto)
+
+    @GET("me/location-sharing")
+    suspend fun locationSharing(): LocationSharingDto
+
+    @PUT("me/location-sharing")
+    suspend fun updateLocationSharing(@Body body: LocationSharingDto): LocationSharingDto
+
+    @GET("map/friends")
+    suspend fun friendLocations(): List<FriendLocationDto>
+
+    @GET("map/stories")
+    suspend fun mapStories(): List<MapStoryDto>
+
     // --- Médias (ADR-016) ---
     @POST("media/uploads")
     suspend fun requestUpload(@Body body: UploadRequest): UploadInstructions
@@ -201,7 +217,14 @@ data class UploadInstructions(
 data class SendSnapRequest(val uploadId: String, val contentType: String)
 
 @Serializable
-data class PublishStoryRequest(val uploadId: String, val contentType: String, val thumbnailUploadId: String? = null)
+data class PublishStoryRequest(
+    val uploadId: String,
+    val contentType: String,
+    val thumbnailUploadId: String? = null,
+    // Position de publication, pour la Snap Map (ADR-031) : les deux ou aucune.
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+)
 
 @Serializable
 data class MessageDto(val id: String, val contentType: String, val createdAt: String)
@@ -260,3 +283,28 @@ data class DeviceTokenRequest(val token: String)
 
 @Serializable
 data class ConfirmUploadRequest(val uploadId: String)
+
+// --- Snap Map (ADR-031) ---
+@Serializable
+data class LocationDto(val latitude: Double, val longitude: Double)
+
+@Serializable
+// Pas de valeur par défaut : la liste doit partir même vide (le backend l'exige, et une valeur par défaut
+// n'est pas sérialisée).
+data class LocationSharingDto(val mode: String, val friendIds: List<String>)
+
+@Serializable
+data class FriendLocationDto(val user: PublicProfileDto, val latitude: Double, val longitude: Double, val updatedAt: String)
+
+@Serializable
+data class MapStoryDto(
+    val id: String,
+    val author: PublicProfileDto,
+    val contentType: String,
+    val latitude: Double,
+    val longitude: Double,
+    val createdAt: String,
+    val expiresAt: String,
+    val thumbnailUrl: String? = null,
+    val viewed: Boolean = false,
+)

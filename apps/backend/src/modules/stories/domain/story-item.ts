@@ -9,6 +9,9 @@ export interface StoryItem {
   contentType: StoryContentType;
   /** Vignette fabriquée par l'app, null si absente ou si sa promotion a échoué (ADR-026). */
   thumbnailKey: string | null;
+  /** Position arrondie (~100 m) pour la Snap Map, null sans position ou en mode fantôme (ADR-031). */
+  latitude: number | null;
+  longitude: number | null;
   createdAt: Date;
   expiresAt: Date;
 }

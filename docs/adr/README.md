@@ -34,3 +34,4 @@ Liste des Architecture Decision Records du projet.
 | [ADR-028](./ADR-028-avatars.md) | Avatars maison façon Bitmoji : style avataaars (DiceBear), options stockées par le backend, rendu PNG public déterministe | Accepté |
 | [ADR-029](./ADR-029-onboarding-facon-snapchat.md) | Onboarding façon Snapchat : inscription en 5 étapes, âge minimum, pseudo proposé, premiers pas avec les contacts | Accepté |
 | [ADR-030](./ADR-030-ab-testing-posthog.md) | A/B testing avec les expériences PostHog, premier test sur le bouton du paywall SnapCore+ | Accepté |
+| [ADR-031](./ADR-031-snap-map.md) | Snap Map : carte Mapbox, position des amis, mode fantôme et stories géolocalisées | Accepté |

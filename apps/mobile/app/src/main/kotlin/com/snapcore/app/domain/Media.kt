@@ -44,7 +44,8 @@ interface MediaUploader {
 
 interface SnapService {
     suspend fun sendSnap(friendId: String, uploadId: String, messageContentType: String)
-    suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String? = null)
+    /** [location] : là où la story est publiée, pour l'épingler sur la carte des amis (ADR-031) ; null = nulle part. */
+    suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String? = null, location: GeoPoint? = null)
 }
 
 /** Usage d'upload de la vignette d'une story (ADR-026). */
@@ -59,7 +60,13 @@ interface StoryThumbnailMaker {
 // Envoie un média capturé à un ami ou à sa story. Un upload par cible : le backend copie chaque upload
 // confirmé vers sa propre clé (messages/<id>, stories/<id>). La file d'envoi (SnapOutbox) s'en sert cible
 // par cible, et gère le fichier local.
-class MediaPublisher(private val uploader: MediaUploader, private val snaps: SnapService, private val thumbnails: StoryThumbnailMaker? = null) {
+// Une story publiée hors mode fantôme part avec la position du téléphone (Snap Map, ADR-031).
+class MediaPublisher(
+    private val uploader: MediaUploader,
+    private val snaps: SnapService,
+    private val thumbnails: StoryThumbnailMaker? = null,
+    private val storyLocation: suspend () -> GeoPoint? = { null },
+) {
     /** Envoie le média à une seule cible, sans toucher au fichier local ; lève une exception en cas d'échec. */
     suspend fun publishTo(media: CapturedMedia, target: SendTarget) {
         when (target) {
@@ -69,9 +76,18 @@ class MediaPublisher(private val uploader: MediaUploader, private val snaps: Sna
             }
             SendTarget.ToStory -> {
                 val uploadId = uploader.upload(media.file, media.kind.contentType, media.kind.storyUploadPurpose)
-                snaps.publishStory(uploadId, media.kind.storyContentType, uploadThumbnail(media))
+                snaps.publishStory(uploadId, media.kind.storyContentType, uploadThumbnail(media), locate())
             }
         }
+    }
+
+    // Comme la vignette, la position est un plus : sans elle, la story part quand même, hors de la carte.
+    private suspend fun locate(): GeoPoint? = try {
+        storyLocation()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
     }
 
     // La vignette n'est qu'un confort d'affichage : sans elle, la story part quand même (ADR-026).

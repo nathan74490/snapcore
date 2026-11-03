@@ -23,7 +23,9 @@ npm run seed:demo -w @snapcore/backend    # backend de dev lancé à côté (ses
 `scripts/seed-demo.ts` peuple la base pour tester l'app avec les comptes `nathan` et `rober` (qui doivent
 exister) : 8 comptes de démo (Firebase email/mot de passe en `@snapcore.test`, mot de passe commun
 `SnapDemo2026!`) avec avatar dessiné (ADR-028, conservé s'il existe déjà), amitiés, 2 demandes en attente
-vers nathan, stories avec vignette, conversations antidatées, snaps non ouverts et chats non lus. Tout
+vers nathan, stories avec vignette (certaines géolocalisées), conversations antidatées, snaps non ouverts et
+chats non lus. Léa, Hugo, Inès et Chloé partagent leur position avec tous leurs amis (Snap Map, ADR-031 ;
+seul un compte encore en mode fantôme est modifié) ; leur position en direct n'est pas seedée, elle vient de l'app. Tout
 passe par les vrais cas d'usage (upload pré-signé vers R2 puis promotion, purges programmées). Idempotent, ne supprime jamais rien ; seuls les envois
 récents sont notifiés (push / temps réel). Médias générés avec ffmpeg (`FFMPEG_PATH`, sinon le PATH).
 
@@ -131,10 +133,15 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | POST | `/messages/:messageId/view` | Ouvre un Snap : URL ~1 min, vue unique, grâce 5 min, SnapCore+ | 009 |
 | GET | `/stories` | Stories de mes amis (non vues d'abord), `thumbnailUrl` de l'anneau sans compter de vue | 013, 026 |
 | GET | `/stories/me` | Ma story + nombre de vues et `thumbnailUrl` par élément | 013, 026 |
-| POST | `/stories` | Publie un élément `{ uploadId, contentType, thumbnailUploadId? }` (upload `STORY_PHOTO` / `STORY_VIDEO`, vignette `STORY_THUMBNAIL` facultative) | 013, 016, 026 |
+| POST | `/stories` | Publie un élément `{ uploadId, contentType, thumbnailUploadId?, latitude?, longitude? }` (upload `STORY_PHOTO` / `STORY_VIDEO`, vignette `STORY_THUMBNAIL` facultative ; position : les deux ou aucune, sinon 400, arrondie à 3 décimales et ignorée en mode fantôme) | 013, 016, 026, 031 |
 | POST | `/stories/:storyId/view` | URL de lecture ~1 min, enregistre la vue | 013 |
 | GET | `/stories/:storyId/viewers` | Qui a vu mon élément (auteur uniquement) | 013 |
 | DELETE | `/stories/:storyId` | Retire un élément avant expiration | 013 |
+| PUT | `/me/location` | Ma position `{ latitude, longitude }` (204) ; Redis seulement, TTL 8 h ; rien n'est stocké en mode fantôme | 003, 031 |
+| GET | `/me/location-sharing` | Mon partage de position `{ mode, friendIds }` (`GHOST` par défaut, `ALL_FRIENDS`, `FRIENDS_EXCEPT`, `ONLY_FRIENDS`) | 031 |
+| PUT | `/me/location-sharing` | Remplace mode et liste `{ mode, friendIds }` (dédupliquée, 2000 max sinon 400, filtrée aux amis) ; `GHOST` efface ma position | 031 |
+| GET | `/map/friends` | Amis qui me rendent visible leur position (< 8 h) : `[{ user, latitude, longitude, updatedAt }]` | 031 |
+| GET | `/map/stories` | Éléments de story géolocalisés visibles de ces amis : `[{ id, author, contentType, latitude, longitude, createdAt, expiresAt, thumbnailUrl?, viewed }]` (lecture : `POST /stories/:storyId/view`) | 026, 031 |
 | POST | `/reports` | Signale un compte, un message reçu ou une story visible `{ targetType, targetId, reason }` | 021 |
 | POST | `/devices` | Enregistre le token FCM de l'appareil `{ token }` (upsert) | 018 |
 | DELETE | `/devices/:token` | Au logout : retire le token de l'appareil | 018 |

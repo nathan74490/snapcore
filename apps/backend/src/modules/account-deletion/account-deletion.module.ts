@@ -5,6 +5,8 @@ import { CLOCK, type Clock } from "../../shared/domain/clock";
 import { workersEnabled } from "../../shared/infrastructure/workers";
 import { IDENTITY_PROVIDER, type IdentityProvider } from "../identity/application/ports/identity-provider.port";
 import { IdentityModule } from "../identity/identity.module";
+import { LOCATION_STORE, type LocationStore } from "../location/application/ports";
+import { LocationModule } from "../location/location.module";
 import { OBJECT_STORAGE, type ObjectStorage } from "../media/application/ports/object-storage.port";
 import { PublicMediaUrls } from "../media/domain/public-media-urls";
 import { MediaModule } from "../media/media.module";
@@ -30,7 +32,7 @@ import { RevenueCatSubscriptionCanceller } from "./infrastructure/revenuecat-sub
 import { AccountDeletionController } from "./interface/account-deletion.controller";
 
 @Module({
-  imports: [IdentityModule, MediaModule, NotificationsModule],
+  imports: [IdentityModule, MediaModule, NotificationsModule, LocationModule],
   controllers: [AccountDeletionController],
   providers: [
     { provide: ACCOUNT_DELETION_REPOSITORY, useClass: PrismaAccountDeletionRepository },
@@ -69,6 +71,7 @@ import { AccountDeletionController } from "./interface/account-deletion.controll
         PublicMediaUrls,
         REALTIME_CHANNEL,
         CLOCK,
+        LOCATION_STORE,
       ],
       useFactory: (
         accounts: AccountDeletionRepository,
@@ -79,6 +82,7 @@ import { AccountDeletionController } from "./interface/account-deletion.controll
         urls: PublicMediaUrls,
         realtime: RealtimeChannel,
         clock: Clock,
+        locations: LocationStore,
       ) =>
         new AccountDeletionUseCases(
           accounts,
@@ -90,6 +94,7 @@ import { AccountDeletionController } from "./interface/account-deletion.controll
           realtime,
           clock,
           new Logger(AccountDeletionUseCases.name),
+          locations,
         ),
     },
     {

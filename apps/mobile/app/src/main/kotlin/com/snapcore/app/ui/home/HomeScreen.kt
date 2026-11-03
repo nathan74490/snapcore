@@ -24,7 +24,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.snapcore.app.ui.appContainer
 import com.snapcore.app.ui.containerViewModel
+import com.snapcore.app.ui.map.MapScreen
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,11 +42,13 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-const val CHAT_TAB = 0
-const val CAMERA_TAB = 1
-const val STORIES_TAB = 2
-private val labels = listOf("Chat", "Caméra", "Stories")
-private val icons = listOf("Chat", "Camera", "Stories")
+// Comme Snapchat : la Snap Map à gauche du Chat (ADR-031).
+const val MAP_TAB = 0
+const val CHAT_TAB = 1
+const val CAMERA_TAB = 2
+const val STORIES_TAB = 3
+private val labels = listOf("Map", "Chat", "Caméra", "Stories")
+private val icons = listOf("Map", "Chat", "Camera", "Stories")
 
 @Composable
 fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
@@ -55,6 +59,13 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
     val requestsVm = containerViewModel { FriendRequestsViewModel(it.friends, it.realtime.events) }
     val pendingRequests by requestsVm.count.collectAsStateWithLifecycle()
     LifecycleResumeEffect(Unit) { requestsVm.refresh(); onPauseOrDispose {} }
+    // Ma position part à chaque ouverture de l'app, sauf en mode fantôme ou sans permission (ADR-031).
+    val reporter = appContainer().locationReporter
+    val reportScope = rememberCoroutineScope()
+    LifecycleResumeEffect(account.id) {
+        val job = reportScope.launch { reporter.report(account.id) }
+        onPauseOrDispose { job.cancel() }
+    }
     val pager = rememberPagerState(initialPage = selected, pageCount = { labels.size })
     val scope = rememberCoroutineScope()
     val select by rememberUpdatedState(onSelect)
@@ -81,7 +92,8 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             beyondViewportPageCount = 2,
             // Le carrousel des Lenses garde ses propres gestes ; fermer la Lens réactive les pages.
-            userScrollEnabled = !lensMode && !recording,
+            // Sur la carte, les glissements déplacent la carte : on en sort par la barre d'onglets.
+            userScrollEnabled = !lensMode && !recording && pager.settledPage != MAP_TAB,
             key = { it },
         ) { page ->
             // La caméra est toujours le fond fixe. Chat et Stories sont des panneaux au-dessus :
@@ -122,6 +134,12 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                         }
                     }
                 }
+            } else if (page == MAP_TAB) {
+                // La carte n'existe que près de son onglet (Map ou Chat) : inutile de la faire tourner derrière la caméra.
+                val nearMap = abs(pager.currentPage + pager.currentPageOffsetFraction - MAP_TAB) < 1.5f
+                if (nearMap) MapScreen(account, visible = pager.settledPage == MAP_TAB, onOpenProfile = onOpenProfile, onOpenFriends = onOpenFriends,
+                    onOpenConversation = { onOpenConversation(it, null) }, onPlayStory = onPlayStory)
+                else Box(Modifier.fillMaxSize().background(Color.White))
             } else {
                 Column(Modifier.fillMaxSize().background(Color.White)) {
                     Row(Modifier.statusBarsPadding().fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),

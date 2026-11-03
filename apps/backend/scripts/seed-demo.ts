@@ -53,6 +53,7 @@ import { OBJECT_STORAGE, type ObjectStorage } from "../src/modules/media/applica
 import { RequestUpload } from "../src/modules/media/application/request-upload";
 import { UploadPromoter } from "../src/modules/media/application/upload-promoter";
 import type { MediaPurpose } from "../src/modules/media/domain/media-purpose";
+import { LocationVisibility } from "../src/modules/location/application/location-visibility";
 import { MessagingUseCases } from "../src/modules/messages/application/messaging-use-cases";
 import { MESSAGE_NOTIFIER, type MessageNotifier } from "../src/modules/messages/application/ports/message-notifier.port";
 import { MESSAGE_REPOSITORY, type MessageRepository } from "../src/modules/messages/application/ports/message.repository";
@@ -349,15 +350,28 @@ const CONVERSATIONS: Conversation[] = [
 ];
 
 // Stories publiées il y a N minutes (24h de vie chacune, ADR-013).
-const STORIES: { author: DemoKey | "rober"; media: string; minutesAgo: number }[] = [
-  { author: "ines", media: "story-ines-soiree", minutesAgo: 300 },
+// Snap Map (ADR-031) : ces comptes partagent leur position avec tous leurs amis (les autres restent en
+// mode fantôme, la valeur par défaut). Leurs stories marquées d'un lieu apparaissent sur la carte ; la
+// position en direct (Redis, 8 h) n'est pas seedée : elle vient de l'app.
+const SHARING_LOCATION: DemoKey[] = ["lea", "hugo", "ines", "chloe"];
+
+type Place = { latitude: number; longitude: number };
+const PLACES = {
+  lacAnnecy: { latitude: 45.8992, longitude: 6.1294 },
+  vieilleVille: { latitude: 45.8986, longitude: 6.1257 },
+  parcSport: { latitude: 45.9126, longitude: 6.1338 },
+  campus: { latitude: 45.9187, longitude: 6.1475 },
+} satisfies Record<string, Place>;
+
+const STORIES: { author: DemoKey | "rober"; media: string; minutesAgo: number; place?: Place }[] = [
+  { author: "ines", media: "story-ines-soiree", minutesAgo: 300, place: PLACES.vieilleVille },
   { author: "ines", media: "story-ines-video", minutesAgo: 120 },
-  { author: "lea", media: "story-lea-annecy", minutesAgo: 480 },
-  { author: "lea", media: "story-lea-golden", minutesAgo: 60 },
-  { author: "hugo", media: "story-hugo-match", minutesAgo: 180 },
-  { author: "lucas", media: "story-lucas-bu", minutesAgo: 360 },
+  { author: "lea", media: "story-lea-annecy", minutesAgo: 480, place: PLACES.lacAnnecy },
+  { author: "lea", media: "story-lea-golden", minutesAgo: 60, place: PLACES.lacAnnecy },
+  { author: "hugo", media: "story-hugo-match", minutesAgo: 180, place: PLACES.parcSport },
+  { author: "lucas", media: "story-lucas-bu", minutesAgo: 360, place: PLACES.campus }, // ignorée : Lucas est en mode fantôme
   { author: "lucas", media: "story-lucas-video", minutesAgo: 240 },
-  { author: "chloe", media: "story-chloe-brunch", minutesAgo: 30 },
+  { author: "chloe", media: "story-chloe-brunch", minutesAgo: 30, place: PLACES.vieilleVille },
   { author: "rober", media: "story-rober-vendredi", minutesAgo: 110 },
 ];
 
@@ -548,6 +562,7 @@ class DemoSeeder {
     await this.loadOwners();
     for (const key of Object.keys(DEMO_USERS) as DemoKey[]) await this.ensureUser(key);
     await this.ensureFriendships();
+    await this.ensureLocationSharing();
     await this.ensureStories();
     for (const conversation of CONVERSATIONS) await this.ensureConversation(conversation);
     await this.report();
@@ -675,6 +690,19 @@ class DemoSeeder {
     }
   }
 
+  // --- Snap Map (ADR-031) ---
+
+  // Avant les stories : leur position n'est enregistrée que si l'auteur n'est pas en mode fantôme.
+  // Seul un compte encore en mode fantôme est modifié : un réglage fait depuis l'app est conservé.
+  private async ensureLocationSharing(): Promise<void> {
+    for (const key of SHARING_LOCATION) {
+      await this.prisma.user.updateMany({
+        where: { id: this.user(key).id, locationSharing: "GHOST" },
+        data: { locationSharing: "ALL_FRIENDS" },
+      });
+    }
+  }
+
   // --- Stories ---
 
   private async ensureStories(): Promise<void> {
@@ -688,7 +716,7 @@ class DemoSeeder {
         const contentType: StoryContentType = main.contentType === "video/mp4" ? "VIDEO" : "PHOTO";
         const uploadId = await this.upload(user, contentType === "VIDEO" ? "STORY_VIDEO" : "STORY_PHOTO", main);
         const thumbnailUploadId = await this.upload(user, "STORY_THUMBNAIL", this.media.thumbnail(story.media));
-        await this.stories(at).publish(user, { uploadId, contentType, thumbnailUploadId });
+        await this.stories(at).publish(user, { uploadId, contentType, thumbnailUploadId, ...story.place });
       }
     }
   }
@@ -804,6 +832,7 @@ class DemoSeeder {
       fixedClock(at),
       this.logger,
       noAnalytics,
+      get<LocationVisibility>(LocationVisibility),
     );
   }
 

@@ -2,6 +2,8 @@ package com.snapcore.app.ui.components
 
 internal data class FigmaResource(val file: String, val width: Float, val height: Float)
 internal val figmaAssets = mapOf(
+    "10-458_imgIconMapActive" to FigmaResource("10-458_imgIconMapActive.svg", 28.0f, 28.0f),
+    "10-458_imgIconMap" to FigmaResource("10-458_imgIconMap.svg", 28.0f, 28.0f),
     "10-458_imgIconChatActive" to FigmaResource("10-458_imgIconChatActive.svg", 28.0f, 28.0f),
     "10-458_imgIconCameraActive" to FigmaResource("10-458_imgIconCameraActive.svg", 28.0f, 28.0f),
     "10-458_imgIconStoriesActive" to FigmaResource("10-458_imgIconStoriesActive.svg", 28.0f, 28.0f),

@@ -2,6 +2,7 @@ import type { ReportStatus } from "@snapcore/types";
 import type { Clock } from "../../../shared/domain/clock";
 import { ConflictError, NotFoundError, ValidationError } from "../../../shared/domain/errors";
 import type { AppLogger } from "../../../shared/domain/logger";
+import type { LocationStore } from "../../location/application/ports";
 import type { ObjectStorage } from "../../media/application/ports/object-storage.port";
 import type { MessageRepository } from "../../messages/application/ports/message.repository";
 import type { SnapPurgeScheduler } from "../../messages/application/ports/snap-purge.scheduler";
@@ -34,6 +35,7 @@ export class ModerationUseCases {
     private readonly events: UserEventPublisher,
     private readonly clock: Clock,
     private readonly logger: AppLogger,
+    private readonly locations: LocationStore,
   ) {}
 
   // Suspension réversible : le compte devient inexistant pour les autres et ne peut plus se
@@ -44,6 +46,8 @@ export class ModerationUseCases {
     expectUpdated(await this.moderation.suspendUser(userId, { moderatorId, reason, at: this.clock.now() }), "Compte introuvable", "Ce compte est déjà suspendu ou en cours de suppression");
     // Coupe immédiatement ses connexions temps réel ; l'API les refuse déjà à la requête suivante.
     await this.bestEffort(`déconnexion temps réel de ${userId}`, () => this.realtime.disconnectUser(userId));
+    // Déjà invisible sur la Snap Map (compte inactif) ; la position est en plus effacée (ADR-031).
+    await this.bestEffort(`effacement de la position de ${userId}`, () => this.locations.remove(userId));
   }
 
   async reactivateUser(userId: string, moderatorId: string): Promise<void> {

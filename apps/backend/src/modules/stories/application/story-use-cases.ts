@@ -1,4 +1,5 @@
 import type {
+  MapStory,
   OwnStoryItemView,
   PublicUserProfile,
   SnapViewUrl,
@@ -17,6 +18,8 @@ import type { UserRepository } from "../../identity/application/ports/user.repos
 import { toPublicProfile, type UserAccount } from "../../identity/domain/user";
 import type { ObjectStorage } from "../../media/application/ports/object-storage.port";
 import type { UploadPromoter } from "../../media/application/upload-promoter";
+import { ghostLocationVisibility } from "../../location/application/location-visibility";
+import { parseOptionalCoordinates, storyCoordinates } from "../../location/domain/location-sharing";
 import {
   expirationFor,
   isVisible,
@@ -27,7 +30,7 @@ import {
   UPLOAD_PURPOSE_BY_STORY_TYPE,
   type StoryItem,
 } from "../domain/story-item";
-import type { StoryPurgeScheduler, StoryRepository, StoryViewStore } from "./ports";
+import type { StoryLocationPolicy, StoryPurgeScheduler, StoryRepository, StoryViewStore } from "./ports";
 
 // Même réponse pour un élément inexistant, expiré, ou d'un auteur qui n'est pas (ou plus) ami :
 // un utilisateur bloqué ne peut pas deviner que la story existe (ADR-012).
@@ -48,12 +51,23 @@ export class StoryUseCases {
     private readonly clock: Clock,
     private readonly logger: AppLogger,
     private readonly analytics: Analytics = noAnalytics,
+    // Par défaut tout le monde est en mode fantôme : aucune position stockée ni affichée (ADR-031).
+    private readonly location: StoryLocationPolicy = ghostLocationVisibility,
   ) {}
 
   async publish(
     me: UserAccount,
-    input: { uploadId: string; contentType: StoryContentType; thumbnailUploadId?: string },
+    input: {
+      uploadId: string;
+      contentType: StoryContentType;
+      thumbnailUploadId?: string;
+      latitude?: number | null;
+      longitude?: number | null;
+    },
   ): Promise<OwnStoryItemView> {
+    // Validée avant tout upload ; conservée seulement si l'auteur n'est pas en mode fantôme (ADR-031).
+    const requestedCoordinates = parseOptionalCoordinates(input);
+    const coordinates = requestedCoordinates && storyCoordinates(requestedCoordinates, await this.location.modeOf(me.id));
     const id = randomUUID();
     const createdAt = this.clock.now();
     // Vignette d'abord : la ligne StoryItem est créée par la promotion du média principal.
@@ -64,6 +78,8 @@ export class StoryUseCases {
       mediaKey: storyMediaKey(id),
       contentType: input.contentType,
       thumbnailKey,
+      latitude: coordinates?.latitude ?? null,
+      longitude: coordinates?.longitude ?? null,
       createdAt,
       // Expiration propre à chaque élément, 24h après SA publication (ADR-013).
       expiresAt: expirationFor(createdAt),
@@ -124,6 +140,37 @@ export class StoryUseCases {
       (a, b) =>
         Number(b.hasUnviewed) - Number(a.hasUnviewed) ||
         b.items[b.items.length - 1].createdAt.localeCompare(a.items[a.items.length - 1].createdAt),
+    );
+  }
+
+  // Éléments géolocalisés encore visibles des amis qui me rendent visible leur position, règle évaluée
+  // à la lecture : un auteur passé en mode fantôme disparaît de la carte (ADR-031). Vignette et `viewed`
+  // comme dans le fil, sans compter de vue (ADR-026) ; la lecture passe par POST /stories/:id/view.
+  async mapStories(me: UserAccount): Promise<MapStory[]> {
+    const friends = await this.location.visibleFriends(me.id, await this.friendships.listFriends(me.id));
+    const profiles = new Map<string, PublicUserProfile>(friends.map(({ user }) => [user.id, user]));
+    const items = (await this.stories.listVisibleByAuthors([...profiles.keys()], this.clock.now())).filter(
+      (item) => item.latitude !== null && item.longitude !== null,
+    );
+    const viewed = await this.views.viewedAmong(
+      items.map((item) => item.id),
+      me.id,
+    );
+    return Promise.all(
+      items.map(async (item): Promise<MapStory> => {
+        const thumbnailUrl = await this.thumbnailUrl(item);
+        return {
+          id: item.id,
+          author: profiles.get(item.authorId)!,
+          contentType: item.contentType,
+          latitude: item.latitude!,
+          longitude: item.longitude!,
+          createdAt: item.createdAt.toISOString(),
+          expiresAt: item.expiresAt.toISOString(),
+          ...(thumbnailUrl && { thumbnailUrl }),
+          viewed: viewed.has(item.id),
+        };
+      }),
     );
   }
 

@@ -12,6 +12,7 @@ import com.snapcore.app.data.api.UploadRequest
 import com.snapcore.app.data.api.apiCall
 import com.snapcore.app.domain.ContactMatch
 import com.snapcore.app.domain.Friend
+import com.snapcore.app.domain.GeoPoint
 import com.snapcore.app.domain.FriendRequest
 import com.snapcore.app.domain.FriendsService
 import com.snapcore.app.domain.MediaUploader
@@ -56,8 +57,8 @@ class ApiSnapService(private val api: SnapCoreApi) : SnapService {
         apiCall { api.sendSnap(friendId, SendSnapRequest(uploadId, messageContentType)) }
     }
 
-    override suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String?) {
-        apiCall { api.publishStory(PublishStoryRequest(uploadId, storyContentType, thumbnailUploadId)) }
+    override suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String?, location: GeoPoint?) {
+        apiCall { api.publishStory(PublishStoryRequest(uploadId, storyContentType, thumbnailUploadId, location?.latitude, location?.longitude)) }
     }
 }
 

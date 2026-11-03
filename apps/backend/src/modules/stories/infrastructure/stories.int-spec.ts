@@ -55,6 +55,8 @@ describe("Stories (Postgres, Redis et BullMQ réels)", () => {
       mediaKey: `stories/${id}`,
       contentType: "PHOTO",
       thumbnailKey: withThumbnail ? `story-thumbnails/${id}` : null,
+      latitude: null,
+      longitude: null,
       createdAt: new Date(createdAt),
       expiresAt: new Date(createdAt + lifetimeMs),
     };

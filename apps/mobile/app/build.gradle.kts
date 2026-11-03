@@ -31,6 +31,9 @@ android {
         buildConfigField("String", "CAMERA_KIT_LENS_GROUP_ID", "\"${localProperty("cameraKitLensGroupId")}\"")
         // Analytics PostHog (ADR-008) : clé de projet publique ; vide = aucun envoi.
         buildConfigField("String", "POSTHOG_API_KEY", "\"${localProperty("posthogApiKey")}\"")
+        // Snap Map (ADR-031) : jeton public Mapbox (pk.…) ; vide = la carte affiche un message au lieu des tuiles.
+        resValue("string", "mapbox_access_token", localProperty("mapboxAccessToken"))
+        buildConfigField("boolean", "MAPBOX_CONFIGURED", localProperty("mapboxAccessToken").startsWith("pk.").toString())
         buildConfigField("String", "POSTHOG_HOST", "\"${localProperty("posthogHost").ifBlank { "https://eu.i.posthog.com" }}\"")
     }
 
@@ -56,6 +59,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 }
 
@@ -106,6 +110,10 @@ dependencies {
     implementation(libs.camerakit.support.camerax)
     // Analytics d'usage, avec le même identifiant que le backend (ADR-008).
     implementation(libs.posthog.android)
+    // Snap Map (ADR-031) : carte Mapbox et position du téléphone.
+    implementation(libs.mapbox.maps)
+    implementation(libs.mapbox.compose)
+    implementation(libs.play.services.location)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

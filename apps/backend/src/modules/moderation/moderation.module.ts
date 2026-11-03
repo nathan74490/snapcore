@@ -4,6 +4,8 @@ import { FRIENDSHIP_REPOSITORY, type FriendshipRepository } from "../friendships
 import { FriendshipsModule } from "../friendships/friendships.module";
 import { USER_REPOSITORY, type UserRepository } from "../identity/application/ports/user.repository";
 import { IdentityModule } from "../identity/identity.module";
+import { LOCATION_STORE, type LocationStore } from "../location/application/ports";
+import { LocationModule } from "../location/location.module";
 import { OBJECT_STORAGE, type ObjectStorage } from "../media/application/ports/object-storage.port";
 import { MediaModule } from "../media/media.module";
 import { MESSAGE_REPOSITORY, type MessageRepository } from "../messages/application/ports/message.repository";
@@ -30,7 +32,16 @@ import { AdminSecretGuard } from "./interface/admin-secret.guard";
 import { AdminController, ReportsController } from "./interface/moderation.controllers";
 
 @Module({
-  imports: [IdentityModule, FriendshipsModule, MessagesModule, StoriesModule, MediaModule, NotificationsModule, PurgeModule],
+  imports: [
+    IdentityModule,
+    FriendshipsModule,
+    MessagesModule,
+    StoriesModule,
+    MediaModule,
+    NotificationsModule,
+    PurgeModule,
+    LocationModule,
+  ],
   controllers: [ReportsController, AdminController],
   providers: [
     AdminSecretGuard,
@@ -48,6 +59,7 @@ import { AdminController, ReportsController } from "./interface/moderation.contr
         REALTIME_CHANNEL,
         UserEventPublisher,
         CLOCK,
+        LOCATION_STORE,
       ],
       useFactory: (
         moderation: ModerationRepository,
@@ -60,6 +72,7 @@ import { AdminController, ReportsController } from "./interface/moderation.contr
         realtime: RealtimeChannel,
         events: UserEventPublisher,
         clock: Clock,
+        locations: LocationStore,
       ) =>
         new ModerationUseCases(
           moderation,
@@ -73,6 +86,7 @@ import { AdminController, ReportsController } from "./interface/moderation.contr
           events,
           clock,
           new Logger(ModerationUseCases.name),
+          locations,
         ),
     },
     {

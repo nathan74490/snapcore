@@ -50,6 +50,7 @@ import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.LaunchTarget
 import com.snapcore.app.domain.MediaKind
 import com.snapcore.app.domain.SendTarget
+import com.snapcore.app.domain.firstUnviewedIndex
 import com.snapcore.app.domain.Session
 import com.snapcore.app.domain.screenNameOf
 import com.snapcore.app.push.Notifications
@@ -75,8 +76,8 @@ import com.snapcore.app.ui.stories.StoryPlayerScreen
 import kotlinx.serialization.Serializable
 import java.io.File
 
-// Écrans des onglets de l'accueil pour l'analytics (ADR-008), dans l'ordre CHAT_TAB, CAMERA_TAB, STORIES_TAB.
-private val HOME_TAB_SCREENS = listOf("Chat", "Camera", "Stories")
+// Écrans des onglets de l'accueil pour l'analytics (ADR-008), dans l'ordre MAP_TAB, CHAT_TAB, CAMERA_TAB, STORIES_TAB.
+private val HOME_TAB_SCREENS = listOf("Map", "Chat", "Camera", "Stories")
 
 @Serializable private object StartRoute
 @Serializable private object WelcomeRoute
@@ -294,7 +295,11 @@ fun SnapCoreNavHost(
                         }
                     },
                     onOpenMyStory = { navController.navigate(MyStoryRoute) },
-                    onPlayStory = { story -> navController.navigate(StoryPlayerRoute(story.author.displayName, story.author.id)) },
+                    // Depuis la carte, la story passée ne contient que les éléments d'un pin : la lecture part du premier non vu.
+                    onPlayStory = { story ->
+                        val start = story.items.getOrNull(firstUnviewedIndex(story.items))?.id
+                        navController.navigate(StoryPlayerRoute(story.author.displayName, story.author.id, start))
+                    },
                 )
             }
         }

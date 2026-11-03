@@ -1,6 +1,13 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post } from "@nestjs/common";
-import type { OwnStoryItemView, PublicUserProfile, SnapViewUrl, StoryContentType, StoryFeedEntry } from "@snapcore/types";
-import { IsIn, IsOptional, IsUUID } from "class-validator";
+import type {
+  MapStory,
+  OwnStoryItemView,
+  PublicUserProfile,
+  SnapViewUrl,
+  StoryContentType,
+  StoryFeedEntry,
+} from "@snapcore/types";
+import { IsIn, IsNumber, IsOptional, IsUUID, Max, Min } from "class-validator";
 import type { UserAccount } from "../../identity/domain/user";
 import { CurrentUser } from "../../identity/interface/http/auth.decorators";
 import { StoryUseCases } from "../application/story-use-cases";
@@ -16,6 +23,19 @@ class PublishStoryDto {
   @IsOptional()
   @IsUUID()
   thumbnailUploadId?: string;
+
+  // Position facultative pour la Snap Map : les deux ou aucune (400 sinon), vérifié par le cas d'usage (ADR-031).
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude?: number | null;
 }
 
 @Controller("stories")
@@ -56,5 +76,16 @@ export class StoriesController {
   @HttpCode(204)
   remove(@CurrentUser() me: UserAccount, @Param("storyId", ParseUUIDPipe) storyId: string): Promise<void> {
     return this.stories.remove(me, storyId);
+  }
+}
+
+// Stories géolocalisées de la Snap Map (ADR-031) ; la carte des amis est dans le module location.
+@Controller("map")
+export class MapStoriesController {
+  constructor(private readonly stories: StoryUseCases) {}
+
+  @Get("stories")
+  list(@CurrentUser() me: UserAccount): Promise<MapStory[]> {
+    return this.stories.mapStories(me);
   }
 }
