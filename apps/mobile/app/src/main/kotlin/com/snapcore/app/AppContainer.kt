@@ -15,6 +15,7 @@ import com.snapcore.app.data.DataStorePendingRegistrationStore
 import com.snapcore.app.data.FirebaseAuthService
 import com.snapcore.app.data.MediaFilterRenderer
 import com.snapcore.app.data.PostHogAnalytics
+import com.snapcore.app.data.PostHogExperiments
 import com.snapcore.app.data.R2MediaUploader
 import com.snapcore.app.data.RealtimeClient
 import com.snapcore.app.data.api.FirebaseTokenInterceptor
@@ -24,11 +25,13 @@ import com.snapcore.app.domain.Analytics
 import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.ChatService
 import com.snapcore.app.domain.ContactsReader
+import com.snapcore.app.domain.Experiments
 import com.snapcore.app.domain.FilterRenderer
 import com.snapcore.app.domain.FriendsService
 import com.snapcore.app.domain.MediaPublisher
 import com.snapcore.app.domain.MediaUploader
 import com.snapcore.app.domain.NoAnalytics
+import com.snapcore.app.domain.NoExperiments
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.ProfilePhotoPreparer
 import com.snapcore.app.domain.SessionResolver
@@ -117,6 +120,9 @@ class AppContainer(context: Context) {
     val analytics: Analytics =
         if (BuildConfig.POSTHOG_API_KEY.isBlank()) NoAnalytics
         else PostHogAnalytics(context.applicationContext, BuildConfig.POSTHOG_API_KEY, BuildConfig.POSTHOG_HOST)
+
+    /** Expériences A/B (ADR-030) ; même condition que l'analytics : sans clé, tout le monde voit le témoin. */
+    val experiments: Experiments = if (BuildConfig.POSTHOG_API_KEY.isBlank()) NoExperiments else PostHogExperiments
 
     /** Incrustation du filtre choisi sur l'aperçu, avant l'envoi (ADR-022). */
     val filterRenderer: FilterRenderer = MediaFilterRenderer(context.applicationContext, capturesDir)

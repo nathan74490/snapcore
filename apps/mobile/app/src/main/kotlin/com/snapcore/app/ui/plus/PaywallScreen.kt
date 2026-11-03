@@ -63,7 +63,7 @@ private val DATE = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRENCH)
 // Paywall SnapCore+ (ADR-025). `returnedFromCheckout` : ouvert par le lien de retour du paiement.
 @Composable
 fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountChanged: (Account) -> Unit, initialAccount: Account? = null) {
-    val vm = containerViewModel { PaywallViewModel(it.accounts, it.subscriptions, analytics = it.analytics, initial = initialAccount) }
+    val vm = containerViewModel { PaywallViewModel(it.accounts, it.subscriptions, analytics = it.analytics, initial = initialAccount, experiments = it.experiments) }
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -155,8 +155,9 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                 }
                 else -> {
                     // Button 9:43, style Yellow : pilule 50pt, texte #16191C.
+                    // Libellé soumis à l'expérience A/B « paywall-cta » (ADR-030) ; le prix reste affiché plus haut.
                     PrimaryButton(
-                        "S'abonner pour ${SnapCorePlus.PRICE_LABEL}", vm::subscribe,
+                        state.cta.label, vm::subscribe,
                         loading = state.opening, container = SnapColors.Yellow, content = SnapColors.Ink,
                     )
                     Text(
