@@ -33,6 +33,8 @@ describe("Stories (Postgres, Redis et BullMQ réels)", () => {
     const author = await new PrismaUserRepository(prisma).create({
       username: "auteur",
       firstName: "Auteur",
+      lastName: null,
+      birthday: null,
       firebaseUid: `uid-${randomUUID()}`,
       email: null,
       phoneNumber: null,

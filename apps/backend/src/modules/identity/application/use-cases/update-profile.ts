@@ -1,5 +1,6 @@
 import { UniqueViolationError } from "../../../../shared/domain/errors";
 import { parseFirstName } from "../../domain/first-name";
+import { parseLastName } from "../../domain/last-name";
 import { parsePhoneNumber } from "../../domain/phone-number";
 import type { UserAccount } from "../../domain/user";
 import { parseUsername } from "../../domain/username";
@@ -9,6 +10,7 @@ import { toProfileConflict } from "../unique-violation-messages";
 export interface UpdateProfileInput {
   username?: string;
   firstName?: string;
+  lastName?: string; // chaîne vide = retirer le nom (ADR-029)
   phoneNumber?: string | null;
 }
 
@@ -22,6 +24,7 @@ export class UpdateProfile {
     const patch: ProfilePatch = {};
     if (input.username !== undefined) patch.username = parseUsername(input.username);
     if (input.firstName !== undefined) patch.firstName = parseFirstName(input.firstName);
+    if (input.lastName !== undefined) patch.lastName = parseLastName(input.lastName);
     if (input.phoneNumber !== undefined) {
       patch.phoneNumber = input.phoneNumber === null ? null : parsePhoneNumber(input.phoneNumber);
     }

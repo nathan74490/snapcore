@@ -4,6 +4,8 @@ export interface UserAccount {
   id: string;
   username: string;
   firstName: string | null; // null pour les comptes créés avant son introduction
+  lastName: string | null; // facultatif et privé, jamais dans un profil public (ADR-029)
+  birthday: Date | null; // minuit UTC ; privée ; null pour les comptes créés avant son introduction (ADR-029)
   firebaseUid: string;
   profilePhotoUrl: string | null;
   avatar: AvatarOptions | null; // avatar dessiné (ADR-028), null = pas d'avatar
@@ -28,6 +30,7 @@ export function hasActiveSubscription(user: Pick<UserAccount, "subscriptionTier"
 }
 
 // Seul constructeur de profil public (recherche, amis, demandes, conversations, stories).
+// Le nom de famille et la date de naissance n'y figurent jamais : ils restent privés (ADR-029).
 export function toPublicProfile(
   user: Pick<UserAccount, "id" | "username" | "firstName" | "profilePhotoUrl" | "avatar">,
 ): PublicUserProfile {

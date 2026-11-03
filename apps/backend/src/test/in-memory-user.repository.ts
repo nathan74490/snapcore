@@ -19,6 +19,14 @@ export class InMemoryUserRepository implements UserRepository {
   async findActiveByUsername(username: string) {
     return this.active((u) => u.username === username);
   }
+  async isUsernameTaken(username: string) {
+    return [...this.rows.values()].some((u) => u.username === username);
+  }
+  async findActiveByPhoneNumberSuffixes(suffixes: string[]) {
+    return [...this.rows.values()]
+      .filter((u) => isActive(u) && u.phoneNumber !== null && suffixes.some((s) => u.phoneNumber!.endsWith(s)))
+      .map((u) => ({ ...u }));
+  }
   async findByFirebaseUidIncludingDeleted(firebaseUid: string) {
     return [...this.rows.values()].find((u) => u.firebaseUid === firebaseUid) ?? null;
   }
@@ -69,7 +77,15 @@ export class InMemoryUserRepository implements UserRepository {
   async seed(username: string, overrides: Partial<UserAccount> = {}): Promise<UserAccount> {
     // Prénom dérivé du pseudo ("alice" -> "Alice") pour vérifier sa propagation dans les profils publics.
     const firstName = username.charAt(0).toUpperCase() + username.slice(1);
-    const user = await this.create({ username, firstName, firebaseUid: `uid-${username}`, email: null, phoneNumber: null });
+    const user = await this.create({
+      username,
+      firstName,
+      lastName: null,
+      birthday: null,
+      firebaseUid: `uid-${username}`,
+      email: null,
+      phoneNumber: null,
+    });
     const seeded = { ...user, ...overrides };
     this.rows.set(user.id, seeded);
     return { ...seeded };

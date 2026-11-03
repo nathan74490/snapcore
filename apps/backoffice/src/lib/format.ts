@@ -6,6 +6,14 @@ export function formatDateTime(date: Date | null | undefined): string {
   return date ? DATE_TIME.format(date) : "-";
 }
 
+// Colonne DATE (date de naissance, ADR-029) : Prisma la renvoie à minuit UTC. Formatée en UTC,
+// sinon un fuseau à l'ouest de Greenwich afficherait la veille.
+const DATE_ONLY = new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeZone: "UTC" });
+
+export function formatDateOnly(date: Date | null | undefined): string | null {
+  return date ? DATE_ONLY.format(date) : null;
+}
+
 export function truncate(text: string, max = 80): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }

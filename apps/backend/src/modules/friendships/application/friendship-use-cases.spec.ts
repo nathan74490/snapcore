@@ -221,4 +221,82 @@ describe("FriendshipUseCases", () => {
       expect(await useCases.listOutgoingRequests(alice)).toEqual([]);
     });
   });
+
+  describe("correspondance des contacts (ADR-029)", () => {
+    it("retrouve un compte sur les 9 derniers chiffres et renvoie la chaîne envoyée, jamais le numéro stocké", async () => {
+      await users.updateProfile(bob.id, { phoneNumber: "+33612345678" });
+
+      const matches = await useCases.matchContacts(alice, ["06 12 34 56 78"]);
+
+      expect(matches).toEqual([
+        { phoneNumber: "06 12 34 56 78", user: { id: bob.id, username: "bob", firstName: "Bob" }, relation: "NONE" },
+      ]);
+      expect(JSON.stringify(matches)).not.toContain("+33612345678");
+    });
+
+    it("une entrée par numéro envoyé : deux formats du même contact renvoient deux entrées", async () => {
+      await users.updateProfile(bob.id, { phoneNumber: "0612345678" });
+
+      const matches = await useCases.matchContacts(alice, ["+33 6 12 34 56 78", "06.12.34.56.78", "+33 6 12 34 56 78"]);
+
+      expect(matches.map((m) => m.phoneNumber)).toEqual(["+33 6 12 34 56 78", "06.12.34.56.78"]);
+    });
+
+    it("ignore les numéros de moins de 9 chiffres et ceux sans compte", async () => {
+      await users.updateProfile(bob.id, { phoneNumber: "+33612345678" });
+
+      await expect(useCases.matchContacts(alice, ["12345678", "+33 7 00 00 00 00", "abc"])).resolves.toEqual([]);
+    });
+
+    it("présente la relation vue par moi, comme la recherche par pseudo", async () => {
+      const carol = await users.seed("carol", { phoneNumber: "+33700000003" });
+      const dave = await users.seed("dave", { phoneNumber: "+33700000004" });
+      await users.updateProfile(bob.id, { phoneNumber: "+33700000002" });
+      await useCases.sendRequest(alice, "bob");
+      await useCases.sendRequest(carol, "alice");
+      const { friendshipId } = await useCases.sendRequest(alice, "dave");
+      await useCases.accept(dave, friendshipId);
+
+      const matches = await useCases.matchContacts(alice, ["0700000002", "0700000003", "0700000004"]);
+
+      expect(matches.map((m) => [m.user.username, m.relation])).toEqual([
+        ["bob", "OUTGOING_REQUEST"],
+        ["carol", "INCOMING_REQUEST"],
+        ["dave", "FRIENDS"],
+      ]);
+      expect(matches.map((m) => m.user.id)).toEqual([bob.id, carol.id, dave.id]);
+    });
+
+    it("exclut moi-même, les blocages dans les deux sens et les comptes supprimés ou suspendus", async () => {
+      const aliceWithPhone = await users.updateProfile(alice.id, { phoneNumber: "+33700000001" });
+      await users.updateProfile(bob.id, { phoneNumber: "+33700000002" });
+      const carol = await users.seed("carol", { phoneNumber: "+33700000003" });
+      await users.seed("dave", { phoneNumber: "+33700000004", deletionRequestedAt: new Date() });
+      await users.seed("eve", { phoneNumber: "+33700000005", moderationStatus: "SUSPENDED" });
+      await users.seed("frank", { phoneNumber: "+33700000006" });
+      await useCases.block(aliceWithPhone, bob.id); // bloqué par moi
+      await useCases.block(carol, alice.id); // m'a bloquée
+
+      const matches = await useCases.matchContacts(aliceWithPhone, [
+        "0700000001",
+        "0700000002",
+        "0700000003",
+        "0700000004",
+        "0700000005",
+        "0700000006",
+      ]);
+
+      expect(matches.map((m) => m.user.username)).toEqual(["frank"]);
+    });
+
+    it("le profil renvoyé ne porte ni nom de famille ni date de naissance", async () => {
+      await users.updateProfile(bob.id, { phoneNumber: "+33612345678", lastName: "Martin" });
+      users.rows.get(bob.id)!.birthday = new Date("2000-01-01T00:00:00Z");
+
+      const [match] = await useCases.matchContacts(alice, ["0612345678"]);
+
+      expect(match.user).not.toHaveProperty("lastName");
+      expect(match.user).not.toHaveProperty("birthday");
+    });
+  });
 });

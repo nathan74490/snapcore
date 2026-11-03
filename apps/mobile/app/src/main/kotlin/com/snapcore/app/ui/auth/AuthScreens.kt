@@ -101,27 +101,6 @@ fun WelcomeScreen(onLogin: () -> Unit, onSignUp: () -> Unit) {
 }
 
 @Composable
-private fun FormScaffold(
-    title: String,
-    onBack: () -> Unit,
-    progress: Float? = null,
-    action: (@Composable () -> Unit)? = null,
-    content: @Composable () -> Unit,
-) {
-
-    StatusBarIcons(dark = true)
-    Column(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding().imePadding()) {
-        SnapHeader(title, onBack, subtitle = progress?.let { "Étape ${(it * SignUpState.STEPS).toInt()} sur ${SignUpState.STEPS}" })
-        Column(
-            modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 40.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-        ) { content() }
-        action?.let { Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) { it() } }
-    }
-}
-
-@Composable
 fun LoginScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
     val vm = containerViewModel { LoginViewModel(it.auth, it.sessionResolver) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -166,87 +145,4 @@ private fun LoginField(value: String, change: (String) -> Unit, label: String, p
         }
     }
     HorizontalDivider(color = SnapColors.Hairline, thickness = 1.dp)
-}
-
-@Composable
-fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
-    val vm = containerViewModel { SignUpViewModel(it.auth, it.accounts, it.pendingRegistration) }
-    val state by vm.state.collectAsStateWithLifecycle()
-    LaunchedEffect(state.session) { state.session?.let(onSession) }
-
-    val title = when (state.step) {
-        1 -> "Comment tu t'appelles ?"
-        2 -> "Tes coordonnées"
-        else -> if (state.firebaseAccountCreated) "Finalise ton inscription" else "Choisis un mot de passe"
-    }
-    FormScaffold(title, onBack = { if (state.step == 1) onBack() else vm.back() }, progress = state.step / SignUpState.STEPS.toFloat(),
-        action = { PrimaryButton(if (state.step < SignUpState.STEPS) "Continuer" else "S'inscrire", vm::next, enabled = state.canContinue, loading = state.loading) }) {
-        when (state.step) {
-            1 -> {
-                SnapTextField(
-                    state.firstName,
-                    vm::onFirstName,
-                    "Prénom",
-                    error = state.firstNameError,
-                    supporting = "C'est ce que tes amis verront",
-                    capitalizeWords = true,
-                )
-                SnapTextField(
-                    state.username,
-                    vm::onUsername,
-                    "Pseudo",
-                    error = state.usernameError,
-                    supporting = "Tu pourras le changer plus tard",
-                )
-            }
-            2 -> {
-                SnapTextField(
-                    state.email,
-                    vm::onEmail,
-                    "Email",
-                    error = state.emailError,
-                    keyboardType = KeyboardType.Email,
-                    enabled = !state.firebaseAccountCreated,
-                    supporting = "Un email de confirmation te sera envoyé",
-                )
-                SnapTextField(
-                    state.phone,
-                    vm::onPhone,
-                    "Téléphone (facultatif)",
-                    error = state.phoneError,
-                    keyboardType = KeyboardType.Phone,
-                )
-            }
-            else -> if (!state.firebaseAccountCreated) {
-                SnapTextField(
-                    state.password,
-                    vm::onPassword,
-                    "Mot de passe",
-                    error = state.passwordError,
-                    password = true,
-                    supporting = "Au moins 6 caractères",
-                )
-            } else {
-                Text("Ton compte est créé, il ne reste plus qu'à l'enregistrer.", textAlign = TextAlign.Center)
-            }
-        }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
-    }
-}
-
-@Composable
-fun CompleteRegistrationScreen(onSession: (Session) -> Unit) {
-    val vm = containerViewModel { CompleteRegistrationViewModel(it.auth, it.accounts, it.pendingRegistration) }
-    val state by vm.state.collectAsStateWithLifecycle()
-    LaunchedEffect(state.session) { state.session?.let(onSession) }
-
-    FormScaffold("Termine ton inscription", onBack = vm::signOut) {
-        Text("Connecté avec ${vm.email ?: "ton compte"}", color = SnapColors.Grey, textAlign = TextAlign.Center)
-        SnapTextField(state.firstName, vm::onFirstName, "Prénom", error = state.firstNameError, capitalizeWords = true)
-        SnapTextField(state.username, vm::onUsername, "Pseudo", error = state.usernameError)
-        SnapTextField(state.phone, vm::onPhone, "Téléphone (facultatif)", error = state.phoneError, keyboardType = KeyboardType.Phone)
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        PrimaryButton("Terminer", vm::submit, loading = state.loading)
-        TextButton(onClick = vm::signOut) { Text("Utiliser un autre compte") }
-    }
 }

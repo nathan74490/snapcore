@@ -1,6 +1,8 @@
 package com.snapcore.app.domain
 
 import java.time.Instant
+import java.time.LocalDate
+import java.time.Period
 
 data class Account(
     val id: String,
@@ -16,6 +18,10 @@ data class Account(
     /** Options de l'avatar maison (ADR-028), null sans avatar. */
     val avatar: Map<String, String>? = null,
     val avatarUrl: String? = null,
+    /** Nom de famille facultatif, jamais montré aux autres (ADR-029). */
+    val lastName: String? = null,
+    /** Null pour les comptes créés avant la saisie de la date de naissance (ADR-029). */
+    val birthday: LocalDate? = null,
 ) {
     val displayName get() = firstName ?: username
     /** Même priorité que pour un ami : avatar, photo, puis initiales. */
@@ -28,7 +34,13 @@ data class AvatarCatalog(val defaults: Map<String, String>, val options: Map<Str
 // Données saisies à l'inscription, conservées localement jusqu'à ce que POST /auth/register
 // réussisse : si l'app est fermée entre la création du compte Firebase et cet appel, elle le
 // rejoue au lancement suivant (ADR-015).
-data class PendingRegistration(val username: String, val phoneNumber: String?, val firstName: String = "")
+data class PendingRegistration(
+    val username: String,
+    val phoneNumber: String?,
+    val firstName: String = "",
+    val lastName: String? = null,
+    val birthday: LocalDate? = null,
+)
 
 // Mêmes règles que le backend (apps/backend/src/modules/identity/domain) : la validation côté
 // app n'est qu'un confort, le backend reste la référence.
@@ -37,7 +49,10 @@ object AccountRules {
     private val PHONE = Regex("^\\+?[0-9]{6,15}$")
     // Contrôle de forme volontairement simple : c'est Firebase qui valide réellement l'adresse.
     private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
-    const val MIN_PASSWORD_LENGTH = 6 // minimum imposé par Firebase Authentication
+    // Firebase en exige 6 ; comme Snapchat, l'inscription en demande 8 (ADR-029).
+    const val MIN_PASSWORD_LENGTH = 8
+    /** Âge minimum pour s'inscrire, vérifié aussi par le backend (ADR-029). */
+    const val MIN_AGE = 13
 
     fun normalizeUsername(raw: String) = raw.trim().lowercase()
 
@@ -52,6 +67,18 @@ object AccountRules {
 
     fun firstNameError(raw: String): String? =
         if (FIRST_NAME.matches(normalizeFirstName(raw))) null else "1 à 30 caractères : lettres, espaces, apostrophes ou tirets"
+
+    /** Nom de famille : facultatif, mêmes règles que le prénom. */
+    fun lastNameError(raw: String): String? = if (raw.isBlank()) null else firstNameError(raw)
+
+    fun normalizeLastName(raw: String): String? = normalizeFirstName(raw).ifEmpty { null }
+
+    fun birthdayError(birthday: LocalDate?, today: LocalDate): String? = when {
+        birthday == null -> "Choisis ta date de naissance"
+        birthday.isAfter(today) -> "Date de naissance invalide"
+        Period.between(birthday, today).years < MIN_AGE -> "Tu dois avoir au moins $MIN_AGE ans pour t'inscrire"
+        else -> null
+    }
 
     fun normalizePhone(raw: String) = raw.replace(Regex("[\\s.\\-()]"), "")
 

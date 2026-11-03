@@ -87,6 +87,8 @@ type DemoKey = "lea" | "hugo" | "ines" | "lucas" | "chloe" | "yanis" | "sarah" |
 
 interface DemoUser {
   firstName: string;
+  /** YYYY-MM-DD, obligatoire à l'inscription (ADR-029). */
+  birthday: string;
   username: string;
   email: string;
   /** Couleurs du dégradé de la photo de profil ; sans elles, pas de photo. */
@@ -97,35 +99,35 @@ interface DemoUser {
 
 const DEMO_USERS: Record<DemoKey, DemoUser> = {
   lea: {
-    firstName: "Léa", username: "lea.martin", email: "lea.martin@snapcore.test", photo: ["0xff9a9e", "0xfad0c4"],
+    firstName: "Léa", birthday: "2004-05-12", username: "lea.martin", email: "lea.martin@snapcore.test", photo: ["0xff9a9e", "0xfad0c4"],
     avatar: { top: "longButNotTooLong", hairColor: "724133", skinColor: "ffdbb4", eyes: "happy", eyebrows: "defaultNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "shirtScoopNeck", clothesColor: "ff488e", backgroundColor: "ffd5dc" },
   },
   hugo: {
-    firstName: "Hugo", username: "hugo_b", email: "hugo.b@snapcore.test", photo: ["0x2193b0", "0x6dd5ed"],
+    firstName: "Hugo", birthday: "2003-11-02", username: "hugo_b", email: "hugo.b@snapcore.test", photo: ["0x2193b0", "0x6dd5ed"],
     avatar: { top: "shortCurly", hairColor: "4a312c", skinColor: "d08b5b", eyes: "default", eyebrows: "raisedExcitedNatural", mouth: "twinkle", facialHair: "beardLight", accessories: "none", clothing: "hoodie", clothesColor: "25557c", backgroundColor: "b6e3f4" },
   },
   ines: {
-    firstName: "Inès", username: "ines.k", email: "ines.k@snapcore.test", photo: ["0x8e2de2", "0xff6fd8"],
+    firstName: "Inès", birthday: "2005-02-21", username: "ines.k", email: "ines.k@snapcore.test", photo: ["0x8e2de2", "0xff6fd8"],
     avatar: { top: "curvy", hairColor: "2c1b18", skinColor: "ae5d29", eyes: "wink", eyebrows: "defaultNatural", mouth: "smile", facialHair: "none", accessories: "round", clothing: "collarAndSweater", clothesColor: "a7ffc4", backgroundColor: "c0aede" },
   },
   lucas: {
-    firstName: "Lucas", username: "lucas_dvx", email: "lucas.dvx@snapcore.test", photo: ["0x11998e", "0x38ef7d"],
+    firstName: "Lucas", birthday: "2004-08-30", username: "lucas_dvx", email: "lucas.dvx@snapcore.test", photo: ["0x11998e", "0x38ef7d"],
     avatar: { top: "shortWaved", hairColor: "b58143", skinColor: "edb98a", eyes: "squint", eyebrows: "defaultNatural", mouth: "default", facialHair: "none", accessories: "wayfarers", clothing: "graphicShirt", clothesColor: "5199e4", backgroundColor: "a7ffc4" },
   },
   chloe: {
-    firstName: "Chloé", username: "chloe.rsn", email: "chloe.rsn@snapcore.test", photo: ["0xf7971e", "0xffd200"],
+    firstName: "Chloé", birthday: "2006-01-17", username: "chloe.rsn", email: "chloe.rsn@snapcore.test", photo: ["0xf7971e", "0xffd200"],
     avatar: { top: "bob", hairColor: "d6b370", skinColor: "ffdbb4", eyes: "happy", eyebrows: "raisedExcitedNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "overall", clothesColor: "ffafb9", backgroundColor: "fffaa1" },
   },
   yanis: {
-    firstName: "Yanis", username: "yanis_74", email: "yanis.74@snapcore.test",
+    firstName: "Yanis", birthday: "2003-06-09", username: "yanis_74", email: "yanis.74@snapcore.test",
     avatar: { top: "theCaesar", hairColor: "2c1b18", skinColor: "614335", eyes: "default", eyebrows: "defaultNatural", mouth: "default", facialHair: "beardMedium", accessories: "none", clothing: "blazerAndShirt", clothesColor: "262e33", backgroundColor: "d1d4f9" },
   },
   sarah: {
-    firstName: "Sarah", username: "sarah.lmb", email: "sarah.lmb@snapcore.test", photo: ["0xee0979", "0xff6a00"],
+    firstName: "Sarah", birthday: "2005-10-04", username: "sarah.lmb", email: "sarah.lmb@snapcore.test", photo: ["0xee0979", "0xff6a00"],
     avatar: { top: "straight01", hairColor: "a55728", skinColor: "edb98a", eyes: "default", eyebrows: "defaultNatural", mouth: "twinkle", facialHair: "none", accessories: "prescription02", clothing: "blazerAndSweater", clothesColor: "e6e6e6", backgroundColor: "ffdfbf" },
   },
   tom: {
-    firstName: "Tom", username: "tom_grd", email: "tom.grd@snapcore.test",
+    firstName: "Tom", birthday: "2006-04-26", username: "tom_grd", email: "tom.grd@snapcore.test",
     avatar: { top: "shaggy", hairColor: "724133", skinColor: "ffdbb4", eyes: "side", eyebrows: "upDownNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "shirtCrewNeck", clothesColor: "ff5c5c", backgroundColor: "ffffff" },
   },
 };
@@ -615,7 +617,7 @@ class DemoSeeder {
   // et son identité est fournie directement au cas d'usage.
   private async register(demo: DemoUser, firebaseUid: string): Promise<UserAccount> {
     const apiKey = process.env.FIREBASE_WEB_API_KEY;
-    const input = { username: demo.username, firstName: demo.firstName };
+    const input = { username: demo.username, firstName: demo.firstName, birthday: demo.birthday };
     if (apiKey) {
       const idToken = await signInWithPassword(apiKey, demo.email, DEMO_PASSWORD);
       return new RegisterUser(this.userRepository, this.identity, noAnalytics).execute({ ...input, idToken });

@@ -32,3 +32,4 @@ Liste des Architecture Decision Records du projet.
 | [ADR-026](./ADR-026-vignettes-stories.md) | Vignettes des stories : fabriquées par l'app, servies par le backend sans compter de vue | Accepté |
 | [ADR-027](./ADR-027-indicateur-saisie.md) | Indicateur « en train d'écrire » : signal REST relayé par la passerelle temps réel, jamais en push | Accepté |
 | [ADR-028](./ADR-028-avatars.md) | Avatars maison façon Bitmoji : style avataaars (DiceBear), options stockées par le backend, rendu PNG public déterministe | Accepté |
+| [ADR-029](./ADR-029-onboarding-facon-snapchat.md) | Onboarding façon Snapchat : inscription en 5 étapes, âge minimum, pseudo proposé, premiers pas avec les contacts | Accepté |

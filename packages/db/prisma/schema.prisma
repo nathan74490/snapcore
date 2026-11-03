@@ -53,6 +53,8 @@ model User {
   username          String    @unique // normalisé en minuscules, modifiable, unicité revérifiée (ADR-014)
   firebaseUid       String    @unique // identifiant du compte Firebase Authentication (ADR-015)
   firstName         String?             // prénom affiché à la place du pseudo ; null pour les comptes créés avant son introduction
+  lastName          String?             // nom de famille, facultatif et privé : jamais dans un profil public (ADR-029)
+  birthday          DateTime? @db.Date  // date de naissance (13 ans révolus à l'inscription), privée ; null pour les comptes créés avant son introduction (ADR-029)
   profilePhotoUrl   String?             // URL publique CDN, recadrée/redimensionnée côté app avant upload (ADR-014, ADR-016)
   avatar            Json?               // options de l'avatar dessiné avataaars (AvatarOptions) ; null = pas d'avatar (ADR-028)
   phoneNumber       String?   @unique // collecté à l'onboarding, jamais vérifié (ADR-010)

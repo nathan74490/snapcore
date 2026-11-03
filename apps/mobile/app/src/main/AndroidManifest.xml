@@ -8,6 +8,8 @@
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
     <!-- Notifications push (ADR-018), demandée à l'exécution depuis Android 13. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Retrouver ses amis par leurs numéros, à l'inscription, après accord explicite (ADR-029). -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <application
         android:name=".SnapCoreApplication"

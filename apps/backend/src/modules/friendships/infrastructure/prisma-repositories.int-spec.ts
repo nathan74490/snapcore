@@ -16,7 +16,7 @@ describe("Dépôts Prisma (Postgres réel)", () => {
   const useCases = new FriendshipUseCases(friendships, users, new RecordingFriendshipNotifier(), new FixedClock());
 
   const newUser = (username: string) =>
-    users.create({ username, firstName: "Test", firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
+    users.create({ username, firstName: "Test", lastName: null, birthday: null, firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
 
   let alice: UserAccount;
   let bob: UserAccount;
@@ -85,5 +85,66 @@ describe("Dépôts Prisma (Postgres réel)", () => {
     expect(await useCases.listFriends(alice)).toEqual([]);
     expect(await users.findActiveByUsername("bob")).toBeNull();
     expect(await users.findByFirebaseUidIncludingDeleted(bob.firebaseUid)).not.toBeNull();
+  });
+
+  it("nom de famille et date de naissance (colonne DATE) relus à l'identique, quel que soit le fuseau", async () => {
+    const created = await users.create({
+      username: "carol",
+      firstName: "Carol",
+      lastName: "Martin",
+      birthday: new Date("2004-05-12T00:00:00Z"),
+      firebaseUid: `uid-${randomUUID()}`,
+      email: null,
+      phoneNumber: null,
+    });
+
+    const read = await users.findActiveById(created.id);
+    expect(read).toMatchObject({ lastName: "Martin", birthday: new Date("2004-05-12T00:00:00Z") });
+    const cleared = await users.updateProfile(created.id, { lastName: null });
+    expect(cleared.lastName).toBeNull();
+  });
+
+  it("un pseudo reste pris tant que la ligne existe, même supprimée ou suspendue (ADR-029)", async () => {
+    await prisma.user.update({ where: { id: bob.id }, data: { deletionRequestedAt: new Date() } });
+    await prisma.user.update({ where: { id: alice.id }, data: { moderationStatus: "SUSPENDED" } });
+
+    expect(await users.isUsernameTaken("bob")).toBe(true);
+    expect(await users.isUsernameTaken("alice")).toBe(true);
+    expect(await users.isUsernameTaken("carol")).toBe(false);
+  });
+
+  it("correspondance des contacts : 9 derniers chiffres, comptes actifs, blocages exclus (ADR-029)", async () => {
+    const withPhone = async (username: string, phoneNumber: string) => {
+      const user = await newUser(username);
+      return users.updateProfile(user.id, { phoneNumber });
+    };
+    await users.updateProfile(alice.id, { phoneNumber: "+33700000001" });
+    await users.updateProfile(bob.id, { phoneNumber: "+33612345678" });
+    const carol = await withPhone("carol", "0700000003");
+    const dave = await withPhone("dave", "+33700000004");
+    const eve = await withPhone("eve", "+33700000005");
+    const frank = await withPhone("frank", "+447700000006");
+    await withPhone("court", "12345678"); // moins de 9 chiffres : jamais trouvé
+    await prisma.user.update({ where: { id: dave.id }, data: { deletionRequestedAt: new Date() } });
+    await prisma.user.update({ where: { id: eve.id }, data: { moderationStatus: "SUSPENDED" } });
+    await useCases.block(carol, alice.id);
+    await useCases.sendRequest(alice, "frank");
+
+    const found = await users.findActiveByPhoneNumberSuffixes(["612345678", "700000003", "700000004", "700000005"]);
+    expect(found.map((u) => u.username).sort()).toEqual(["bob", "carol"]);
+
+    const matches = await useCases.matchContacts(alice, [
+      "+33 7 00 00 00 01", // moi-même
+      "06 12 34 56 78",
+      "07 00 00 00 03", // m'a bloquée
+      "07 00 00 00 04", // suppression demandée
+      "07 00 00 00 05", // suspendu
+      "+44 7700 000006",
+      "12345678",
+    ]);
+    expect(matches).toEqual([
+      { phoneNumber: "06 12 34 56 78", user: { id: bob.id, username: "bob", firstName: "Test" }, relation: "NONE" },
+      { phoneNumber: "+44 7700 000006", user: { id: frank.id, username: "frank", firstName: "Test" }, relation: "OUTGOING_REQUEST" },
+    ]);
   });
 });

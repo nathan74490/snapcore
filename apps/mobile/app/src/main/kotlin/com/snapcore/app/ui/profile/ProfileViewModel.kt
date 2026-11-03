@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class EditableField(val title: String) {
-    FIRST_NAME("Modifier le prénom"), USERNAME("Modifier le pseudo"), PHONE("Modifier le téléphone")
+    FIRST_NAME("Modifier le prénom"), LAST_NAME("Modifier le nom"), USERNAME("Modifier le pseudo"), PHONE("Modifier le téléphone")
 }
 
 data class ProfileState(
@@ -99,6 +99,7 @@ class ProfileViewModel(
         val account = _state.value.account ?: return
         val current = when (field) {
             EditableField.FIRST_NAME -> account.firstName.orEmpty()
+            EditableField.LAST_NAME -> account.lastName.orEmpty()
             EditableField.USERNAME -> account.username
             EditableField.PHONE -> account.phoneNumber.orEmpty()
         }
@@ -114,6 +115,7 @@ class ProfileViewModel(
         val field = s.editing ?: return
         val error = when (field) {
             EditableField.FIRST_NAME -> AccountRules.firstNameError(s.draft)
+            EditableField.LAST_NAME -> AccountRules.lastNameError(s.draft)
             EditableField.USERNAME -> AccountRules.usernameError(s.draft)
             EditableField.PHONE -> AccountRules.phoneError(s.draft)
         }
@@ -123,6 +125,7 @@ class ProfileViewModel(
         }
         val draft = s.draft
         val firstName = AccountRules.normalizeFirstName(draft)
+        val lastName = AccountRules.normalizeLastName(draft)
         val username = AccountRules.normalizeUsername(draft)
         val phone = AccountRules.normalizePhone(draft)
         // Le champ se ferme tout de suite ; un refus du backend (pseudo pris : 409) le rouvre avec le motif.
@@ -131,6 +134,7 @@ class ProfileViewModel(
             change = { account ->
                 when (field) {
                     EditableField.FIRST_NAME -> account.copy(firstName = firstName)
+                    EditableField.LAST_NAME -> account.copy(lastName = lastName)
                     EditableField.USERNAME -> account.copy(username = username)
                     EditableField.PHONE -> account.copy(phoneNumber = phone)
                 }
@@ -138,6 +142,7 @@ class ProfileViewModel(
             revert = { shown, before ->
                 when (field) {
                     EditableField.FIRST_NAME -> shown.copy(firstName = before.firstName)
+                    EditableField.LAST_NAME -> shown.copy(lastName = before.lastName)
                     EditableField.USERNAME -> shown.copy(username = before.username)
                     EditableField.PHONE -> shown.copy(phoneNumber = before.phoneNumber)
                 }
@@ -149,6 +154,8 @@ class ProfileViewModel(
         ) {
             when (field) {
                 EditableField.FIRST_NAME -> accounts.updateProfile(username = null, phoneNumber = null, firstName = firstName)
+                // Chaîne vide : le backend retire le nom de famille (ADR-029).
+                EditableField.LAST_NAME -> accounts.updateProfile(username = null, phoneNumber = null, lastName = lastName.orEmpty())
                 EditableField.USERNAME -> accounts.updateProfile(username = username, phoneNumber = null)
                 EditableField.PHONE -> accounts.updateProfile(username = null, phoneNumber = phone)
             }

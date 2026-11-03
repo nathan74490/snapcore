@@ -1,6 +1,7 @@
 package com.snapcore.app.data
 
 import com.snapcore.app.data.api.ApiException
+import com.snapcore.app.data.api.ContactsMatchRequest
 import com.snapcore.app.data.api.FriendRequestBody
 import com.snapcore.app.data.api.FriendshipItemDto
 import com.snapcore.app.data.api.PublicProfileDto
@@ -9,6 +10,7 @@ import com.snapcore.app.data.api.SendSnapRequest
 import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.data.api.UploadRequest
 import com.snapcore.app.data.api.apiCall
+import com.snapcore.app.domain.ContactMatch
 import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.FriendRequest
 import com.snapcore.app.domain.FriendsService
@@ -81,6 +83,14 @@ class ApiFriendsService(private val api: SnapCoreApi) : FriendsService {
     }
 
     override suspend fun decline(friendshipId: String) = apiCall { api.declineFriendRequest(friendshipId) }
+
+    // Le backend borne la requête à 2000 numéros : un grand carnet d'adresses part en plusieurs fois.
+    override suspend fun matchContacts(phoneNumbers: List<String>): List<ContactMatch> =
+        phoneNumbers.distinct().chunked(2000).flatMap { chunk ->
+            apiCall { api.matchContacts(ContactsMatchRequest(chunk)) }.map {
+                ContactMatch(it.phoneNumber, it.user.toFriend(), runCatching { Relation.valueOf(it.relation) }.getOrDefault(Relation.NONE))
+            }
+        }
 
     private fun toRequest(item: FriendshipItemDto) = FriendRequest(item.friendshipId, item.user.toFriend())
 }

@@ -157,6 +157,8 @@ fun ProfileScreen(
                 Column(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White)) {
                     ProfileRow("Prénom", account.firstName ?: "Non renseigné", onEdit = { vm.startEditing(EditableField.FIRST_NAME) })
                     HorizontalDivider(color = SnapColors.Border)
+                    ProfileRow("Nom", account.lastName ?: "Non renseigné", onEdit = { vm.startEditing(EditableField.LAST_NAME) })
+                    HorizontalDivider(color = SnapColors.Border)
                     ProfileRow("Pseudo", account.username, onEdit = { vm.startEditing(EditableField.USERNAME) })
                     HorizontalDivider(color = SnapColors.Border)
                     // Email non vérifié : la ligne entière passe en rouge (maquette 17:1408), un appui renvoie le lien.
@@ -250,7 +252,7 @@ fun ProfileScreen(
                     isError = state.draftError != null,
                     supportingText = state.draftError?.let { { Text(it) } },
                     keyboardOptions = KeyboardOptions(keyboardType = if (field == EditableField.PHONE) KeyboardType.Phone else KeyboardType.Text,
-                        capitalization = if (field == EditableField.FIRST_NAME) KeyboardCapitalization.Words else KeyboardCapitalization.None),
+                        capitalization = if (field == EditableField.FIRST_NAME || field == EditableField.LAST_NAME) KeyboardCapitalization.Words else KeyboardCapitalization.None),
                 )
             },
             confirmButton = { TextButton(onClick = vm::saveEditing) { Text("Enregistrer") } },

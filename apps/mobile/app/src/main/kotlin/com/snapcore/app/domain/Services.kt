@@ -23,7 +23,10 @@ interface AccountService {
     /** @throws com.snapcore.app.data.api.ApiException 404 si aucun compte SnapCore n'existe pour ce login. */
     suspend fun me(): Account
     suspend fun register(registration: PendingRegistration): Account
-    suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String? = null): Account
+    /** Champs null = inchangés ; `lastName = ""` retire le nom de famille. */
+    suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String? = null, lastName: String? = null): Account
+    /** Pseudo libre ? Appelable avant même que le compte existe, pendant l'inscription (ADR-029). */
+    suspend fun usernameAvailability(username: String): UsernameAvailability
     suspend fun deleteAccount()
     /** Confirme un upload PROFILE_PHOTO déjà envoyé vers R2 (ADR-016). */
     suspend fun setProfilePhoto(uploadId: String): Account

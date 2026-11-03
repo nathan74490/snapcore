@@ -36,6 +36,7 @@ private class RequestsFriends(var incoming: Int) : FriendsService {
     override suspend fun sendRequest(username: String) = Unit
     override suspend fun accept(friendshipId: String) = Unit
     override suspend fun decline(friendshipId: String) = Unit
+    override suspend fun matchContacts(phoneNumbers: List<String>) = emptyList<com.snapcore.app.domain.ContactMatch>()
 }
 
 // Retouches du point design comparé à Snapchat.

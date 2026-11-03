@@ -84,6 +84,7 @@ private class GatedFriends : FriendsService {
         friends = listOf(alice) + friends
     }
     override suspend fun decline(friendshipId: String) = gate.pass()
+    override suspend fun matchContacts(phoneNumbers: List<String>) = emptyList<com.snapcore.app.domain.ContactMatch>()
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -285,7 +286,7 @@ class OptimisticUiTest {
         val gate = Gate()
         var current = account
         override suspend fun me() = current
-        override suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String?): Account {
+        override suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String?, lastName: String?): Account {
             gate.pass()
             return current.copy(firstName = firstName ?: current.firstName).also { current = it }
         }

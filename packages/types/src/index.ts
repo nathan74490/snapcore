@@ -36,6 +36,8 @@ export interface User {
   id: string;
   username: string;             // normalisé en minuscules, modifiable depuis le profil, unicité revérifiée (voir ADR-014)
   firstName?: string;           // prénom affiché à la place du pseudo ; absent pour les comptes créés avant son introduction
+  lastName?: string;            // nom de famille facultatif, privé : jamais dans un profil public (voir ADR-029)
+  birthday?: string;            // date de naissance YYYY-MM-DD, privée ; absente pour les comptes créés avant son introduction (voir ADR-029)
   // firebaseUid (lien vers le compte Firebase Authentication) n'est jamais exposé dans les types partagés app/backoffice (voir ADR-015)
   profilePhotoUrl?: string;     // URL publique CDN, recadrée/redimensionnée côté app avant upload (voir ADR-014, ADR-016)
   avatar?: AvatarOptions;       // avatar dessiné, absent si l'utilisateur n'en a pas créé ; affiché avant la photo de profil (voir ADR-028)
@@ -113,7 +115,7 @@ export interface DeviceToken {
 }
 
 // Profil d'un AUTRE utilisateur tel qu'exposé par l'API (recherche, liste d'amis, demandes).
-// Ne contient jamais phoneNumber, email ni deletionRequestedAt (voir ADR-014, ADR-019).
+// Ne contient jamais phoneNumber, email, deletionRequestedAt (voir ADR-014, ADR-019), ni lastName ou birthday (voir ADR-029).
 export interface PublicUserProfile {
   id: string;
   username: string;
@@ -128,6 +130,21 @@ export interface PublicUserProfile {
 export type FriendshipRelation = "NONE" | "OUTGOING_REQUEST" | "INCOMING_REQUEST" | "FRIENDS";
 
 export interface UserSearchResult extends PublicUserProfile {
+  relation: FriendshipRelation;
+}
+
+// Réponse de GET /users/username-availability (publique, appelée pendant l'inscription, ADR-029).
+// `reason` (message affichable) est présent uniquement si le pseudo n'est pas disponible.
+export interface UsernameAvailability {
+  available: boolean;
+  reason?: string;
+}
+
+// Un élément de la réponse de POST /users/contacts/match (ADR-029). `phoneNumber` est la chaîne
+// exacte envoyée par l'app (pour retrouver son contact) : le numéro stocké de l'autre n'est jamais renvoyé.
+export interface ContactMatch {
+  phoneNumber: string;
+  user: PublicUserProfile;
   relation: FriendshipRelation;
 }
 

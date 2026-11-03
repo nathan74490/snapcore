@@ -67,6 +67,7 @@ class StaticFriends(private val list: List<Friend>) : FriendsService {
     override suspend fun sendRequest(username: String) = Unit
     override suspend fun accept(friendshipId: String) = Unit
     override suspend fun decline(friendshipId: String) = Unit
+    override suspend fun matchContacts(phoneNumbers: List<String>) = emptyList<com.snapcore.app.domain.ContactMatch>()
 }
 
 class RecordingSender : SnapSender {

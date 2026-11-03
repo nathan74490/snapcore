@@ -53,6 +53,33 @@ describe("UpdateProfile", () => {
   });
 });
 
+describe("UpdateProfile : nom de famille (ADR-029)", () => {
+  let users: InMemoryUserRepository;
+  let updateProfile: UpdateProfile;
+
+  beforeEach(() => {
+    users = new InMemoryUserRepository();
+    updateProfile = new UpdateProfile(users);
+  });
+
+  it("permet d'ajouter puis de retirer le nom de famille (chaîne vide)", async () => {
+    const user = await users.seed("nathan");
+
+    const named = await updateProfile.execute(user, { lastName: "  Le  Goff " });
+    expect(named.lastName).toBe("Le Goff");
+
+    const unnamed = await updateProfile.execute(named, { lastName: "" });
+    expect(unnamed.lastName).toBeNull();
+  });
+
+  it("refuse un nom invalide sans modifier la ligne", async () => {
+    const user = await users.seed("nathan", { lastName: "Dupont" });
+
+    await expect(updateProfile.execute(user, { lastName: "Dupont2" })).rejects.toThrow(ValidationError);
+    expect(users.rows.get(user.id)!.lastName).toBe("Dupont");
+  });
+});
+
 describe("SyncEmailFromIdentityProvider", () => {
   it("recopie l'email confirmé côté Firebase, source de vérité", async () => {
     const users = new InMemoryUserRepository();

@@ -34,7 +34,7 @@ describe("API HTTP", () => {
     const res = await request(app.getHttpServer())
       .post("/auth/register")
       .set("Authorization", `Bearer ${token}`)
-      .send({ username, firstName: username.charAt(0).toUpperCase() + username.slice(1) });
+      .send({ username, firstName: username.charAt(0).toUpperCase() + username.slice(1), birthday: "2000-01-01" });
     expect(res.status).toBe(200);
     return { token, id: res.body.id as string };
   };
@@ -170,7 +170,7 @@ describe("API HTTP", () => {
     await request(app.getHttpServer())
       .post("/auth/register")
       .set("Authorization", `Bearer ${token}`)
-      .send({ username: "ALICE", firstName: "Alice" })
+      .send({ username: "ALICE", firstName: "Alice", birthday: "2000-01-01" })
       .expect(409);
   });
 
@@ -178,8 +178,12 @@ describe("API HTTP", () => {
     const token = identity.addAccount("uid-1");
     const http = request(app.getHttpServer());
 
-    await http.post("/auth/register").set("Authorization", `Bearer ${token}`).send({ username: "nathan" }).expect(400);
-    await http.post("/auth/register").set("Authorization", `Bearer ${token}`).send({ username: "nathan", firstName: "N4than" }).expect(400);
+    await http.post("/auth/register").set("Authorization", `Bearer ${token}`).send({ username: "nathan", birthday: "2000-01-01" }).expect(400);
+    await http
+      .post("/auth/register")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ username: "nathan", firstName: "N4than", birthday: "2000-01-01" })
+      .expect(400);
     expect(users.rows.size).toBe(0);
   });
 
@@ -193,6 +197,88 @@ describe("API HTTP", () => {
       .expect(200);
 
     expect(res.body).toMatchObject({ username: "nathan", firstName: "Jean-Marc" });
+  });
+
+  describe("onboarding : nom, date de naissance, pseudo, contacts (ADR-029)", () => {
+    it("nom de famille et date de naissance enregistrés à l'inscription, visibles dans /me seulement", async () => {
+      const token = identity.addAccount("uid-1");
+      const http = request(app.getHttpServer());
+
+      const registered = await http
+        .post("/auth/register")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ username: "nathan", firstName: "Nathan", lastName: "Boudet", birthday: "2004-05-12" })
+        .expect(200);
+      expect(registered.body).toMatchObject({ firstName: "Nathan", lastName: "Boudet", birthday: "2004-05-12" });
+
+      const me = await http.get("/me").set("Authorization", `Bearer ${token}`).expect(200);
+      expect(me.body).toMatchObject({ lastName: "Boudet", birthday: "2004-05-12" });
+
+      const alice = await register("uid-a", "alice");
+      const search = await http.get("/users/search?username=nathan").set("Authorization", `Bearer ${alice.token}`).expect(200);
+      expect(search.body).not.toHaveProperty("lastName");
+      expect(search.body).not.toHaveProperty("birthday");
+    });
+
+    it("la date de naissance est obligatoire ; moins de 13 ans → 400 avec le message attendu", async () => {
+      const token = identity.addAccount("uid-1");
+      const http = request(app.getHttpServer());
+      const year = new Date().getUTCFullYear();
+
+      await http.post("/auth/register").set("Authorization", `Bearer ${token}`).send({ username: "nathan", firstName: "Nathan" }).expect(400);
+      const tooYoung = await http
+        .post("/auth/register")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ username: "nathan", firstName: "Nathan", birthday: `${year - 12}-01-01` })
+        .expect(400);
+      expect(tooYoung.body.message).toBe("Tu dois avoir au moins 13 ans pour t'inscrire");
+      await http
+        .post("/auth/register")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ username: "nathan", firstName: "Nathan", birthday: "2001-02-30" })
+        .expect(400);
+      expect(users.rows.size).toBe(0);
+    });
+
+    it("PATCH /me : nom de famille ajouté puis retiré (chaîne vide), absent de /me une fois retiré", async () => {
+      const { token } = await register("uid-1", "nathan");
+      const http = request(app.getHttpServer());
+
+      await http.patch("/me").set("Authorization", `Bearer ${token}`).send({ lastName: "Boudet" }).expect(200, /"lastName":"Boudet"/);
+      const cleared = await http.patch("/me").set("Authorization", `Bearer ${token}`).send({ lastName: "" }).expect(200);
+      expect(cleared.body).not.toHaveProperty("lastName");
+      expect(cleared.body.birthday).toBe("2000-01-01");
+    });
+
+    it("GET /users/username-availability est public et ne renvoie que disponible / raison", async () => {
+      await register("uid-1", "nathan");
+      const http = request(app.getHttpServer());
+
+      await http.get("/users/username-availability?username=NaThAn").expect(200, { available: false, reason: "Ce pseudo est déjà pris" });
+      await http.get("/users/username-availability?username=marie").expect(200, { available: true });
+      const invalid = await http.get("/users/username-availability?username=1abc").expect(200);
+      expect(invalid.body).toMatchObject({ available: false, reason: expect.stringContaining("Pseudo invalide") });
+      await http.get("/users/username-availability").expect(400);
+    });
+
+    it("POST /users/contacts/match : authentifié, borné, renvoie la chaîne envoyée et la relation", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      const http = request(app.getHttpServer());
+      await http.patch("/me").set("Authorization", `Bearer ${bob.token}`).send({ phoneNumber: "+33612345678" }).expect(200);
+
+      await http.post("/users/contacts/match").send({ phoneNumbers: ["0612345678"] }).expect(401);
+      const auth = { Authorization: `Bearer ${alice.token}` };
+      await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: [] }).expect(400);
+      await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: Array(2001).fill("0612345678") }).expect(400);
+      await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: ["0".repeat(33)] }).expect(400);
+      await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: [612345678] }).expect(400);
+
+      const res = await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: ["06 12 34 56 78", "123"] }).expect(200);
+      expect(res.body).toEqual([
+        { phoneNumber: "06 12 34 56 78", user: { id: bob.id, username: "bob", firstName: "Bob" }, relation: "NONE" },
+      ]);
+    });
   });
 
   describe("avatars dessinés (ADR-028)", () => {

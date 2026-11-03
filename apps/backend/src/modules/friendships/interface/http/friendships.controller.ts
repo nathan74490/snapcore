@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from "@nestjs/common";
-import type { FriendshipListItem, UserSearchResult } from "@snapcore/types";
-import { IsString, MaxLength } from "class-validator";
+import type { ContactMatch, FriendshipListItem, UserSearchResult } from "@snapcore/types";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsString, MaxLength } from "class-validator";
 import type { UserAccount } from "../../../identity/domain/user";
 import { CurrentUser } from "../../../identity/interface/http/auth.decorators";
 import { FriendshipUseCases } from "../../application/friendship-use-cases";
@@ -11,6 +11,16 @@ class UsernameDto {
   username: string;
 }
 
+// Numéros bruts du carnet d'adresses, tels qu'affichés par le téléphone (ADR-029).
+class MatchContactsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(2000)
+  @IsString({ each: true })
+  @MaxLength(32, { each: true })
+  phoneNumbers: string[];
+}
+
 @Controller()
 export class FriendshipsController {
   constructor(private readonly friendships: FriendshipUseCases) {}
@@ -19,6 +29,13 @@ export class FriendshipsController {
   @Get("users/search")
   search(@CurrentUser() me: UserAccount, @Query() query: UsernameDto): Promise<UserSearchResult> {
     return this.friendships.searchByUsername(me, query.username);
+  }
+
+  // Amis à ajouter depuis les contacts du téléphone, pendant l'onboarding (ADR-029).
+  @Post("users/contacts/match")
+  @HttpCode(200)
+  matchContacts(@CurrentUser() me: UserAccount, @Body() body: MatchContactsDto): Promise<ContactMatch[]> {
+    return this.friendships.matchContacts(me, body.phoneNumbers);
   }
 
   @Get("friendships")

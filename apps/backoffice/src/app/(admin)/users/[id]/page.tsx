@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { deleteStoryItem, reactivateUser, redactMessage, suspendUser } from "@/app/actions";
 import { ActionForm } from "@/components/action-form";
 import { UserStatusBadge } from "@/components/user-status-badge";
-import { describeMessage, formatDateTime } from "@/lib/format";
+import { describeMessage, formatDateOnly, formatDateTime } from "@/lib/format";
 import { getUserDetail } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +29,10 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
         <dl>
           <dt>Prénom</dt>
           <dd>{user.firstName ?? "Non renseigné"}</dd>
+          <dt>Nom</dt>
+          <dd>{user.lastName ?? "Non renseigné"}</dd>
+          <dt>Date de naissance</dt>
+          <dd>{formatDateOnly(user.birthday) ?? "Non renseignée"}</dd>
           <dt>Email</dt>
           <dd>{user.email ?? "Non renseigné"}</dd>
           <dt>Téléphone</dt>

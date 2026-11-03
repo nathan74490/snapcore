@@ -12,17 +12,25 @@ import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AvatarCatalog
 import com.snapcore.app.domain.PendingRegistration
 import com.snapcore.app.domain.SubscriptionService
+import com.snapcore.app.domain.UsernameAvailability
 import com.snapcore.app.domain.isPlusActive
 import java.time.Instant
+import java.time.LocalDate
 
 class ApiAccountService(private val api: SnapCoreApi) : AccountService {
     override suspend fun me() = apiCall { api.me() }.toAccount()
 
     override suspend fun register(registration: PendingRegistration) =
-        apiCall { api.register(RegisterRequest(registration.username, registration.firstName, registration.phoneNumber)) }.toAccount()
+        apiCall {
+            api.register(RegisterRequest(registration.username, registration.firstName, registration.phoneNumber,
+                registration.lastName, registration.birthday?.toString()))
+        }.toAccount()
 
-    override suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String?) =
-        apiCall { api.updateProfile(UpdateProfileRequest(username, phoneNumber, firstName)) }.toAccount()
+    override suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String?, lastName: String?) =
+        apiCall { api.updateProfile(UpdateProfileRequest(username, phoneNumber, firstName, lastName)) }.toAccount()
+
+    override suspend fun usernameAvailability(username: String) =
+        apiCall { api.usernameAvailability(username) }.let { UsernameAvailability(it.available, it.reason) }
 
     override suspend fun deleteAccount() = apiCall { api.deleteAccount() }
 
@@ -54,6 +62,8 @@ private fun UserDto.toAccount(): Account {
         firstName = firstName,
         avatar = avatar,
         avatarUrl = avatar?.let(::avatarImageUrl),
+        lastName = lastName,
+        birthday = birthday?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
     )
 }
 

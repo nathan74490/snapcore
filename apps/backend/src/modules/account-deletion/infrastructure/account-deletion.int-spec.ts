@@ -22,7 +22,7 @@ describe("Suppression de compte (Postgres et BullMQ réels)", () => {
   let bob: UserAccount;
 
   const newUser = (username: string) =>
-    users.create({ username, firstName: "Test", firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
+    users.create({ username, firstName: "Test", lastName: null, birthday: null, firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
 
   const snapTo = (recipientId: string, senderId: string, mediaKey = `messages/${randomUUID()}`) =>
     prisma.message.create({

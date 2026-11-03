@@ -1,4 +1,5 @@
 import type { User } from "@snapcore/types";
+import { formatBirthday } from "../../domain/birthday";
 import type { UserAccount } from "../../domain/user";
 
 // Vue de l'utilisateur sur lui-même. firebaseUid n'est jamais exposé (ADR-015).
@@ -9,6 +10,8 @@ export function presentSelf(user: UserAccount): User {
     subscriptionTier: user.subscriptionTier,
     moderationStatus: user.moderationStatus,
     ...(user.firstName ? { firstName: user.firstName } : {}),
+    ...(user.lastName ? { lastName: user.lastName } : {}),
+    ...(user.birthday ? { birthday: formatBirthday(user.birthday) } : {}),
     ...(user.profilePhotoUrl ? { profilePhotoUrl: user.profilePhotoUrl } : {}),
     ...(user.avatar ? { avatar: { ...user.avatar } } : {}),
     ...(user.phoneNumber ? { phoneNumber: user.phoneNumber } : {}),

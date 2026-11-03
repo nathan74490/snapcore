@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.snapcore.app.ui.auth.LoginScreen
 import com.snapcore.app.ui.auth.SignUpScreen
+import com.snapcore.app.ui.onboarding.OnboardingScreen
 import com.snapcore.app.ui.auth.WelcomeScreen
 import com.snapcore.app.ui.theme.SnapCoreTheme
 
@@ -28,6 +29,8 @@ class DesignPreviewActivity : ComponentActivity() {
                     when (screen) {
                         "login" -> LoginScreen(onBack = { screen = "welcome" }, onSession = { finish() })
                         "signup" -> SignUpScreen(onBack = { screen = "welcome" }, onSession = { finish() })
+                        // Premiers pas : à parcourir avec « Passer » seulement (les autres actions modifient le compte connecté).
+                        "onboarding" -> OnboardingScreen("nathan", onOpenAvatarEditor = {}, avatarChange = null, onAvatarChangeApplied = {}, onDone = { finish() })
                         else -> WelcomeScreen(onLogin = { screen = "login" }, onSignUp = { screen = "signup" })
                     }
                 }

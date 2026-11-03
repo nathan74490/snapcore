@@ -30,6 +30,19 @@ export class PrismaFriendshipRepository implements FriendshipRepository {
       .then(toFriendship);
   }
 
+  async findForPairs(userId: string, otherIds: string[]): Promise<Friendship[]> {
+    if (otherIds.length === 0) return [];
+    const rows = await this.prisma.friendship.findMany({
+      where: {
+        OR: [
+          { requesterId: userId, addresseeId: { in: otherIds } },
+          { addresseeId: userId, requesterId: { in: otherIds } },
+        ],
+      },
+    });
+    return rows.map((row) => toFriendship(row)!);
+  }
+
   async create(friendship: NewFriendship): Promise<Friendship> {
     const row = await this.prisma.friendship
       .create({ data: { ...friendship, ...sortedPair(friendship.requesterId, friendship.addresseeId) } })

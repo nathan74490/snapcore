@@ -92,6 +92,8 @@ export async function getUserDetail(id: string) {
     select: {
       ...userSummary,
       firstName: true,
+      lastName: true,
+      birthday: true,
       email: true,
       phoneNumber: true,
       subscriptionTier: true,

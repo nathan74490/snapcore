@@ -53,7 +53,6 @@ import com.snapcore.app.domain.SendTarget
 import com.snapcore.app.domain.Session
 import com.snapcore.app.domain.screenNameOf
 import com.snapcore.app.push.Notifications
-import com.snapcore.app.ui.auth.CompleteRegistrationScreen
 import com.snapcore.app.ui.auth.LoginScreen
 import com.snapcore.app.ui.auth.SignUpScreen
 import com.snapcore.app.ui.auth.StartScreen
@@ -67,6 +66,7 @@ import com.snapcore.app.ui.profile.AvatarChange
 import com.snapcore.app.ui.profile.AvatarEditorScreen
 import com.snapcore.app.ui.home.CHAT_TAB
 import com.snapcore.app.ui.home.HomeScreen
+import com.snapcore.app.ui.onboarding.OnboardingScreen
 import com.snapcore.app.ui.home.STORIES_TAB
 import com.snapcore.app.ui.plus.PaywallScreen
 import com.snapcore.app.ui.profile.ProfileScreen
@@ -83,6 +83,8 @@ private val HOME_TAB_SCREENS = listOf("Chat", "Camera", "Stories")
 @Serializable private object LoginRoute
 @Serializable private object SignUpRoute
 @Serializable private object CompleteRegistrationRoute
+// Premiers pas après une inscription (ADR-029).
+@Serializable private object OnboardingRoute
 @Serializable private object HomeRoute
 @Serializable private object ProfileRoute
 @Serializable private object FriendsRoute
@@ -111,6 +113,8 @@ fun SnapCoreNavHost(
     // Compte courant partagé entre l'accueil et le profil (mis à jour après une modification).
     var account by remember { mutableStateOf<Account?>(null) }
     var homeTab by rememberSaveable { mutableIntStateOf(CAMERA_TAB) }
+    // Premiers pas en cours après une inscription : la demande de notifications attend leur dernier écran.
+    var onboarding by rememberSaveable { mutableStateOf(false) }
     // Avatar validé dans l'éditeur, en route vers le profil qui l'affiche puis l'enregistre.
     var avatarChange by remember { mutableStateOf<AvatarChange?>(null) }
     val analytics = appContainer().analytics
@@ -142,6 +146,15 @@ fun SnapCoreNavHost(
         navController.navigate(target) { popUpTo(0) { inclusive = true } }
     }
 
+    // Compte tout juste créé : les premiers pas avant l'accueil (ADR-029).
+    fun afterSignUp(session: Session) {
+        if (session !is Session.Ready) return go(session)
+        account = session.account
+        analytics.identify(session.account.id)
+        onboarding = true
+        navController.navigate(OnboardingRoute) { popUpTo(0) { inclusive = true } }
+    }
+
     // Écrans visités (ADR-008) : la route courante, ou l'onglet de l'accueil.
     DisposableEffect(navController) {
         val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
@@ -159,7 +172,7 @@ fun SnapCoreNavHost(
     // en arrière-plan, ce sont les notifications push qui prennent le relais (ADR-018).
     if (account != null) {
         RealtimeWhileForeground()
-        PushRegistration(account!!.id)
+        PushRegistration(account!!.id, askPermission = !onboarding)
     }
 
     // Notification touchée : ouvre l'écran concerné une fois la session prête.
@@ -204,8 +217,24 @@ fun SnapCoreNavHost(
             )
         }
         composable<LoginRoute> { LoginScreen(onBack = navController::popBackStack, onSession = ::go) }
-        composable<SignUpRoute> { SignUpScreen(onBack = navController::popBackStack, onSession = ::go) }
-        composable<CompleteRegistrationRoute> { CompleteRegistrationScreen(onSession = ::go) }
+        composable<SignUpRoute> { SignUpScreen(onBack = navController::popBackStack, onSession = ::afterSignUp) }
+        // Compte Firebase sans compte SnapCore : on reprend l'inscription aux étapes nom, naissance, pseudo.
+        composable<CompleteRegistrationRoute> { SignUpScreen(onBack = {}, onSession = ::afterSignUp, resuming = true) }
+        composable<OnboardingRoute> {
+            val me = account
+            if (me == null) StartScreen(onSession = ::go)
+            else OnboardingScreen(
+                username = me.username,
+                onOpenAvatarEditor = { navController.navigate(AvatarEditorRoute) },
+                avatarChange = avatarChange,
+                onAvatarChangeApplied = { avatarChange = null },
+                onDone = {
+                    onboarding = false
+                    homeTab = CAMERA_TAB
+                    navController.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }
+                },
+            )
+        }
         composable<HomeRoute>(
             enterTransition = {
                 if (initialState.destination.hasRoute<StartRoute>()) fadeIn(tween(180))
@@ -388,15 +417,15 @@ private fun RealtimeWhileForeground() {
 // Enregistre le token FCM de l'appareil pour ce compte (ADR-018) et demande la permission
 // d'afficher des notifications, obligatoire depuis Android 13.
 @Composable
-private fun PushRegistration(accountId: String) {
+private fun PushRegistration(accountId: String, askPermission: Boolean) {
     val container = appContainer()
     val context = LocalContext.current
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    LaunchedEffect(accountId) {
+    LaunchedEffect(accountId, askPermission) {
         runCatching { container.devices.registerCurrentDevice() }
             .onFailure { Log.w("SnapCorePush", "Enregistrement de l'appareil impossible", it) }
         // Demandée une seule fois par installation (BUG-007) ; ensuite, depuis les paramètres du profil.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifications.canNotify(context) &&
+        if (askPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifications.canNotify(context) &&
             Notifications.claimFirstPermissionRequest(context)
         ) {
             permission.launch(Manifest.permission.POST_NOTIFICATIONS)

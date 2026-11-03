@@ -2,6 +2,7 @@ package com.snapcore.app
 
 import android.content.Context
 import com.google.firebase.auth.FirebaseAuth
+import com.snapcore.app.data.AndroidContactsReader
 import com.snapcore.app.data.ApiAccountService
 import com.snapcore.app.data.ApiChatService
 import com.snapcore.app.data.ApiFriendsService
@@ -22,6 +23,7 @@ import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.Analytics
 import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.ChatService
+import com.snapcore.app.domain.ContactsReader
 import com.snapcore.app.domain.FilterRenderer
 import com.snapcore.app.domain.FriendsService
 import com.snapcore.app.domain.MediaPublisher
@@ -82,6 +84,7 @@ class AppContainer(context: Context) {
         .build()
 
     val friends: FriendsService = ApiFriendsService(api)
+    val contacts: ContactsReader = AndroidContactsReader(context.applicationContext)
     val mediaUploader: MediaUploader = R2MediaUploader(api, storageClient)
 
     val chat: ChatService = ApiChatService(api)

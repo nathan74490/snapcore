@@ -97,9 +97,10 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | Méthode | Route | Description | ADR |
 |---|---|---|---|
 | GET | `/health` | Public | |
-| POST | `/auth/register` | Crée la ligne `User` (token seul, idempotent, `checkRevoked`) | 015 |
-| GET | `/me` | Mon profil | 014 |
-| PATCH | `/me` | Modifier pseudo / téléphone (409 si pris) | 014 |
+| POST | `/auth/register` | Crée la ligne `User` (token seul, idempotent, `checkRevoked`) `{ username, firstName, lastName?, birthday: "YYYY-MM-DD", phoneNumber? }` ; 400 si moins de 13 ans | 015, 029 |
+| GET | `/users/username-availability?username=` | Public : `{ available, reason? }` (format invalide ou pseudo déjà porté par une ligne, même supprimée/suspendue) | 029 |
+| GET | `/me` | Mon profil, avec `lastName?` et `birthday?` (privés, jamais dans un profil public) | 014, 029 |
+| PATCH | `/me` | Modifier pseudo / prénom / nom (`""` le retire) / téléphone (409 si pris) | 014, 029 |
 | POST | `/me/email/sync` | Recopie l'email confirmé côté Firebase | 014 |
 | POST | `/media/uploads` | URL de PUT signée vers `tmp/` `{ purpose, contentType, contentLength }` | 016 |
 | PUT | `/me/photo` | Confirme un upload `PROFILE_PHOTO` `{ uploadId }` | 014, 016 |
@@ -110,6 +111,7 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | GET | `/avatars/avataaars.png?<11 options>&size=` | Public : PNG carré déterministe (64 à 512 px, 256 par défaut), cache immuable | 028 |
 | DELETE | `/me` | Supprime mon compte (202 : bloqué immédiatement, suppression en arrière-plan) | 019 |
 | GET | `/users/search?username=` | Recherche par pseudo exact + relation | 012 |
+| POST | `/users/contacts/match` | Contacts du téléphone `{ phoneNumbers }` (1 à 2000, ≤ 32 car.) → `[{ phoneNumber, user, relation }]`, correspondance sur les 9 derniers chiffres, sans soi-même, bloqués ni comptes inactifs | 012, 029 |
 | GET | `/friendships` | Mes amis | 012 |
 | GET | `/friendships/requests/incoming` | Demandes reçues | 012 |
 | GET | `/friendships/requests/outgoing` | Demandes envoyées | 012 |

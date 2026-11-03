@@ -103,6 +103,8 @@ interface FriendsService {
     suspend fun sendRequest(username: String)
     suspend fun accept(friendshipId: String)
     suspend fun decline(friendshipId: String)
+    /** Comptes SnapCore dont le numéro figure parmi ceux des contacts du téléphone (ADR-029). */
+    suspend fun matchContacts(phoneNumbers: List<String>): List<ContactMatch>
 }
 
 data class FriendRequest(val friendshipId: String, val user: Friend)

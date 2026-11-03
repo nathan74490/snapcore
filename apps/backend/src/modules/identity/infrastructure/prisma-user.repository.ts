@@ -26,6 +26,24 @@ export class PrismaUserRepository implements UserRepository {
     return this.prisma.user.findFirst({ where: { username, ...ACTIVE } }).then(toAccount);
   }
 
+  // Sans ACTIVE_USER_WHERE : la ligne d'un compte supprimé ou suspendu garde son pseudo (contrainte @unique).
+  async isUsernameTaken(username: string): Promise<boolean> {
+    return (await this.prisma.user.count({ where: { username } })) > 0;
+  }
+
+  async findActiveByPhoneNumberSuffixes(suffixes: string[]): Promise<UserAccount[]> {
+    if (suffixes.length === 0) return [];
+    // Le numéro stocké est normalisé ("+" facultatif puis chiffres, parsePhoneNumber) : ses derniers
+    // caractères sont des chiffres. right() n'a pas d'équivalent Prisma, d'où deux requêtes : les
+    // identifiants par SQL brut (une seule comparaison par ligne), puis les comptes sous le filtre centralisé.
+    const ids = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "User"
+      WHERE "phoneNumber" IS NOT NULL AND right("phoneNumber", ${suffixes[0].length}::int) = ANY(${suffixes}::text[])`;
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.user.findMany({ where: { id: { in: ids.map((row) => row.id) }, ...ACTIVE } });
+    return rows.map((row) => toAccount(row)!);
+  }
+
   async findByFirebaseUidIncludingDeleted(firebaseUid: string): Promise<UserAccount | null> {
     return this.prisma.user.findUnique({ where: { firebaseUid } }).then(toAccount);
   }

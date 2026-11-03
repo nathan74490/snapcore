@@ -112,6 +112,12 @@ interface SnapCoreApi {
     @GET("friendships/requests/outgoing")
     suspend fun outgoingRequests(): List<FriendshipItemDto>
 
+    @GET("users/username-availability")
+    suspend fun usernameAvailability(@Query("username") username: String): UsernameAvailabilityDto
+
+    @POST("users/contacts/match")
+    suspend fun matchContacts(@Body body: ContactsMatchRequest): List<ContactMatchDto>
+
     @GET("users/search")
     suspend fun searchUser(@Query("username") username: String): UserSearchResultDto
 
@@ -137,6 +143,9 @@ data class UserDto(
     val premiumUntil: String? = null,
     val firstName: String? = null,
     val avatar: Map<String, String>? = null,
+    val lastName: String? = null,
+    /** YYYY-MM-DD. */
+    val birthday: String? = null,
 )
 
 @Serializable
@@ -149,11 +158,27 @@ data class SetAvatarRequest(val options: Map<String, String>)
 data class CheckoutDto(val url: String)
 
 @Serializable
-data class RegisterRequest(val username: String, val firstName: String, val phoneNumber: String? = null)
+data class RegisterRequest(
+    val username: String,
+    val firstName: String,
+    val phoneNumber: String? = null,
+    val lastName: String? = null,
+    /** YYYY-MM-DD (ADR-029). */
+    val birthday: String? = null,
+)
+
+@Serializable
+data class UsernameAvailabilityDto(val available: Boolean, val reason: String? = null)
+
+@Serializable
+data class ContactsMatchRequest(val phoneNumbers: List<String>)
+
+@Serializable
+data class ContactMatchDto(val phoneNumber: String, val user: PublicProfileDto, val relation: String)
 
 // Champs absents = inchangés ; `phoneNumber = null` explicite n'est pas utilisé en V1.
 @Serializable
-data class UpdateProfileRequest(val username: String? = null, val phoneNumber: String? = null, val firstName: String? = null)
+data class UpdateProfileRequest(val username: String? = null, val phoneNumber: String? = null, val firstName: String? = null, val lastName: String? = null)
 
 // Corps d'erreur renvoyé par DomainExceptionFilter côté backend.
 @Serializable

@@ -23,6 +23,8 @@ export interface FriendshipRepository {
   findById(id: string): Promise<Friendship | null>;
   /** Ligne de la paire, quel que soit le sens (paire triée). */
   findByPair(userA: string, userB: string): Promise<Friendship | null>;
+  /** Lignes reliant `userId` à l'un des `otherIds`, quel que soit le sens (une requête pour toute la liste). */
+  findForPairs(userId: string, otherIds: string[]): Promise<Friendship[]>;
 
   /**
    * L'adaptateur calcule pairLow/pairHigh.
