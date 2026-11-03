@@ -4,6 +4,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeOut
@@ -19,7 +21,6 @@ import kotlinx.coroutines.launch
 import android.Manifest
 import android.os.Build
 import android.util.Log
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -48,6 +49,7 @@ import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.LaunchTarget
 import com.snapcore.app.domain.MediaKind
+import com.snapcore.app.domain.SendTarget
 import com.snapcore.app.domain.Session
 import com.snapcore.app.domain.screenNameOf
 import com.snapcore.app.push.Notifications
@@ -61,9 +63,11 @@ import com.snapcore.app.ui.camera.SendToScreen
 import com.snapcore.app.ui.chat.ConversationScreen
 import com.snapcore.app.ui.friends.FriendsScreen
 import com.snapcore.app.ui.home.CAMERA_TAB
+import com.snapcore.app.ui.profile.AvatarChange
 import com.snapcore.app.ui.profile.AvatarEditorScreen
 import com.snapcore.app.ui.home.CHAT_TAB
 import com.snapcore.app.ui.home.HomeScreen
+import com.snapcore.app.ui.home.STORIES_TAB
 import com.snapcore.app.ui.plus.PaywallScreen
 import com.snapcore.app.ui.profile.ProfileScreen
 import com.snapcore.app.ui.stories.MyStoryScreen
@@ -104,10 +108,11 @@ fun SnapCoreNavHost(
     onLaunchTargetHandled: () -> Unit,
     navController: NavHostController = rememberNavController(),
 ) {
-    val context = LocalContext.current
     // Compte courant partagé entre l'accueil et le profil (mis à jour après une modification).
     var account by remember { mutableStateOf<Account?>(null) }
     var homeTab by rememberSaveable { mutableIntStateOf(CAMERA_TAB) }
+    // Avatar validé dans l'éditeur, en route vers le profil qui l'affiche puis l'enregistre.
+    var avatarChange by remember { mutableStateOf<AvatarChange?>(null) }
     val analytics = appContainer().analytics
     val homeLayer = rememberGraphicsLayer()
     val navigationScope = rememberCoroutineScope()
@@ -174,7 +179,23 @@ fun SnapCoreNavHost(
         onLaunchTargetHandled()
     }
 
-    NavHost(navController, startDestination = StartRoute) {
+    NavHost(
+        navController,
+        startDestination = StartRoute,
+        // Retour prédictif d'Android (touche ou geste retour du système) : par défaut, la page qui se ferme
+        // rétrécit (scaleOut 0.7). Une conversation glisse plutôt vers la droite et révèle l'accueil, comme
+        // avec la flèche de l'en-tête ou le glissement du doigt. L'animation suit la progression du retour.
+        predictivePopEnterTransition = {
+            if (initialState.destination.hasRoute<ConversationRoute>())
+                slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 }
+            else fadeIn(spring(dampingRatio = 1f, stiffness = 1600f))
+        },
+        predictivePopExitTransition = {
+            if (initialState.destination.hasRoute<ConversationRoute>())
+                slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { it }
+            else scaleOut(targetScale = .7f)
+        },
+    ) {
         composable<StartRoute>(exitTransition = { fadeOut(tween(180)) }) { StartScreen(onSession = ::go) }
         composable<WelcomeRoute> {
             WelcomeScreen(
@@ -262,9 +283,10 @@ fun SnapCoreNavHost(
                 media = entry.toRoute<SendToRoute>().media(),
                 recipientId = entry.toRoute<SendToRoute>().recipientId,
                 onBack = navController::popBackStack,
-                onSent = {
+                // Comme dans Snapchat : on suit l'envoi là où il s'affiche (« Envoi… » dans le chat, ou sur Ma story).
+                onSent = { targets ->
                     snapRecipient = null
-                    Toast.makeText(context, "Snap envoyé !", Toast.LENGTH_SHORT).show()
+                    homeTab = if (targets.any { it is SendTarget.ToFriend }) CHAT_TAB else STORIES_TAB
                     backToHome()
                 },
                 onAddFriends = { navController.navigate(FriendsRoute) },
@@ -318,13 +340,16 @@ fun SnapCoreNavHost(
                 },
                 onAccountChanged = { account = it },
                 onOpenPlus = { navController.navigate(PaywallRoute()) },
+                initialAccount = account,
+                avatarChange = avatarChange,
+                onAvatarChangeApplied = { avatarChange = null },
             )
         }
         composable<AvatarEditorRoute> {
             val me = account
             if (me == null) StartScreen(onSession = ::go)
             else AvatarEditorScreen(me, onBack = navController::popBackStack, onSaved = {
-                account = it
+                avatarChange = it
                 navController.popBackStack()
             })
         }
@@ -333,6 +358,7 @@ fun SnapCoreNavHost(
                 returnedFromCheckout = entry.toRoute<PaywallRoute>().returnedFromCheckout,
                 onBack = navController::popBackStack,
                 onAccountChanged = { account = it },
+                initialAccount = account,
             )
         }
     }

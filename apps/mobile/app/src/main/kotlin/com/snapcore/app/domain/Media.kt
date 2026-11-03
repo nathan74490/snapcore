@@ -37,10 +37,6 @@ sealed interface SendTarget {
     data object ToStory : SendTarget
 }
 
-data class SendReport(val succeeded: Set<SendTarget>, val failed: Map<SendTarget, String>) {
-    val allSucceeded get() = failed.isEmpty()
-}
-
 interface MediaUploader {
     /** Demande une URL pré-signée puis envoie le fichier vers R2. @return l'uploadId à confirmer. */
     suspend fun upload(file: File, contentType: String, purpose: String): String
@@ -60,32 +56,22 @@ interface StoryThumbnailMaker {
     suspend fun make(media: CapturedMedia): File?
 }
 
-// Envoie un média capturé à des amis et/ou à sa story. Un upload par cible : le backend copie
-// chaque upload confirmé vers sa propre clé (messages/<id>, stories/<id>).
+// Envoie un média capturé à un ami ou à sa story. Un upload par cible : le backend copie chaque upload
+// confirmé vers sa propre clé (messages/<id>, stories/<id>). La file d'envoi (SnapOutbox) s'en sert cible
+// par cible, et gère le fichier local.
 class MediaPublisher(private val uploader: MediaUploader, private val snaps: SnapService, private val thumbnails: StoryThumbnailMaker? = null) {
-    suspend fun publish(media: CapturedMedia, targets: Set<SendTarget>): SendReport {
-        val succeeded = mutableSetOf<SendTarget>()
-        val failed = mutableMapOf<SendTarget, String>()
-        for (target in targets) {
-            try {
-                when (target) {
-                    is SendTarget.ToFriend -> {
-                        val uploadId = uploader.upload(media.file, media.kind.contentType, media.kind.snapUploadPurpose)
-                        snaps.sendSnap(target.friend.id, uploadId, media.kind.messageContentType)
-                    }
-                    SendTarget.ToStory -> {
-                        val uploadId = uploader.upload(media.file, media.kind.contentType, media.kind.storyUploadPurpose)
-                        snaps.publishStory(uploadId, media.kind.storyContentType, uploadThumbnail(media))
-                    }
-                }
-                succeeded += target
-            } catch (e: Exception) {
-                failed[target] = e.message ?: "Échec de l'envoi"
+    /** Envoie le média à une seule cible, sans toucher au fichier local ; lève une exception en cas d'échec. */
+    suspend fun publishTo(media: CapturedMedia, target: SendTarget) {
+        when (target) {
+            is SendTarget.ToFriend -> {
+                val uploadId = uploader.upload(media.file, media.kind.contentType, media.kind.snapUploadPurpose)
+                snaps.sendSnap(target.friend.id, uploadId, media.kind.messageContentType)
+            }
+            SendTarget.ToStory -> {
+                val uploadId = uploader.upload(media.file, media.kind.contentType, media.kind.storyUploadPurpose)
+                snaps.publishStory(uploadId, media.kind.storyContentType, uploadThumbnail(media))
             }
         }
-        // Fichier local supprimé seulement une fois TOUT confirmé ; sinon conservé pour réessayer (ADR-011).
-        if (failed.isEmpty()) media.file.delete()
-        return SendReport(succeeded, failed)
     }
 
     // La vignette n'est qu'un confort d'affichage : sans elle, la story part quand même (ADR-026).

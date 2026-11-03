@@ -34,10 +34,10 @@ import com.snapcore.app.ui.theme.SnapColors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory) -> Unit, modifier: Modifier = Modifier) {
-    val vm = containerViewModel { StoriesViewModel(it.stories) }
+    val vm = containerViewModel { StoriesViewModel(it.stories, it.outbox.items, it.outbox::retry) }
     val state by vm.state.collectAsStateWithLifecycle()
-    LifecycleResumeEffect(Unit) { vm.refresh(); onPauseOrDispose {} }
-    SnapRefresh(state.loading, vm::refresh, modifier.fillMaxSize()) {
+    LifecycleResumeEffect(Unit) { vm.refresh(showIndicator = false); onPauseOrDispose {} }
+    SnapRefresh(state.loading, { vm.refresh() }, modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp)) {
             // Comme Snapchat : la rangée ne montre que les stories des amis, Ma story a sa propre carte.
             if (state.friends.isNotEmpty()) {
@@ -62,7 +62,13 @@ fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory
                     else FigmaAsset("17-1301_imgIconCamera", tint = SnapColors.ChatBlue)
                     Column(Modifier.weight(1f)) {
                         Text(if(state.mine.isEmpty()) "Ajouter à Ma story" else myStorySummary(state.mine.size, state.mine.sumOf { it.viewCount }), fontWeight = FontWeight.Bold)
-                        Text("Visible par mes amis", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+                        val upload = state.upload
+                        when (upload?.status) {
+                            OutgoingStatus.SENDING -> Text("Envoi en cours…", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+                            OutgoingStatus.FAILED -> Text("Échec de l'envoi · appuie pour réessayer", color = SnapColors.SnapRed,
+                                style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable(onClick = vm::retryUpload))
+                            else -> Text("Visible par mes amis", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                     FigmaAsset("17-1301_imgIconChevronRight")
                 }

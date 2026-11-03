@@ -6,7 +6,6 @@ import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.FriendRequest
 import com.snapcore.app.domain.FriendsService
 import com.snapcore.app.domain.MediaKind
-import com.snapcore.app.domain.MediaPublisher
 import com.snapcore.app.domain.SendTarget
 import com.snapcore.app.domain.UserSearchResult
 import com.snapcore.app.ui.camera.SendToViewModel
@@ -73,7 +72,7 @@ class DesignTest {
         val file = File.createTempFile("snap", ".jpg")
         try {
             val vm = SendToViewModel(CapturedMedia(file, MediaKind.PHOTO), StaticFriends(listOf(alice, bob)),
-                MediaPublisher(RecordingUploader(), RecordingSnaps()), recipientId = "b")
+                RecordingSender(), recipientId = "b")
             advanceUntilIdle()
             assertEquals(setOf(SendTarget.ToFriend(bob)), vm.state.value.selected)
         } finally {

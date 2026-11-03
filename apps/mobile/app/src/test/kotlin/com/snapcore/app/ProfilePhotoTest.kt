@@ -67,7 +67,6 @@ class ProfilePhotoViewModelTest {
         assertEquals(listOf("PROFILE_PHOTO"), uploader.uploads)
         assertEquals(listOf("upload-1"), accounts.confirmedUploads)
         assertEquals("https://cdn.test/profiles/upload-1", vm.state.value.account?.profilePhotoUrl)
-        assertFalse(vm.state.value.photoBusy)
         assertFalse(preparer.prepared.single().exists())
     }
 

@@ -15,6 +15,8 @@ data class ChatMessage(
     val mediaPurged: Boolean,
     /** Chat affiché avant la réponse du backend (interface optimiste), jamais reçu de l'API. */
     val pending: Boolean = false,
+    /** Snap dont l'envoi en arrière-plan a échoué : un appui le relance. */
+    val failed: Boolean = false,
 ) {
     val isSnap get() = type != ChatContentType.TEXT
     fun isFrom(userId: String) = senderId == userId
@@ -49,6 +51,7 @@ fun statusOf(message: ChatMessage, myId: String): MessageStatus {
         ChatContentType.TEXT -> StatusColor.BLUE
     }
     val label = when {
+        message.failed -> "Échec de l'envoi · appuie pour réessayer"
         message.pending -> "Envoi…"
         sent && opened -> "Ouvert"
         sent -> "Envoyé"

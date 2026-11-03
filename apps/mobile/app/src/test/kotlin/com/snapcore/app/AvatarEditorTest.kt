@@ -1,6 +1,7 @@
 package com.snapcore.app
 
 import com.snapcore.app.domain.Account
+import com.snapcore.app.ui.profile.AvatarChange
 import com.snapcore.app.ui.profile.AvatarEditorViewModel
 import com.snapcore.app.ui.profile.AvatarPart
 import kotlinx.coroutines.Dispatchers
@@ -46,17 +47,17 @@ class AvatarEditorTest {
     }
 
     @Test
-    fun `un choix change une seule partie, puis l'enregistrement renvoie le compte a jour`() = runTest(dispatcher) {
+    fun `un choix change une seule partie, puis l'enregistrement rend l'avatar au profil sans attendre le backend`() = runTest(dispatcher) {
         val vm = AvatarEditorViewModel(accounts, initial = null)
         advanceUntilIdle()
 
         vm.choose(AvatarPart.FACIAL_HAIR, "beardLight")
         vm.save()
-        advanceUntilIdle()
 
-        assertEquals("beardLight", accounts.savedAvatar?.get("facialHair"))
-        assertEquals("shortFlat", accounts.savedAvatar?.get("top"))
-        assertEquals("avatar.png", vm.state.value.saved?.avatarUrl)
+        val options = (vm.state.value.result as AvatarChange.Set).options
+        assertEquals("beardLight", options["facialHair"])
+        assertEquals("shortFlat", options["top"])
+        assertNull("c'est le profil qui enregistre", accounts.savedAvatar)
     }
 
     @Test
@@ -77,9 +78,7 @@ class AvatarEditorTest {
         advanceUntilIdle()
 
         vm.remove()
-        advanceUntilIdle()
 
-        assertNull(vm.state.value.saved?.avatarUrl)
-        assertNull(vm.state.value.saved?.pictureUrl)
+        assertEquals(AvatarChange.Remove, vm.state.value.result)
     }
 }

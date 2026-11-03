@@ -98,8 +98,21 @@ fun ProfileScreen(
     onOpenFriends: () -> Unit,
     onNewStory: () -> Unit = {},
     onOpenAvatar: () -> Unit = {},
+    /** Compte déjà connu de l'app, affiché sans attendre le rechargement. */
+    initialAccount: com.snapcore.app.domain.Account? = null,
+    /** Avatar choisi dans l'éditeur, à afficher puis enregistrer (interface optimiste). */
+    avatarChange: AvatarChange? = null,
+    onAvatarChangeApplied: () -> Unit = {},
 ) {
-    val vm = containerViewModel { ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer) }
+    val vm = containerViewModel {
+        ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer, initialAccount)
+    }
+    LaunchedEffect(avatarChange) {
+        avatarChange?.let {
+            vm.applyAvatar(it)
+            onAvatarChangeApplied()
+        }
+    }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.signedOut) { if (state.signedOut) onSignedOut() }
@@ -182,7 +195,7 @@ fun ProfileScreen(
                     .52f to Color(0xFFF67AFF), .73f to Color(0xFFF274FA), .9f to Color(0xFFCD5FCF)))) {
                     Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 30.dp)) {
                         // Comme le Bitmoji de Snapchat : l'avatar maison s'affiche en grand s'il existe (ADR-028).
-                        EditableAvatar(account.displayName, account.pictureUrl, state.photoBusy, vm::changePhoto, vm::removePhoto)
+                        EditableAvatar(account.displayName, account.pictureUrl, vm::changePhoto, vm::removePhoto)
                     }
                     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 15.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween) {
@@ -240,7 +253,7 @@ fun ProfileScreen(
                         capitalization = if (field == EditableField.FIRST_NAME) KeyboardCapitalization.Words else KeyboardCapitalization.None),
                 )
             },
-            confirmButton = { TextButton(onClick = vm::saveEditing, enabled = !state.saving) { Text("Enregistrer") } },
+            confirmButton = { TextButton(onClick = vm::saveEditing) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = vm::cancelEditing) { Text("Annuler") } },
         )
     }
@@ -286,7 +299,6 @@ private fun ProfileRow(
 private fun EditableAvatar(
     username: String,
     photoUrl: String?,
-    busy: Boolean,
     onPicked: (String) -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -295,9 +307,8 @@ private fun EditableAvatar(
         uri?.let { onPicked(it.toString()) }
     }
     Box {
-        Box(Modifier.clickable(enabled = !busy) { menuOpen = true }, contentAlignment = Alignment.Center) {
+        Box(Modifier.clickable { menuOpen = true }, contentAlignment = Alignment.Center) {
             Avatar(username, photoUrl, size = 160.dp)
-            if (busy) CircularProgressIndicator(color = Color.White)
         }
         Box(
             Modifier.align(Alignment.BottomEnd).size(32.dp).background(SnapColors.Yellow, CircleShape),

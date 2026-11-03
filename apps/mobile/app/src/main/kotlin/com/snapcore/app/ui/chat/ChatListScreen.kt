@@ -36,7 +36,7 @@ private fun Conversation.unread(myId: String) = lastMessage?.let { !it.isFrom(my
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAddFriends: () -> Unit, onSnapTo: (Friend) -> Unit, modifier: Modifier = Modifier) {
-    val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events) }
+    val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events, myId, it.outbox.items, it.outbox::retry) }
     val state by vm.state.collectAsStateWithLifecycle()
     // Au retour d'une conversation : le snap ouvert ou les chats lus ne déclenchent un événement temps
     // réel que chez l'expéditeur, la liste se recharge donc elle-même (BUG-011 d'ADR-023).
@@ -75,7 +75,15 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
                 items(visible, key = { it.friend.id }) { conversation ->
                     // Nouveau snap reçu : il s'ouvre directement, comme dans Snapchat.
                     val snap = conversation.lastMessage?.takeIf { canTryToOpen(it, myId) && it.openedAt == null }
-                    ConversationRow(conversation, myId, onSnap = { onSnapTo(conversation.friend) }) { onOpen(conversation.friend, snap?.id) }
+                    ConversationRow(conversation, myId, onSnap = { onSnapTo(conversation.friend) }) {
+                        val last = conversation.lastMessage
+                        // Envoi en échec : un appui le relance, comme dans Snapchat.
+                        if (last?.failed == true) vm.retry(last)
+                        else {
+                            vm.markSeen(conversation.friend.id, myId)
+                            onOpen(conversation.friend, snap?.id)
+                        }
+                    }
                 }
                 if(visible.isEmpty() && !state.loading) item {
                     Text(if(filter == 1) "Tous tes chats sont lus." else if(filter == 2) "Aucune nouvelle conversation." else "Retrouve tes amis ici pour commencer à discuter.",
@@ -119,7 +127,7 @@ private fun ConversationRow(conversation: Conversation, myId: String, onSnap: ()
                 if(last != null) {
                     val status = statusOf(last, myId)
                     StatusIcon(status, size = 16.dp)
-                    Text(status.label, color = if(unread) status.color.toColor() else SnapColors.Grey,
+                    Text(status.label, color = if(last.failed) SnapColors.SnapRed else if(unread) status.color.toColor() else SnapColors.Grey,
                         fontWeight = if(unread) FontWeight.Bold else FontWeight.Normal,
                         style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("· ${relativeTime(last.createdAt)}", color = SnapColors.Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 1)

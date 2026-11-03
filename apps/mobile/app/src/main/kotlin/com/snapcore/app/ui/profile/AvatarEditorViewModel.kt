@@ -2,7 +2,6 @@ package com.snapcore.app.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AvatarCatalog
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,15 +33,20 @@ private val FRIENDLY = mapOf(
     "eyebrows" to setOf("default", "defaultNatural", "flatNatural", "raisedExcited", "raisedExcitedNatural", "upDownNatural"),
 )
 
+/** Choix fait dans l'éditeur, enregistré par le profil (interface optimiste). */
+sealed interface AvatarChange {
+    data class Set(val options: Map<String, String>) : AvatarChange
+    data object Remove : AvatarChange
+}
+
 data class AvatarEditorState(
     val catalog: AvatarCatalog? = null,
     val options: Map<String, String> = emptyMap(),
     val part: AvatarPart = AvatarPart.TOP,
     val loading: Boolean = true,
-    val saving: Boolean = false,
     val error: String? = null,
-    /** Compte à jour après enregistrement ou retrait : l'écran se ferme. */
-    val saved: Account? = null,
+    /** Avatar validé ou retiré : l'écran se ferme et le profil l'affiche aussitôt, puis l'enregistre. */
+    val result: AvatarChange? = null,
 )
 
 class AvatarEditorViewModel(
@@ -83,17 +87,8 @@ class AvatarEditorViewModel(
         _state.update { it.copy(options = options) }
     }
 
-    fun save() = submit { accounts.setAvatar(_state.value.options) }
+    // Pas d'attente du backend : le choix étant pris dans le catalogue, il n'a pas de raison d'être refusé.
+    fun save() = _state.update { it.copy(result = AvatarChange.Set(it.options)) }
 
-    fun remove() = submit { accounts.removeAvatar() }
-
-    private fun submit(action: suspend () -> Account) {
-        if (_state.value.saving) return
-        _state.update { it.copy(saving = true, error = null) }
-        viewModelScope.launch {
-            runCatching { action() }
-                .onSuccess { account -> _state.update { it.copy(saving = false, saved = account) } }
-                .onFailure { e -> _state.update { it.copy(saving = false, error = e.message ?: "Enregistrement impossible") } }
-        }
-    }
+    fun remove() = _state.update { it.copy(result = AvatarChange.Remove) }
 }

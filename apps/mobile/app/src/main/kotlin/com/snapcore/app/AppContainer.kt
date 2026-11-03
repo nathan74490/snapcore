@@ -30,10 +30,14 @@ import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.ProfilePhotoPreparer
 import com.snapcore.app.domain.SessionResolver
+import com.snapcore.app.domain.SnapOutbox
 import com.snapcore.app.domain.StoryService
 import com.snapcore.app.domain.SubscriptionService
 import com.snapcore.app.push.FcmDeviceRegistry
 import com.snapcore.app.push.PushDetailsResolver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -99,6 +103,12 @@ class AppContainer(context: Context) {
 
     // Après capturesDir : la vignette d'une story y est écrite le temps de l'envoi (ADR-026).
     val mediaPublisher = MediaPublisher(mediaUploader, ApiSnapService(api), BitmapStoryThumbnailMaker(capturesDir))
+
+    /** Durée de vie de l'app : ce qui doit survivre à la fermeture d'un écran (envois en arrière-plan). */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Snaps et stories en cours d'envoi : l'écran d'envoi se ferme tout de suite. */
+    val outbox = SnapOutbox(mediaPublisher, appScope, File(capturesDir, "outbox")).apply { clearLeftovers() }
 
     /** Analytics PostHog (ADR-008) ; sans clé dans local.properties, rien n'est envoyé. */
     val analytics: Analytics =

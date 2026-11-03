@@ -87,7 +87,9 @@ import com.snapcore.app.ui.theme.SnapColors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit, backdrop: ImageBitmap? = null, onSwipeBack: () -> Unit = onBack, openSnapId: String? = null, onOpenCamera: () -> Unit = {}) {
-    val vm = containerViewModel { ConversationViewModel(friend, myId, it.chat, it.realtime.events, openSnapId) }
+    val vm = containerViewModel {
+        ConversationViewModel(friend, myId, it.chat, it.realtime.events, openSnapId, outbox = it.outbox.items, retrySend = it.outbox::retry)
+    }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val composerFocus = remember { FocusRequester() }
@@ -250,7 +252,8 @@ private fun MessageRow(message: ChatMessage, myId: String, friendName: String, d
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             Box(Modifier.width(2.dp).fillMaxHeight().background(color))
             if (message.isSnap) {
-                val openable = canTryToOpen(message, myId)
+                // Un snap envoyé en échec se relance d'un appui.
+                val openable = canTryToOpen(message, myId) || message.failed
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -261,12 +264,14 @@ private fun MessageRow(message: ChatMessage, myId: String, friendName: String, d
                     StatusIcon(status, size = 18.dp)
                     Text(
                         when {
+                            message.failed -> status.label
                             openable && message.openedAt == null -> "Appuie pour voir"
                             openable -> "${status.label} · appuie pour revoir"
                             else -> status.label
                         },
-                        color = status.color.toColor(),
+                        color = if (message.failed) SnapColors.SnapRed else status.color.toColor(),
                         fontWeight = if (openable && message.openedAt == null) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.alpha(if (message.pending) .6f else 1f),
                     )
                 }
             } else {

@@ -57,11 +57,11 @@ import com.snapcore.app.ui.theme.SnapColors
 // Éditeur d'avatar maison (ADR-028) : aperçu en grand, catégories en puces, et pour chacune une grille
 // de vignettes rendues par le backend avec ce choix appliqué (ou des pastilles pour les couleurs).
 @Composable
-fun AvatarEditorScreen(account: Account, onBack: () -> Unit, onSaved: (Account) -> Unit) {
+fun AvatarEditorScreen(account: Account, onBack: () -> Unit, onSaved: (AvatarChange) -> Unit) {
     val vm = containerViewModel { AvatarEditorViewModel(it.accounts, account.avatar) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    LaunchedEffect(state.saved) { state.saved?.let(onSaved) }
+    LaunchedEffect(state.result) { state.result?.let(onSaved) }
     LaunchedEffect(state.error) { if (state.catalog != null) state.error?.let { snackbar.showSnackbar(it) } }
 
     StatusBarIcons(dark = true)
@@ -69,14 +69,14 @@ fun AvatarEditorScreen(account: Account, onBack: () -> Unit, onSaved: (Account) 
         containerColor = SnapColors.Background,
         topBar = {
             SnapHeader(if (account.avatar == null) "Créer mon avatar" else "Mon avatar", onBack, background = SnapColors.Background) {
-                if (account.avatar != null) TextButton(onClick = vm::remove, enabled = !state.saving) { Text("Retirer", color = SnapColors.SnapRed) }
+                if (account.avatar != null) TextButton(onClick = vm::remove) { Text("Retirer", color = SnapColors.SnapRed) }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (state.catalog != null) {
                 Box(Modifier.navigationBarsPadding().padding(16.dp)) {
-                    PrimaryButton("Enregistrer", vm::save, loading = state.saving, container = SnapColors.Yellow, content = SnapColors.Ink)
+                    PrimaryButton("Enregistrer", vm::save, container = SnapColors.Yellow, content = SnapColors.Ink)
                 }
             }
         },

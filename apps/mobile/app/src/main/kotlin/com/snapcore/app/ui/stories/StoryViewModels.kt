@@ -3,10 +3,16 @@ package com.snapcore.app.ui.stories
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snapcore.app.domain.Friend
+import com.snapcore.app.domain.OutgoingSnap
+import com.snapcore.app.domain.OutgoingStatus
+import com.snapcore.app.domain.SendTarget
+import com.snapcore.app.domain.SentTracker
 import com.snapcore.app.domain.FriendStory
 import com.snapcore.app.domain.StoryItem
 import com.snapcore.app.domain.StoryService
 import com.snapcore.app.domain.firstUnviewedIndex
+import com.snapcore.app.ui.OptimisticGuard
+import com.snapcore.app.ui.completeEvenIfClosed
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,21 +26,47 @@ data class StoriesState(
     val friends: List<FriendStory> = emptyList(),
     val loading: Boolean = true,
     val error: String? = null,
+    /** Ajout à Ma story en cours d'envoi en arrière-plan, ou en échec ; null sinon. */
+    val upload: OutgoingSnap? = null,
 )
 
-class StoriesViewModel(private val service: StoryService) : ViewModel() {
+class StoriesViewModel(
+    private val service: StoryService,
+    private val outbox: StateFlow<List<OutgoingSnap>> = MutableStateFlow(emptyList()),
+    private val retrySend: (String) -> Unit = {},
+) : ViewModel() {
     private val _state = MutableStateFlow(StoriesState())
     val state: StateFlow<StoriesState> = _state.asStateFlow()
 
+    private val sent = SentTracker()
+
     init {
         refresh()
+        // Story publiée en arrière-plan : la carte Ma story recharge pour montrer le nouvel élément.
+        viewModelScope.launch {
+            outbox.collect { items ->
+                val story = items.filter { it.target == SendTarget.ToStory }
+                if (sent.newlySent(story)) refresh(showIndicator = false)
+                // Un échec prime : c'est lui qui attend une action de l'utilisateur.
+                val upload = story.firstOrNull { it.status == OutgoingStatus.FAILED } ?: story.firstOrNull { it.status == OutgoingStatus.SENDING }
+                _state.update { it.copy(upload = upload) }
+            }
+        }
     }
 
-    fun refresh() {
-        _state.update { it.copy(loading = true) }
+    fun retryUpload() {
+        _state.value.upload?.takeIf { it.status == OutgoingStatus.FAILED }?.let { retrySend(it.id) }
+    }
+
+    /**
+     * Le retour sur l'onglet recharge en silence : l'indicateur de rafraîchissement ne s'affiche que
+     * pour un tirage vers le bas (ou le tout premier chargement), pas à chaque passage sur la page.
+     */
+    fun refresh(showIndicator: Boolean = true) {
+        if (showIndicator) _state.update { it.copy(loading = true) }
         viewModelScope.launch {
             runCatching { service.mine() to service.feed() }
-                .onSuccess { (mine, friends) -> _state.update { StoriesState(mine = mine, friends = friends, loading = false) } }
+                .onSuccess { (mine, friends) -> _state.update { it.copy(mine = mine, friends = friends, loading = false, error = null) } }
                 .onFailure { e -> _state.update { it.copy(loading = false, error = e.message) } }
         }
     }
@@ -121,14 +153,18 @@ class MyStoryViewModel(private val service: StoryService) : ViewModel() {
     private val _state = MutableStateFlow(MyStoryState())
     val state: StateFlow<MyStoryState> = _state.asStateFlow()
 
+    private val guard = OptimisticGuard()
+
     init {
         refresh()
     }
 
     fun refresh() {
+        val mark = guard.mark()
         viewModelScope.launch {
             runCatching { service.mine() }
-                .onSuccess { items -> _state.update { it.copy(items = items, loading = false) } }
+                // Une suppression en cours ne doit pas voir réapparaître son élément.
+                .onSuccess { items -> if (guard.canApply(mark)) _state.update { it.copy(items = items, loading = false) } }
                 .onFailure { e -> _state.update { it.copy(loading = false, message = e.message) } }
         }
     }
@@ -145,11 +181,17 @@ class MyStoryViewModel(private val service: StoryService) : ViewModel() {
 
     fun hideViewers() = _state.update { it.copy(viewersOf = null, viewers = null) }
 
+    // Interface optimiste : l'élément disparaît dès l'appui et revient à sa place si le backend refuse.
     fun delete(item: StoryItem) {
+        if (item !in _state.value.items) return
+        guard.begin()
+        _state.update { it.copy(items = it.items - item, viewersOf = it.viewersOf?.takeIf { shown -> shown != item }) }
         viewModelScope.launch {
-            runCatching { service.delete(item) }
-                .onSuccess { _state.update { it.copy(items = it.items - item, message = "Élément retiré de ta story") } }
-                .onFailure { e -> _state.update { it.copy(message = e.message) } }
+            val result = completeEvenIfClosed { service.delete(item) }
+            guard.end()
+            result.onFailure { e ->
+                _state.update { it.copy(items = (it.items + item).sortedBy(StoryItem::createdAt), message = e.message ?: "Suppression impossible") }
+            }
         }
     }
 

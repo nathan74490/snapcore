@@ -35,8 +35,10 @@ class PaywallViewModel(
     private val pollDelayMs: Long = 2_000,
     private val pollAttempts: Int = 15,
     private val analytics: Analytics = NoAnalytics,
+    /** Compte déjà connu de l'app : l'offre s'affiche tout de suite, le rechargement la met à jour. */
+    initial: Account? = null,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(PaywallState())
+    private val _state = MutableStateFlow(PaywallState(account = initial, loading = initial == null))
     val state: StateFlow<PaywallState> = _state.asStateFlow()
 
     private var polling: Job? = null

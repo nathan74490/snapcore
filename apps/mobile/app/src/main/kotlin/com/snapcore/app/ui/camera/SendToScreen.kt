@@ -62,10 +62,10 @@ import com.snapcore.app.ui.theme.SnapColors
 // "Ma story" en tête, puis les amis ACCEPTED.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, onAddFriends: () -> Unit, recipientId: String? = null) {
-    val vm = containerViewModel { SendToViewModel(media, it.friends, it.mediaPublisher, recipientId) }
+fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: (Set<SendTarget>) -> Unit, onAddFriends: () -> Unit, recipientId: String? = null) {
+    val vm = containerViewModel { SendToViewModel(media, it.friends, it.outbox, recipientId) }
     val state by vm.state.collectAsStateWithLifecycle()
-    LaunchedEffect(state.done) { if (state.done) onSent() }
+    LaunchedEffect(state.done) { if (state.done) onSent(state.selected) }
 
     var query by remember { mutableStateOf("") }
     StatusBarIcons(dark = true)
@@ -74,25 +74,17 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
 
             Row(Modifier.fillMaxWidth().background(SnapColors.Background).statusBarsPadding().height(56.dp).padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack, enabled = !state.sending) { FigmaAsset("15-752_imgIconChevronDown", "Retour") }
+                IconButton(onClick = onBack) { FigmaAsset("15-752_imgIconChevronDown", "Retour") }
                 SnapSearchBar(query, { query = it }, "Rechercher", Modifier.weight(1f))
                 IconButton(onClick = onAddFriends) { FigmaAsset("15-752_imgIconAddFriend", "Ajouter des amis") }
             }
         },
         bottomBar = {
             Column(Modifier.navigationBarsPadding().padding(16.dp)) {
-                if (state.failures.isNotEmpty()) {
-                    Text(
-                        "Échec pour ${state.failures.size} destinataire(s) : ${state.failures.values.first()}",
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                    )
-                }
                 PrimaryButton(
-                    text = if (state.failures.isNotEmpty()) "Réessayer" else "Envoyer (${state.selected.size})",
+                    text = "Envoyer (${state.selected.size})",
                     onClick = vm::send,
                     enabled = state.selected.isNotEmpty(),
-                    loading = state.sending,
                 )
             }
         },
@@ -107,8 +99,7 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
                     subtitle = "Visible par tes amis pendant 24 h",
                     icon = Icons.Filled.AutoStories,
                     checked = SendTarget.ToStory in state.selected,
-                    failed = SendTarget.ToStory in state.failures,
-                    onToggle = { if(!state.sending) vm.toggle(SendTarget.ToStory) },
+                    onToggle = { vm.toggle(SendTarget.ToStory) },
                 ) }
                 SectionTitle("Amis", Modifier.padding(top = 14.dp, bottom = 6.dp))
             }
@@ -129,8 +120,7 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
                                 label = friend.displayName,
                                 avatar = { Avatar(friend.displayName, friend.pictureUrl, size = 40.dp) },
                                 checked = target in state.selected,
-                                failed = target in state.failures,
-                                onToggle = { if(!state.sending) vm.toggle(target) },
+                                onToggle = { vm.toggle(target) },
                             )
                         }
                     }
@@ -144,7 +134,6 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: () -> Unit, o
 private fun TargetRow(
     label: String,
     checked: Boolean,
-    failed: Boolean,
     onToggle: () -> Unit,
     subtitle: String? = null,
     icon: ImageVector? = null,
@@ -158,9 +147,7 @@ private fun TargetRow(
         avatar?.invoke() ?: icon?.let { Box(Modifier.size(40.dp).background(SnapColors.Selected, CircleShape), Alignment.Center) { FigmaAsset("17-1301_imgIconStories", tint = SnapColors.ChatBlue) } }
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
-            (if (failed) "Échec de l'envoi" else subtitle)?.let {
-                Text(it, color = if (failed) MaterialTheme.colorScheme.error else SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
-            }
+            subtitle?.let { Text(it, color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall) }
         }
         SnapCheckbox(checked)
     }
