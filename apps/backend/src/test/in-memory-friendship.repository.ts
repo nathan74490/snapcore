@@ -25,6 +25,12 @@ export class InMemoryFriendshipRepository implements FriendshipRepository {
     return this.copy(this.findRowByPair(userA, userB));
   }
 
+  async findForPairs(userId: string, otherIds: string[]) {
+    return [...this.rows.values()]
+      .filter((f) => (f.requesterId === userId || f.addresseeId === userId) && otherIds.includes(otherMemberOf(f, userId)))
+      .map((f) => ({ ...f }));
+  }
+
   async create(friendship: NewFriendship): Promise<Friendship> {
     if (this.findRowByPair(friendship.requesterId, friendship.addresseeId)) throw new UniqueViolationError("pair");
     const row = { id: randomUUID(), ...friendship };

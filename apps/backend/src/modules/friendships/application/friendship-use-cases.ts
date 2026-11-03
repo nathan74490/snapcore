@@ -1,4 +1,5 @@
-import type { FriendshipListItem, UserSearchResult } from "@snapcore/types";
+import type { ContactMatch, FriendshipListItem, UserSearchResult } from "@snapcore/types";
+import { noAnalytics, type Analytics } from "../../../shared/domain/analytics";
 import type { Clock } from "../../../shared/domain/clock";
 import {
   ConflictError,
@@ -9,7 +10,8 @@ import {
 import type { UserRepository } from "../../identity/application/ports/user.repository";
 import { toPublicProfile, type UserAccount } from "../../identity/domain/user";
 import { normalizeUsername } from "../../identity/domain/username";
-import { planBlock, planFriendRequest, relationFor, type Friendship } from "../domain/friendship";
+import { contactMatchKey } from "../domain/contact-matching";
+import { otherMemberOf, planBlock, planFriendRequest, relationFor, type Friendship } from "../domain/friendship";
 import type { FriendshipNotifier } from "./ports/friendship-notifier.port";
 import type { FriendshipRepository, FriendshipWithUser } from "./ports/friendship.repository";
 
@@ -28,6 +30,7 @@ export class FriendshipUseCases {
     private readonly users: UserRepository,
     private readonly notifier: FriendshipNotifier,
     private readonly clock: Clock,
+    private readonly analytics: Analytics = noAnalytics,
   ) {}
 
   async searchByUsername(me: UserAccount, rawUsername: string): Promise<UserSearchResult> {
@@ -36,6 +39,42 @@ export class FriendshipUseCases {
     const friendship = target.id === me.id ? null : await this.friendships.findByPair(me.id, target.id);
     if (friendship?.status === "BLOCKED") throw new NotFoundError(USER_NOT_FOUND);
     return { ...toPublicProfile(target), relation: relationFor(friendship, me.id) };
+  }
+
+  // Retrouve, parmi les numéros du carnet d'adresses envoyés par l'app, ceux qui correspondent à un
+  // compte actif (ADR-029, règle des 9 derniers chiffres : domain/contact-matching.ts). Exclut moi-même
+  // et toute paire BLOCKED, dans un sens comme dans l'autre (ADR-012). Le numéro stocké de l'autre
+  // n'est jamais renvoyé : seulement la chaîne envoyée par l'app et le profil public.
+  async matchContacts(me: UserAccount, phoneNumbers: string[]): Promise<ContactMatch[]> {
+    const keyByPhoneNumber = new Map<string, string>();
+    for (const phoneNumber of phoneNumbers) {
+      const key = contactMatchKey(phoneNumber);
+      if (key !== null) keyByPhoneNumber.set(phoneNumber, key);
+    }
+    if (keyByPhoneNumber.size === 0) return [];
+
+    const candidates = (await this.users.findActiveByPhoneNumberSuffixes([...new Set(keyByPhoneNumber.values())])).filter(
+      (user) => user.id !== me.id,
+    );
+    const friendshipByUserId = new Map(
+      (await this.friendships.findForPairs(me.id, candidates.map((user) => user.id))).map((f) => [otherMemberOf(f, me.id), f]),
+    );
+    const usersByKey = new Map<string, UserAccount[]>();
+    for (const user of candidates) {
+      if (friendshipByUserId.get(user.id)?.status === "BLOCKED") continue;
+      const key = contactMatchKey(user.phoneNumber!)!;
+      usersByKey.set(key, [...(usersByKey.get(key) ?? []), user]);
+    }
+
+    // Une entrée par numéro envoyé (doublons exacts fusionnés) et par compte correspondant.
+    const matches: ContactMatch[] = [];
+    for (const [phoneNumber, key] of keyByPhoneNumber) {
+      for (const user of usersByKey.get(key) ?? []) {
+        const relation = relationFor(friendshipByUserId.get(user.id) ?? null, me.id);
+        matches.push({ phoneNumber, user: toPublicProfile(user), relation });
+      }
+    }
+    return matches;
   }
 
   async sendRequest(me: UserAccount, rawUsername: string): Promise<FriendshipListItem> {
@@ -108,6 +147,7 @@ export class FriendshipUseCases {
     });
     if (!accepted) throw new NotFoundError(REQUEST_NOT_FOUND);
     await this.notifier.friendRequestAccepted(requester.id, accepted.id);
+    this.analytics.capture(me.id, "friend_request_accepted");
     return present(accepted, requester);
   }
 

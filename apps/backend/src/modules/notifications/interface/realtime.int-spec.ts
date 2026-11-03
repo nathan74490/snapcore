@@ -43,6 +43,9 @@ describe("Temps réel multi-instance (Redis réel)", () => {
     const token = world.identity.addAccount(`uid-${name}-${Date.now()}`);
     const user = await world.users.create({
       username: `${name}${Date.now() % 100000}`,
+      firstName: "Test",
+      lastName: null,
+      birthday: null,
       firebaseUid: token.slice("token-".length),
       email: null,
       phoneNumber: null,

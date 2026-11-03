@@ -37,7 +37,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                   <td>
                     <Link href={`/users/${user.id}`}>@{user.username}</Link>
                   </td>
-                  <td>{user.email ?? "—"}</td>
+                  <td>{user.email ?? "Non renseigné"}</td>
                   <td>{formatDateTime(user.createdAt)}</td>
                   <td>
                     <UserStatusBadge user={user} />

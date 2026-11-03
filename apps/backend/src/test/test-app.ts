@@ -2,10 +2,11 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../app.module";
 import { configureApp } from "../app.setup";
-import { ACCOUNT_DELETION_REPOSITORY, DELETION_JOB_QUEUE } from "../modules/account-deletion/application/ports";
+import { ACCOUNT_DELETION_REPOSITORY, DELETION_JOB_QUEUE, SUBSCRIPTION_CANCELLER } from "../modules/account-deletion/application/ports";
 import { ACCOUNT_DELETION_QUEUE, AccountDeletionWorker } from "../modules/account-deletion/infrastructure/bullmq-deletion";
 import { FRIENDSHIP_REPOSITORY } from "../modules/friendships/application/ports/friendship.repository";
 import { IDENTITY_PROVIDER } from "../modules/identity/application/ports/identity-provider.port";
+import { LOCATION_SHARING_REPOSITORY, LOCATION_STORE } from "../modules/location/application/ports";
 import { USER_REPOSITORY } from "../modules/identity/application/ports/user.repository";
 import { FIREBASE_APP } from "../modules/identity/infrastructure/firebase-app.provider";
 import { OBJECT_STORAGE } from "../modules/media/application/ports/object-storage.port";
@@ -21,6 +22,7 @@ import { SUBSCRIPTION_REPOSITORY } from "../modules/subscriptions/application/po
 import { FakeIdentityProvider } from "./fakes";
 import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "./in-memory-account-deletion";
 import { InMemoryFriendshipRepository } from "./in-memory-friendship.repository";
+import { InMemoryLocationSharingRepository, InMemoryLocationStore } from "./in-memory-location";
 import { InMemoryObjectStorage, InMemoryUploadTicketStore } from "./in-memory-media";
 import { InMemoryMessageRepository, RecordingPurgeScheduler } from "./in-memory-messages";
 import { InMemoryModerationRepository } from "./in-memory-moderation";
@@ -47,6 +49,8 @@ export class TestWorld {
   readonly deletionQueue = new RecordingDeletionQueue();
   readonly moderation = new InMemoryModerationRepository(this.users);
   readonly subscriptions = new InMemorySubscriptionRepository(this.users);
+  readonly locationSharing = new InMemoryLocationSharingRepository(this.users);
+  readonly locations = new InMemoryLocationStore();
 }
 
 // Application Nest complète, adaptateurs externes (Postgres, Firebase, R2, Redis, BullMQ, FCM) remplacés.
@@ -94,10 +98,16 @@ export async function createTestApp(
     .useValue(world.moderation)
     .overrideProvider(SUBSCRIPTION_REPOSITORY)
     .useValue(world.subscriptions)
+    .overrideProvider(SUBSCRIPTION_CANCELLER)
+    .useValue({ cancelFor: async () => undefined })
     .overrideProvider(PUSH_SENDER)
     .useValue(world.push)
     .overrideProvider(DEVICE_TOKEN_REPOSITORY)
-    .useValue(world.devices);
+    .useValue(world.devices)
+    .overrideProvider(LOCATION_SHARING_REPOSITORY)
+    .useValue(world.locationSharing)
+    .overrideProvider(LOCATION_STORE)
+    .useValue(world.locations);
   if (!options.realPresence) builder = builder.overrideProvider(PRESENCE_TRACKER).useValue(world.presence);
 
   return configureApp((await builder.compile()).createNestApplication());

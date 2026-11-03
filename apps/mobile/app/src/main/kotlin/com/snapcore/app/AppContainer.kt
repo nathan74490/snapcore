@@ -2,34 +2,52 @@ package com.snapcore.app
 
 import android.content.Context
 import com.google.firebase.auth.FirebaseAuth
+import com.snapcore.app.data.AndroidContactsReader
 import com.snapcore.app.data.ApiAccountService
-import com.snapcore.app.data.ApiSubscriptionService
 import com.snapcore.app.data.ApiChatService
 import com.snapcore.app.data.ApiFriendsService
+import com.snapcore.app.data.ApiMapService
 import com.snapcore.app.data.ApiSnapService
 import com.snapcore.app.data.ApiStoryService
+import com.snapcore.app.data.ApiSubscriptionService
 import com.snapcore.app.data.BitmapProfilePhotoPreparer
-import com.snapcore.app.data.MediaFilterRenderer
+import com.snapcore.app.data.BitmapStoryThumbnailMaker
 import com.snapcore.app.data.DataStorePendingRegistrationStore
 import com.snapcore.app.data.FirebaseAuthService
+import com.snapcore.app.data.FusedLocationProvider
+import com.snapcore.app.data.MediaFilterRenderer
+import com.snapcore.app.data.PostHogAnalytics
+import com.snapcore.app.data.PostHogExperiments
 import com.snapcore.app.data.R2MediaUploader
 import com.snapcore.app.data.RealtimeClient
 import com.snapcore.app.data.api.FirebaseTokenInterceptor
 import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.domain.AccountService
+import com.snapcore.app.domain.Analytics
 import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.ChatService
+import com.snapcore.app.domain.ContactsReader
+import com.snapcore.app.domain.Experiments
 import com.snapcore.app.domain.FilterRenderer
 import com.snapcore.app.domain.FriendsService
+import com.snapcore.app.domain.LocationProvider
+import com.snapcore.app.domain.LocationReporter
+import com.snapcore.app.domain.MapService
 import com.snapcore.app.domain.MediaPublisher
 import com.snapcore.app.domain.MediaUploader
-import com.snapcore.app.domain.ProfilePhotoPreparer
+import com.snapcore.app.domain.NoAnalytics
+import com.snapcore.app.domain.NoExperiments
 import com.snapcore.app.domain.PendingRegistrationStore
+import com.snapcore.app.domain.ProfilePhotoPreparer
 import com.snapcore.app.domain.SessionResolver
+import com.snapcore.app.domain.SnapOutbox
 import com.snapcore.app.domain.StoryService
 import com.snapcore.app.domain.SubscriptionService
 import com.snapcore.app.push.FcmDeviceRegistry
 import com.snapcore.app.push.PushDetailsResolver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -74,11 +92,16 @@ class AppContainer(context: Context) {
         .build()
 
     val friends: FriendsService = ApiFriendsService(api)
+    val contacts: ContactsReader = AndroidContactsReader(context.applicationContext)
     val mediaUploader: MediaUploader = R2MediaUploader(api, storageClient)
-    val mediaPublisher = MediaPublisher(mediaUploader, ApiSnapService(api))
 
     val chat: ChatService = ApiChatService(api)
     val stories: StoryService = ApiStoryService(api)
+
+    // Snap Map (ADR-031) : position envoyée seulement app ouverte, jamais en mode fantôme.
+    val map: MapService = ApiMapService(api)
+    val location: LocationProvider = FusedLocationProvider(context.applicationContext)
+    val locationReporter = LocationReporter(map, location)
 
     // Notifications push (ADR-018).
     val devices = FcmDeviceRegistry(api, firebaseAuth)
@@ -93,6 +116,24 @@ class AppContainer(context: Context) {
     val capturesDir: File = File(context.cacheDir, "captures").apply { mkdirs() }
 
     val profilePhotoPreparer: ProfilePhotoPreparer = BitmapProfilePhotoPreparer(context.applicationContext, capturesDir)
+
+    // Après capturesDir : la vignette d'une story y est écrite le temps de l'envoi (ADR-026).
+    // Une story part avec la position du téléphone, sauf en mode fantôme (ADR-031).
+    val mediaPublisher = MediaPublisher(mediaUploader, ApiSnapService(api), BitmapStoryThumbnailMaker(capturesDir), locationReporter::positionForStory)
+
+    /** Durée de vie de l'app : ce qui doit survivre à la fermeture d'un écran (envois en arrière-plan). */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Snaps et stories en cours d'envoi : l'écran d'envoi se ferme tout de suite. */
+    val outbox = SnapOutbox(mediaPublisher, appScope, File(capturesDir, "outbox")).apply { clearLeftovers() }
+
+    /** Analytics PostHog (ADR-008) ; sans clé dans local.properties, rien n'est envoyé. */
+    val analytics: Analytics =
+        if (BuildConfig.POSTHOG_API_KEY.isBlank()) NoAnalytics
+        else PostHogAnalytics(context.applicationContext, BuildConfig.POSTHOG_API_KEY, BuildConfig.POSTHOG_HOST)
+
+    /** Expériences A/B (ADR-030) ; même condition que l'analytics : sans clé, tout le monde voit le témoin. */
+    val experiments: Experiments = if (BuildConfig.POSTHOG_API_KEY.isBlank()) NoExperiments else PostHogExperiments
 
     /** Incrustation du filtre choisi sur l'aperçu, avant l'envoi (ADR-022). */
     val filterRenderer: FilterRenderer = MediaFilterRenderer(context.applicationContext, capturesDir)

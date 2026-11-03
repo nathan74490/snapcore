@@ -2,6 +2,7 @@ package com.snapcore.app
 
 import com.snapcore.app.data.api.ApiException
 import com.snapcore.app.domain.Account
+import com.snapcore.app.domain.AvatarCatalog
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.DeviceRegistry
@@ -9,6 +10,7 @@ import com.snapcore.app.domain.PendingRegistration
 import com.snapcore.app.domain.PendingRegistrationStore
 import com.snapcore.app.domain.ProfilePhotoPreparer
 import com.snapcore.app.domain.UserFacingException
+import com.snapcore.app.domain.UsernameAvailability
 import java.io.File
 
 class FakeAuth : AuthService {
@@ -61,12 +63,18 @@ class FakeAccounts : AccountService {
             .also { account = it }
     }
 
-    override suspend fun updateProfile(username: String?, phoneNumber: String?): Account {
+    override suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String?, lastName: String?): Account {
         if (username != null && username in takenUsernames) throw ApiException(409, "Ce pseudo est déjà pris")
         val current = account!!
-        return current.copy(username = username ?: current.username, phoneNumber = phoneNumber ?: current.phoneNumber)
+        return current.copy(username = username ?: current.username, phoneNumber = phoneNumber ?: current.phoneNumber,
+            firstName = firstName ?: current.firstName, lastName = lastName?.ifEmpty { null } ?: current.lastName)
             .also { account = it }
     }
+
+    /** Tous les pseudos sont pris : la proposition automatique doit abandonner. */
+    var allUsernamesTaken = false
+    override suspend fun usernameAvailability(username: String) =
+        if (allUsernamesTaken || username in takenUsernames) UsernameAvailability(false, "Ce pseudo est déjà pris") else UsernameAvailability(true)
 
     override suspend fun deleteAccount() {
         deleted = true
@@ -79,6 +87,15 @@ class FakeAccounts : AccountService {
     }
 
     override suspend fun removeProfilePhoto(): Account = account!!.copy(profilePhotoUrl = null).also { account = it }
+    var catalog = AvatarCatalog(
+        defaults = mapOf("top" to "shortFlat", "eyes" to "default", "mouth" to "smile", "facialHair" to "none"),
+        options = mapOf("top" to listOf("none", "shortFlat", "bob"), "eyes" to listOf("default", "cry", "happy"), "mouth" to listOf("smile", "sad"), "facialHair" to listOf("none", "beardLight")),
+    )
+    var savedAvatar: Map<String, String>? = null
+    override suspend fun avatarCatalog() = catalog
+    override suspend fun setAvatar(options: Map<String, String>): Account =
+        account!!.copy(avatar = options, avatarUrl = "avatar.png").also { account = it; savedAvatar = options }
+    override suspend fun removeAvatar(): Account = account!!.copy(avatar = null, avatarUrl = null).also { account = it; savedAvatar = null }
 }
 
 class FakePending : PendingRegistrationStore {

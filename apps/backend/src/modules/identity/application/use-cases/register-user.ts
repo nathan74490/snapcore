@@ -1,4 +1,9 @@
+import { noAnalytics, type Analytics } from "../../../../shared/domain/analytics";
+import { systemClock, type Clock } from "../../../../shared/domain/clock";
 import { ForbiddenError, NotFoundError, UniqueViolationError } from "../../../../shared/domain/errors";
+import { parseBirthday } from "../../domain/birthday";
+import { parseFirstName } from "../../domain/first-name";
+import { parseLastName } from "../../domain/last-name";
 import { parsePhoneNumber } from "../../domain/phone-number";
 import type { UserAccount } from "../../domain/user";
 import { parseUsername } from "../../domain/username";
@@ -10,6 +15,9 @@ import { SUSPENDED_MESSAGE } from "./resolve-current-user";
 export interface RegisterUserInput {
   idToken: string;
   username: string;
+  firstName: string;
+  lastName?: string;
+  birthday: string; // YYYY-MM-DD, obligatoire pour toute nouvelle inscription (ADR-029)
   phoneNumber?: string;
 }
 
@@ -18,6 +26,8 @@ export class RegisterUser {
   constructor(
     private readonly users: UserRepository,
     private readonly identity: IdentityProvider,
+    private readonly analytics: Analytics = noAnalytics,
+    private readonly clock: Clock = systemClock,
   ) {}
 
   async execute(input: RegisterUserInput): Promise<UserAccount> {
@@ -29,16 +39,24 @@ export class RegisterUser {
     if (existing) return this.alreadyRegistered(existing);
 
     const username = parseUsername(input.username);
+    const firstName = parseFirstName(input.firstName);
+    const lastName = parseLastName(input.lastName);
+    const birthday = parseBirthday(input.birthday, this.clock.now());
     const phoneNumber = input.phoneNumber ? parsePhoneNumber(input.phoneNumber) : null;
 
     try {
-      return await this.users.create({
+      const user = await this.users.create({
         username,
+        firstName,
+        lastName,
+        birthday,
         firebaseUid: identity.firebaseUid,
         // Firebase est la source de vérité de l'email (ADR-014) : jamais pris dans le corps de la requête.
         email: identity.email,
         phoneNumber,
       });
+      this.analytics.capture(user.id, "user_registered", { with_phone: phoneNumber !== null });
+      return user;
     } catch (error) {
       if (!(error instanceof UniqueViolationError)) throw error;
       if (error.field === "firebaseUid") {

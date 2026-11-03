@@ -7,11 +7,40 @@ export type SubscriptionTier = "free" | "premium";
 // suppression de compte (ADR-019).
 export type ModerationStatus = "ACTIVE" | "SUSPENDED";
 
+// Avatar dessiné façon Bitmoji, style avataaars de DiceBear (voir ADR-028). Chaque valeur
+// appartient au catalogue de GET /avatars/catalog ; "none" (top, facialHair, accessories)
+// masque l'élément. Les couleurs sont des hex sans "#". Rendu PNG public et déterministe
+// par GET /avatars/avataaars.png?<ces 11 clés>&size=…
+export interface AvatarOptions {
+  top: string;
+  hairColor: string;
+  skinColor: string;
+  eyes: string;
+  eyebrows: string;
+  mouth: string;
+  facialHair: string;
+  accessories: string;
+  clothing: string;
+  clothesColor: string;
+  backgroundColor: string;
+}
+
+// Réponse de GET /avatars/catalog : avatar proposé à l'ouverture de l'éditeur et valeurs
+// autorisées par clé, dans un ordre stable ("none" en premier quand il existe).
+export interface AvatarCatalog {
+  defaults: AvatarOptions;
+  options: Record<keyof AvatarOptions, string[]>;
+}
+
 export interface User {
   id: string;
   username: string;             // normalisé en minuscules, modifiable depuis le profil, unicité revérifiée (voir ADR-014)
+  firstName?: string;           // prénom affiché à la place du pseudo ; absent pour les comptes créés avant son introduction
+  lastName?: string;            // nom de famille facultatif, privé : jamais dans un profil public (voir ADR-029)
+  birthday?: string;            // date de naissance YYYY-MM-DD, privée ; absente pour les comptes créés avant son introduction (voir ADR-029)
   // firebaseUid (lien vers le compte Firebase Authentication) n'est jamais exposé dans les types partagés app/backoffice (voir ADR-015)
   profilePhotoUrl?: string;     // URL publique CDN, recadrée/redimensionnée côté app avant upload (voir ADR-014, ADR-016)
+  avatar?: AvatarOptions;       // avatar dessiné, absent si l'utilisateur n'en a pas créé ; affiché avant la photo de profil (voir ADR-028)
   phoneNumber?: string;         // collecté à l'onboarding, jamais vérifié (voir ADR-010)
   email?: string;               // copie de lecture ; Firebase reste la source de vérité pour la connexion, tout changement passe par Firebase avant mise à jour ici (voir ADR-014, ADR-015)
   subscriptionTier: SubscriptionTier;
@@ -86,11 +115,13 @@ export interface DeviceToken {
 }
 
 // Profil d'un AUTRE utilisateur tel qu'exposé par l'API (recherche, liste d'amis, demandes).
-// Ne contient jamais phoneNumber, email ni deletionRequestedAt (voir ADR-014, ADR-019).
+// Ne contient jamais phoneNumber, email, deletionRequestedAt (voir ADR-014, ADR-019), ni lastName ou birthday (voir ADR-029).
 export interface PublicUserProfile {
   id: string;
   username: string;
+  firstName?: string; // absent pour les comptes créés avant son introduction : afficher le pseudo à la place
   profilePhotoUrl?: string;
+  avatar?: AvatarOptions; // absent sans avatar ; priorité d'affichage : avatar, puis photo, puis initiales (voir ADR-028)
 }
 
 // Relation vue depuis l'utilisateur courant, pour l'affichage d'un résultat de recherche.
@@ -99,6 +130,21 @@ export interface PublicUserProfile {
 export type FriendshipRelation = "NONE" | "OUTGOING_REQUEST" | "INCOMING_REQUEST" | "FRIENDS";
 
 export interface UserSearchResult extends PublicUserProfile {
+  relation: FriendshipRelation;
+}
+
+// Réponse de GET /users/username-availability (publique, appelée pendant l'inscription, ADR-029).
+// `reason` (message affichable) est présent uniquement si le pseudo n'est pas disponible.
+export interface UsernameAvailability {
+  available: boolean;
+  reason?: string;
+}
+
+// Un élément de la réponse de POST /users/contacts/match (ADR-029). `phoneNumber` est la chaîne
+// exacte envoyée par l'app (pour retrouver son contact) : le numéro stocké de l'autre n'est jamais renvoyé.
+export interface ContactMatch {
+  phoneNumber: string;
+  user: PublicUserProfile;
   relation: FriendshipRelation;
 }
 
@@ -152,6 +198,9 @@ export interface StoryFeedEntry {
   author: PublicUserProfile;
   items: StoryItemView[];
   hasUnviewed: boolean;
+  // Vignette du premier élément non vu (sinon du plus récent) ayant une vignette, URL
+  // pré-signée courte ; absente si aucun élément n'en a. Ne compte aucune vue (ADR-026).
+  thumbnailUrl?: string;
 }
 
 // Élément de ma propre story, avec le nombre de vues (voir ADR-013).
@@ -161,6 +210,61 @@ export interface OwnStoryItemView {
   createdAt: string;
   expiresAt: string;
   viewCount: number;
+  thumbnailUrl?: string;    // vignette pré-signée, absente sans vignette (ADR-026)
+}
+
+// Corps de POST /stories (voir ADR-013, ADR-026, ADR-031). latitude et longitude vont ensemble (les deux
+// ou aucune, sinon 400 ; null vaut absence) ; stockées arrondies à 3 décimales (~100 m), et seulement si l'auteur n'est pas
+// en mode fantôme au moment de la publication (sinon ignorées).
+export interface PublishStoryRequest {
+  uploadId: string;
+  contentType: StoryContentType;
+  thumbnailUploadId?: string;
+  latitude?: number;        // -90 à 90
+  longitude?: number;       // -180 à 180
+}
+
+// Snap Map (voir ADR-031). Mode de partage de MA position avec mes amis ; GHOST (mode fantôme) par défaut.
+// FRIENDS_EXCEPT : tous mes amis sauf ceux de `friendIds` ; ONLY_FRIENDS : uniquement ceux de `friendIds`.
+export type LocationSharingMode = "GHOST" | "ALL_FRIENDS" | "FRIENDS_EXCEPT" | "ONLY_FRIENDS";
+
+// Réponse de GET /me/location-sharing et corps / réponse de PUT /me/location-sharing.
+// `friendIds` : amis ACCEPTED exclus (FRIENDS_EXCEPT) ou autorisés (ONLY_FRIENDS) ; la liste est conservée
+// quel que soit le mode. À l'écriture : dédupliquée, 2000 au plus (400 au-delà), filtrée en silence aux
+// amis actuels, et remplace l'ancienne. Ordre non significatif.
+export interface LocationSharingSettings {
+  mode: LocationSharingMode;
+  friendIds: string[];
+}
+
+// Corps de PUT /me/location (204). En mode fantôme, rien n'est stocké. Position éphémère : Redis
+// uniquement, oubliée 8 h après la dernière mise à jour (ADR-003).
+export interface UpdateLocationRequest {
+  latitude: number;         // -90 à 90
+  longitude: number;        // -180 à 180
+}
+
+// Un élément de GET /map/friends : un ami qui me rend visible sa position, mise à jour il y a moins de 8 h.
+export interface FriendLocation {
+  user: PublicUserProfile;
+  latitude: number;
+  longitude: number;
+  updatedAt: string;
+}
+
+// Un élément de GET /map/stories : élément de story géolocalisé encore visible d'un ami qui me rend
+// visible sa position. Vignette et `viewed` comme dans GET /stories (ADR-026) ; lecture par
+// POST /stories/:id/view.
+export interface MapStory {
+  id: string;
+  author: PublicUserProfile;
+  contentType: StoryContentType;
+  latitude: number;         // arrondie à 3 décimales (~100 m)
+  longitude: number;
+  createdAt: string;
+  expiresAt: string;
+  thumbnailUrl?: string;
+  viewed: boolean;
 }
 
 // Compte membre de l'équipe Alpvengers avec accès au backoffice, entièrement

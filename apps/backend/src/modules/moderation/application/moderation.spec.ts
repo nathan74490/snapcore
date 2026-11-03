@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../../shared/domain/errors";
 import { FixedClock, RecordingFriendshipNotifier } from "../../../test/fakes";
 import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
+import { InMemoryLocationStore } from "../../../test/in-memory-location";
 import { InMemoryObjectStorage, silentLogger } from "../../../test/in-memory-media";
 import { InMemoryMessageRepository, RecordingPurgeScheduler } from "../../../test/in-memory-messages";
 import { InMemoryModerationRepository } from "../../../test/in-memory-moderation";
@@ -35,6 +36,7 @@ describe("Modération (ADR-021)", () => {
   let snapPurge: RecordingPurgeScheduler;
   let storyPurge: RecordingStoryPurgeScheduler;
   let realtime: RecordingRealtime;
+  let locations: InMemoryLocationStore;
   let presence: InMemoryPresence;
   let repo: InMemoryModerationRepository;
   let moderation: ModerationUseCases;
@@ -54,10 +56,11 @@ describe("Modération (ADR-021)", () => {
     snapPurge = new RecordingPurgeScheduler();
     storyPurge = new RecordingStoryPurgeScheduler();
     realtime = new RecordingRealtime();
+    locations = new InMemoryLocationStore();
     presence = new InMemoryPresence();
     repo = new InMemoryModerationRepository(users);
     const events = new UserEventPublisher(presence, realtime, new RecordingPush(), new InMemoryDeviceTokens(), silentLogger);
-    moderation = new ModerationUseCases(repo, messages, stories, views, storage, snapPurge, storyPurge, realtime, events, clock, silentLogger);
+    moderation = new ModerationUseCases(repo, messages, stories, views, storage, snapPurge, storyPurge, realtime, events, clock, silentLogger, locations);
     reports = new ReportUseCases(repo, users, messages, stories, friendshipRepo, clock);
     alice = await users.seed("alice");
     bob = await users.seed("bob");
@@ -82,14 +85,18 @@ describe("Modération (ADR-021)", () => {
     return id;
   }
 
-  async function story(author: UserAccount) {
+  async function story(author: UserAccount, withThumbnail = false) {
     const id = randomUUID();
     storage.simulateUpload(`stories/${id}`, 10, "image/jpeg");
+    if (withThumbnail) storage.simulateUpload(`story-thumbnails/${id}`, 10, "image/jpeg");
     await stories.create({
       id,
       authorId: author.id,
       mediaKey: `stories/${id}`,
       contentType: "PHOTO",
+      thumbnailKey: withThumbnail ? `story-thumbnails/${id}` : null,
+      latitude: null,
+      longitude: null,
       createdAt: clock.now(),
       expiresAt: new Date(clock.now().getTime() + 24 * HOUR),
     });
@@ -98,8 +105,10 @@ describe("Modération (ADR-021)", () => {
 
   describe("suspension", () => {
     it("suspend : compte invisible pour les autres, connexion refusée (403), temps réel coupé", async () => {
+      await locations.save(alice.id, { latitude: 45.9, longitude: 6.12, updatedAt: clock.now() });
       await moderation.suspendUser(alice.id, MOD, "Harcèlement");
 
+      expect(locations.entries.has(alice.id)).toBe(false); // position de la Snap Map effacée (ADR-031)
       expect(await users.findActiveById(alice.id)).toBeNull();
       await expect(friendships.searchByUsername(bob, "alice")).rejects.toThrow(NotFoundError);
       await expect(new ResolveCurrentUser(users).execute(alice.firebaseUid)).rejects.toThrow(new ForbiddenError("Ce compte est suspendu"));
@@ -156,14 +165,15 @@ describe("Modération (ADR-021)", () => {
     });
   });
 
-  it("suppression d'un élément de story : média, ligne et vues supprimés, job retiré", async () => {
-    const id = await story(alice);
+  it("suppression d'un élément de story : média, vignette, ligne et vues supprimés, job retiré", async () => {
+    const id = await story(alice, true);
     await views.record(id, bob.id);
 
     await moderation.deleteStoryItem(id, MOD, "Violence");
 
     expect(stories.rows.has(id)).toBe(false);
     expect(storage.has({ area: "private", key: `stories/${id}` })).toBe(false);
+    expect(storage.has({ area: "private", key: `story-thumbnails/${id}` })).toBe(false);
     expect(views.sets.has(id)).toBe(false);
     expect(storyPurge.cancelled).toEqual([id]);
   });

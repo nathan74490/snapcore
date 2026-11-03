@@ -21,6 +21,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -33,51 +34,60 @@ import com.snapcore.app.ui.theme.SnapColors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory) -> Unit, modifier: Modifier = Modifier) {
-    val vm = containerViewModel { StoriesViewModel(it.stories) }
+    val vm = containerViewModel { StoriesViewModel(it.stories, it.outbox.items, it.outbox::retry) }
     val state by vm.state.collectAsStateWithLifecycle()
-    LifecycleResumeEffect(Unit) { vm.refresh(); onPauseOrDispose {} }
-    PullToRefreshBox(isRefreshing = state.loading, onRefresh = vm::refresh, modifier = modifier.fillMaxSize()) {
+    LifecycleResumeEffect(Unit) { vm.refresh(showIndicator = false); onPauseOrDispose {} }
+    SnapRefresh(state.loading, { vm.refresh() }, modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp)) {
-            item { Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 6.dp)) }
-            item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        StoryCircle("Ma story", account.username, account.profilePhotoUrl,
-                            if(state.mine.isEmpty()) SnapColors.Control else SnapColors.SnapPurple, onOpenMine)
-                    }
-                    items(state.friends, key = { it.author.id }) { story ->
-                        StoryCircle(story.author.username, story.author.username, story.author.photoUrl,
-                            if(story.hasUnviewed) SnapColors.SnapPurple else SnapColors.Muted) { onPlay(story) }
+            // Comme Snapchat : la rangée ne montre que les stories des amis, Ma story a sa propre carte.
+            if (state.friends.isNotEmpty()) {
+                item { Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp)) }
+                item {
+                    // Bulle de 88 pour un anneau de 82 : 9 + 3 de marge interne = 12, comme le reste de la page.
+                    LazyRow(contentPadding = PaddingValues(horizontal = 9.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(state.friends, key = { it.author.id }) { story ->
+                            StoryCircle(story.author, story.thumbnailUrl, if(story.hasUnviewed) SnapColors.SnapPurple else SnapColors.Muted) { onPlay(story) }
+                        }
                     }
                 }
             }
             item {
-                Text("Ma story", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 20.dp, bottom = 8.dp))
-                Row(Modifier.padding(horizontal = 10.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SnapColors.Background)
+                Text("Ma story", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = if (state.friends.isEmpty()) 8.dp else 24.dp, bottom = 8.dp))
+                Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SnapColors.Background)
                     .clickable(onClick = onOpenMine).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FigmaAsset("17-1301_imgIconCamera", tint = SnapColors.ChatBlue)
+                    // Vignette de mon dernier snap publié, sinon l'appareil photo.
+                    val latest = state.mine.lastOrNull { it.thumbnailUrl != null }?.thumbnailUrl
+                    if (latest != null) AsyncImage(latest, null, contentScale = ContentScale.Crop, modifier = Modifier.size(44.dp).clip(CircleShape))
+                    else FigmaAsset("17-1301_imgIconCamera", tint = SnapColors.ChatBlue)
                     Column(Modifier.weight(1f)) {
-                        Text(if(state.mine.isEmpty()) "Ajouter à Ma story" else "${state.mine.size} snap(s) · ${state.mine.sumOf { it.viewCount }} vue(s)", fontWeight = FontWeight.Bold)
-                        Text("Visible par mes amis", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+                        Text(if(state.mine.isEmpty()) "Ajouter à Ma story" else myStorySummary(state.mine.size, state.mine.sumOf { it.viewCount }), fontWeight = FontWeight.Bold)
+                        val upload = state.upload
+                        when (upload?.status) {
+                            OutgoingStatus.SENDING -> Text("Envoi en cours…", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+                            OutgoingStatus.FAILED -> Text("Échec de l'envoi · appuie pour réessayer", color = SnapColors.SnapRed,
+                                style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable(onClick = vm::retryUpload))
+                            else -> Text("Visible par mes amis", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                     FigmaAsset("17-1301_imgIconChevronRight")
                 }
             }
-            item { Text("Stories récentes", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 20.dp, bottom = 8.dp)) }
+            item { Text("Stories récentes", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 24.dp, bottom = 8.dp)) }
             if(state.friends.isEmpty() && !state.loading) item {
-                Text(state.error ?: "Les stories de tes amis apparaîtront ici.", color = SnapColors.Grey, modifier = Modifier.padding(16.dp))
+                Text(state.error ?: "Les stories de tes amis apparaîtront ici.", color = SnapColors.Grey, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             }
             items(state.friends.chunked(2)) { pair ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     pair.forEach { story ->
                         Box(Modifier.weight(1f).height(254.dp).clip(RoundedCornerShape(10.dp)).background(SnapColors.Control).clickable { onPlay(story) }) {
-                            // API-supplied profile image stays dynamic; never use a mock person's Figma photo.
-                            if(story.author.photoUrl != null) AsyncImage(story.author.photoUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                            else Box(Modifier.fillMaxSize(), Alignment.Center) { Avatar(story.author.username, null, 72.dp) }
+                            // Vignette de la story (ADR-026), sinon la photo de profil ; jamais une photo de maquette Figma.
+                            val cover = story.thumbnailUrl ?: story.author.photoUrl
+                            if(cover != null) AsyncImage(cover, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            else Box(Modifier.fillMaxSize(), Alignment.Center) { Avatar(story.author.displayName, story.author.avatarUrl, 72.dp) }
                             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha=.65f)))))
-                            Column(Modifier.align(Alignment.BottomStart).padding(10.dp)) {
-                                Text(story.author.username, color = Color.White, fontWeight = FontWeight.Bold)
+                            Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
+                                Text(story.author.displayName, color = Color.White, fontWeight = FontWeight.Bold)
                                 Text(relativeTime(story.lastPostedAt), color = Color.White, style = MaterialTheme.typography.bodySmall)
                             }
                         }
@@ -90,9 +100,22 @@ fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory
 }
 
 @Composable
-private fun StoryCircle(label: String, username: String, photo: String?, ring: Color, click: () -> Unit) {
-    Column(Modifier.width(82.dp).clickable(onClick = click), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(82.dp).border(3.dp, ring, CircleShape), Alignment.Center) { Avatar(username, photo, 72.dp) }
-        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp))
+private fun StoryCircle(author: Friend, thumbnailUrl: String?, ring: Color, click: () -> Unit) {
+    // Story Bubble 11:325 : 88 de large, anneau 82 (3pt), avatar 72, libellé Bold 14/18 à 12 sous l'anneau ;
+    // le pseudo en gris dessous quand l'ami a un prénom, comme dans Snapchat.
+    Column(Modifier.width(88.dp).clickable(onClick = click), horizontalAlignment = Alignment.CenterHorizontally) {
+        // Comme Snapchat : l'image de la story dans l'anneau (ADR-026), l'avatar à défaut.
+        Box(Modifier.size(82.dp).border(3.dp, ring, CircleShape), Alignment.Center) {
+            if (thumbnailUrl != null) AsyncImage(thumbnailUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.size(72.dp).clip(CircleShape).background(SnapColors.Control))
+            else Avatar(author.displayName, author.pictureUrl, 72.dp)
+        }
+        Text(author.displayName, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
+        if (author.firstName != null) Text(author.username, fontSize = 12.sp, lineHeight = 16.sp, color = SnapColors.Grey, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/** « 1 snap · 1 vue », « 3 snaps · 0 vue » : accord en français (0 et 1 au singulier). */
+fun myStorySummary(snaps: Int, views: Int): String {
+    fun plural(count: Int, word: String) = "$count $word" + if (count > 1) "s" else ""
+    return "${plural(snaps, "snap")} · ${plural(views, "vue")}"
 }

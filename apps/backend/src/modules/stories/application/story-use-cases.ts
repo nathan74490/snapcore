@@ -1,4 +1,5 @@
 import type {
+  MapStory,
   OwnStoryItemView,
   PublicUserProfile,
   SnapViewUrl,
@@ -7,6 +8,7 @@ import type {
   StoryItemView,
 } from "@snapcore/types";
 import { randomUUID } from "node:crypto";
+import { noAnalytics, type Analytics } from "../../../shared/domain/analytics";
 import type { Clock } from "../../../shared/domain/clock";
 import { NotFoundError } from "../../../shared/domain/errors";
 import type { AppLogger } from "../../../shared/domain/logger";
@@ -16,15 +18,19 @@ import type { UserRepository } from "../../identity/application/ports/user.repos
 import { toPublicProfile, type UserAccount } from "../../identity/domain/user";
 import type { ObjectStorage } from "../../media/application/ports/object-storage.port";
 import type { UploadPromoter } from "../../media/application/upload-promoter";
+import { ghostLocationVisibility } from "../../location/application/location-visibility";
+import { parseOptionalCoordinates, storyCoordinates } from "../../location/domain/location-sharing";
 import {
   expirationFor,
   isVisible,
+  STORY_THUMBNAIL_URL_TTL_SECONDS,
   STORY_VIEW_URL_TTL_SECONDS,
   storyMediaKey,
+  storyThumbnailKey,
   UPLOAD_PURPOSE_BY_STORY_TYPE,
   type StoryItem,
 } from "../domain/story-item";
-import type { StoryPurgeScheduler, StoryRepository, StoryViewStore } from "./ports";
+import type { StoryLocationPolicy, StoryPurgeScheduler, StoryRepository, StoryViewStore } from "./ports";
 
 // Même réponse pour un élément inexistant, expiré, ou d'un auteur qui n'est pas (ou plus) ami :
 // un utilisateur bloqué ne peut pas deviner que la story existe (ADR-012).
@@ -44,32 +50,63 @@ export class StoryUseCases {
     private readonly scheduler: StoryPurgeScheduler,
     private readonly clock: Clock,
     private readonly logger: AppLogger,
+    private readonly analytics: Analytics = noAnalytics,
+    // Par défaut tout le monde est en mode fantôme : aucune position stockée ni affichée (ADR-031).
+    private readonly location: StoryLocationPolicy = ghostLocationVisibility,
   ) {}
 
-  async publish(me: UserAccount, input: { uploadId: string; contentType: StoryContentType }): Promise<OwnStoryItemView> {
+  async publish(
+    me: UserAccount,
+    input: {
+      uploadId: string;
+      contentType: StoryContentType;
+      thumbnailUploadId?: string;
+      latitude?: number | null;
+      longitude?: number | null;
+    },
+  ): Promise<OwnStoryItemView> {
+    // Validée avant tout upload ; conservée seulement si l'auteur n'est pas en mode fantôme (ADR-031).
+    const requestedCoordinates = parseOptionalCoordinates(input);
+    const coordinates = requestedCoordinates && storyCoordinates(requestedCoordinates, await this.location.modeOf(me.id));
     const id = randomUUID();
     const createdAt = this.clock.now();
+    // Vignette d'abord : la ligne StoryItem est créée par la promotion du média principal.
+    const thumbnailKey = input.thumbnailUploadId ? await this.promoteThumbnail(me, id, input.thumbnailUploadId) : null;
     const item: StoryItem = {
       id,
       authorId: me.id,
       mediaKey: storyMediaKey(id),
       contentType: input.contentType,
+      thumbnailKey,
+      latitude: coordinates?.latitude ?? null,
+      longitude: coordinates?.longitude ?? null,
       createdAt,
       // Expiration propre à chaque élément, 24h après SA publication (ADR-013).
       expiresAt: expirationFor(createdAt),
     };
 
-    await this.promoter.promote({
-      userId: me.id,
-      uploadId: input.uploadId,
-      allowedPurposes: [UPLOAD_PURPOSE_BY_STORY_TYPE[input.contentType]],
-      destination: { area: "private", key: item.mediaKey },
-      persist: () => this.stories.create(item),
-    });
+    try {
+      await this.promoter.promote({
+        userId: me.id,
+        uploadId: input.uploadId,
+        allowedPurposes: [UPLOAD_PURPOSE_BY_STORY_TYPE[input.contentType]],
+        destination: { area: "private", key: item.mediaKey },
+        persist: () => this.stories.create(item),
+      });
+    } catch (error) {
+      // Compensation : aucune ligne ne référencerait la vignette, ni purge ne la supprimerait (ADR-026).
+      if (thumbnailKey) {
+        await this.bestEffort(`suppression compensatoire de ${thumbnailKey}`, () =>
+          this.storage.delete({ area: "private", key: thumbnailKey }),
+        );
+      }
+      throw error;
+    }
     await this.bestEffort(`programmation de la purge de la story ${id}`, () =>
       this.scheduler.schedule(id, item.expiresAt),
     );
-    return presentOwn(item, 0);
+    this.analytics.capture(me.id, "story_published", { content_type: input.contentType });
+    return presentOwn(item, 0, await this.thumbnailUrl(item));
   }
 
   // Stories des amis ACCEPTED (ADR-013), non vues d'abord puis les plus récentes.
@@ -82,30 +119,65 @@ export class StoryUseCases {
       me.id,
     );
 
-    const byAuthor = new Map<string, StoryItemView[]>();
-    for (const item of items) {
-      const list = byAuthor.get(item.authorId) ?? [];
-      list.push(presentForViewer(item, viewed.has(item.id)));
-      byAuthor.set(item.authorId, list);
-    }
+    const byAuthor = new Map<string, StoryItem[]>();
+    for (const item of items) byAuthor.set(item.authorId, [...(byAuthor.get(item.authorId) ?? []), item]);
 
-    return [...byAuthor]
-      .map(([authorId, list]) => ({
-        author: profiles.get(authorId)!,
-        items: list,
-        hasUnviewed: list.some((item) => !item.viewed),
-      }))
-      .sort(
-        (a, b) =>
-          Number(b.hasUnviewed) - Number(a.hasUnviewed) ||
-          b.items[b.items.length - 1].createdAt.localeCompare(a.items[a.items.length - 1].createdAt),
-      );
+    const entries = await Promise.all(
+      [...byAuthor].map(async ([authorId, authorItems]): Promise<StoryFeedEntry> => {
+        const list = authorItems.map((item) => presentForViewer(item, viewed.has(item.id)));
+        // Simple lecture d'une URL pré-signée : aucune vue enregistrée (ADR-026).
+        const thumbnailUrl = await this.thumbnailUrl(ringThumbnailItem(authorItems, viewed));
+        return {
+          author: profiles.get(authorId)!,
+          items: list,
+          hasUnviewed: list.some((item) => !item.viewed),
+          ...(thumbnailUrl && { thumbnailUrl }),
+        };
+      }),
+    );
+
+    return entries.sort(
+      (a, b) =>
+        Number(b.hasUnviewed) - Number(a.hasUnviewed) ||
+        b.items[b.items.length - 1].createdAt.localeCompare(a.items[a.items.length - 1].createdAt),
+    );
+  }
+
+  // Éléments géolocalisés encore visibles des amis qui me rendent visible leur position, règle évaluée
+  // à la lecture : un auteur passé en mode fantôme disparaît de la carte (ADR-031). Vignette et `viewed`
+  // comme dans le fil, sans compter de vue (ADR-026) ; la lecture passe par POST /stories/:id/view.
+  async mapStories(me: UserAccount): Promise<MapStory[]> {
+    const friends = await this.location.visibleFriends(me.id, await this.friendships.listFriends(me.id));
+    const profiles = new Map<string, PublicUserProfile>(friends.map(({ user }) => [user.id, user]));
+    const items = (await this.stories.listVisibleByAuthors([...profiles.keys()], this.clock.now())).filter(
+      (item) => item.latitude !== null && item.longitude !== null,
+    );
+    const viewed = await this.views.viewedAmong(
+      items.map((item) => item.id),
+      me.id,
+    );
+    return Promise.all(
+      items.map(async (item): Promise<MapStory> => {
+        const thumbnailUrl = await this.thumbnailUrl(item);
+        return {
+          id: item.id,
+          author: profiles.get(item.authorId)!,
+          contentType: item.contentType,
+          latitude: item.latitude!,
+          longitude: item.longitude!,
+          createdAt: item.createdAt.toISOString(),
+          expiresAt: item.expiresAt.toISOString(),
+          ...(thumbnailUrl && { thumbnailUrl }),
+          viewed: viewed.has(item.id),
+        };
+      }),
+    );
   }
 
   async mine(me: UserAccount): Promise<OwnStoryItemView[]> {
     const items = await this.stories.listVisibleByAuthors([me.id], this.clock.now());
     const counts = await this.views.counts(items.map((item) => item.id));
-    return items.map((item) => presentOwn(item, counts.get(item.id) ?? 0));
+    return Promise.all(items.map(async (item) => presentOwn(item, counts.get(item.id) ?? 0, await this.thumbnailUrl(item))));
   }
 
   async view(me: UserAccount, storyId: string): Promise<SnapViewUrl> {
@@ -113,6 +185,7 @@ export class StoryUseCases {
     if (item.authorId !== me.id) {
       await this.requireFriendAuthor(me, item.authorId);
       await this.views.record(item.id, me.id, item.expiresAt);
+      this.analytics.capture(me.id, "story_viewed");
     }
     const now = this.clock.now();
     const url = await this.storage.presignDownload(item.mediaKey, STORY_VIEW_URL_TTL_SECONDS);
@@ -154,8 +227,33 @@ export class StoryUseCases {
   private async deleteItem(item: StoryItem): Promise<void> {
     // R2 d'abord : si la base échoue ensuite, le rejeu retente une suppression idempotente.
     await this.storage.delete({ area: "private", key: item.mediaKey });
+    if (item.thumbnailKey) await this.storage.delete({ area: "private", key: item.thumbnailKey });
     await this.stories.delete(item.id);
     await this.bestEffort(`nettoyage des vues de ${item.id}`, () => this.views.clear(item.id));
+  }
+
+  // La vignette est un confort (ADR-026) : un upload inconnu, d'un autre usage ou trop gros ne
+  // bloque pas la publication, l'élément est publié sans vignette.
+  private async promoteThumbnail(me: UserAccount, storyId: string, uploadId: string): Promise<string | null> {
+    const key = storyThumbnailKey(storyId);
+    try {
+      await this.promoter.promote({
+        userId: me.id,
+        uploadId,
+        allowedPurposes: ["STORY_THUMBNAIL"],
+        destination: { area: "private", key },
+        persist: async () => undefined,
+      });
+      return key;
+    } catch (error) {
+      this.logger.warn(`Vignette ignorée pour la story ${storyId} : ${(error as Error).message}`);
+      return null;
+    }
+  }
+
+  private async thumbnailUrl(item: StoryItem | undefined): Promise<string | undefined> {
+    if (!item?.thumbnailKey) return undefined;
+    return this.storage.presignDownload(item.thumbnailKey, STORY_THUMBNAIL_URL_TTL_SECONDS);
   }
 
   private async findVisible(storyId: string): Promise<StoryItem> {
@@ -191,12 +289,20 @@ function presentForViewer(item: StoryItem, viewed: boolean): StoryItemView {
   };
 }
 
-function presentOwn(item: StoryItem, viewCount: number): OwnStoryItemView {
+function presentOwn(item: StoryItem, viewCount: number, thumbnailUrl?: string): OwnStoryItemView {
   return {
     id: item.id,
     contentType: item.contentType,
     createdAt: item.createdAt.toISOString(),
     expiresAt: item.expiresAt.toISOString(),
     viewCount,
+    ...(thumbnailUrl && { thumbnailUrl }),
   };
+}
+
+// Vignette de l'anneau = l'élément que l'utilisateur verra en premier : le premier non vu qui en a
+// une, sinon le plus récent qui en a une (ADR-026). `items` va du plus ancien au plus récent.
+function ringThumbnailItem(items: StoryItem[], viewed: Set<string>): StoryItem | undefined {
+  const withThumbnail = items.filter((item) => item.thumbnailKey !== null);
+  return withThumbnail.find((item) => !viewed.has(item.id)) ?? withThumbnail[withThumbnail.length - 1];
 }

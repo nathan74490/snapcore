@@ -1,7 +1,7 @@
-# ADR-011 — Écran caméra : capture CameraX, geste tap/appui maintenu, nettoyage local après upload
+# ADR-011 : Écran caméra : capture CameraX, geste tap/appui maintenu, nettoyage local après upload
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 L'écran d'accueil de SnapCore est l'écran caméra, comme dans Snapchat : capture de photo ou de vidéo (y compris en mode selfie), avec flash et bascule caméra avant/arrière. CameraX a déjà été retenu comme techno de capture (ADR lié à la stack mobile). Il faut fixer comment le geste de capture est interprété, la limite de durée d'une vidéo, et surtout où transite le média capturé avant son envoi, en cohérence avec le pipeline média déjà défini (upload direct vers R2 via URL pré-signée) et la logique éphémère du reste du projet.

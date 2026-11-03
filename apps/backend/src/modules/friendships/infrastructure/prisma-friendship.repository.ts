@@ -4,6 +4,7 @@ import type { Friendship as FriendshipRow, Prisma, User as UserRow } from "@snap
 import { PrismaService } from "../../../shared/infrastructure/prisma/prisma.service";
 import { ACTIVE_USER_WHERE } from "../../../shared/infrastructure/prisma/active-user";
 import { rethrowUniqueViolation } from "../../../shared/infrastructure/prisma/prisma-errors";
+import { readStoredAvatar } from "../../avatars/domain/avatar-catalog";
 import { toPublicProfile } from "../../identity/domain/user";
 import type {
   FriendshipPatch,
@@ -27,6 +28,19 @@ export class PrismaFriendshipRepository implements FriendshipRepository {
     return this.prisma.friendship
       .findUnique({ where: { pairLow_pairHigh: sortedPair(userA, userB) } })
       .then(toFriendship);
+  }
+
+  async findForPairs(userId: string, otherIds: string[]): Promise<Friendship[]> {
+    if (otherIds.length === 0) return [];
+    const rows = await this.prisma.friendship.findMany({
+      where: {
+        OR: [
+          { requesterId: userId, addresseeId: { in: otherIds } },
+          { addresseeId: userId, requesterId: { in: otherIds } },
+        ],
+      },
+    });
+    return rows.map((row) => toFriendship(row)!);
   }
 
   async create(friendship: NewFriendship): Promise<Friendship> {
@@ -90,7 +104,7 @@ export class PrismaFriendshipRepository implements FriendshipRepository {
     });
     return rows.map((row) => {
       const other: UserRow = row.requesterId === userId ? row.addressee : row.requester;
-      return { friendship: toFriendship(row)!, user: toPublicProfile(other) };
+      return { friendship: toFriendship(row)!, user: toPublicProfile({ ...other, avatar: readStoredAvatar(other.avatar) }) };
     });
   }
 }

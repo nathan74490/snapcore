@@ -7,6 +7,11 @@ export interface StoryItem {
   authorId: string;
   mediaKey: string;
   contentType: StoryContentType;
+  /** Vignette fabriquée par l'app, null si absente ou si sa promotion a échoué (ADR-026). */
+  thumbnailKey: string | null;
+  /** Position arrondie (~100 m) pour la Snap Map, null sans position ou en mode fantôme (ADR-031). */
+  latitude: number | null;
+  longitude: number | null;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -14,6 +19,8 @@ export interface StoryItem {
 export const STORY_LIFETIME_MS = 24 * 60 * 60 * 1000;
 // Même durée de vie courte que la lecture d'un Snap : l'URL n'est pas faite pour être partagée.
 export const STORY_VIEW_URL_TTL_SECONDS = 60;
+// Vignette de l'anneau du fil : le temps d'afficher la page, l'app recharge le fil au retour (ADR-026).
+export const STORY_THUMBNAIL_URL_TTL_SECONDS = 900;
 
 export const UPLOAD_PURPOSE_BY_STORY_TYPE: Record<StoryContentType, MediaPurpose> = {
   PHOTO: "STORY_PHOTO",
@@ -22,6 +29,10 @@ export const UPLOAD_PURPOSE_BY_STORY_TYPE: Record<StoryContentType, MediaPurpose
 
 export function storyMediaKey(id: string): string {
   return `stories/${id}`;
+}
+
+export function storyThumbnailKey(id: string): string {
+  return `story-thumbnails/${id}`;
 }
 
 export function expirationFor(createdAt: Date): Date {

@@ -48,6 +48,13 @@ describe("Pipeline d'upload (ADR-016)", () => {
       await expect(
         requestUpload.execute(alice, { purpose: "PROFILE_PHOTO", contentType: "image/jpeg", contentLength: 3 * 1024 * 1024 }),
       ).rejects.toThrow(ValidationError);
+      // Vignette de story : 512 Ko max, images uniquement (ADR-026).
+      await expect(
+        requestUpload.execute(alice, { purpose: "STORY_THUMBNAIL", contentType: "image/jpeg", contentLength: 512 * 1024 + 1 }),
+      ).rejects.toThrow(ValidationError);
+      await expect(
+        requestUpload.execute(alice, { purpose: "STORY_THUMBNAIL", contentType: "video/mp4", contentLength: 10 }),
+      ).rejects.toThrow(ValidationError);
       expect(storage.presigned).toEqual([]);
     });
   });

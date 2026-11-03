@@ -1,4 +1,5 @@
 import { Logger, Module } from "@nestjs/common";
+import { ANALYTICS, type Analytics } from "../../shared/domain/analytics";
 import { ConfigService } from "@nestjs/config";
 import { IdentityModule } from "../identity/identity.module";
 import { SUBSCRIPTION_REPOSITORY, type SubscriptionRepository } from "./application/ports";
@@ -17,8 +18,8 @@ import { RevenueCatWebhookController, SubscriptionController } from "./interface
     { provide: SUBSCRIPTION_REPOSITORY, useClass: PrismaSubscriptionRepository },
     {
       provide: SubscriptionUseCases,
-      inject: [SUBSCRIPTION_REPOSITORY, ConfigService],
-      useFactory: (subscriptions: SubscriptionRepository, config: ConfigService) =>
+      inject: [SUBSCRIPTION_REPOSITORY, ConfigService, ANALYTICS],
+      useFactory: (subscriptions: SubscriptionRepository, config: ConfigService, analytics: Analytics) =>
         new SubscriptionUseCases(
           subscriptions,
           {
@@ -26,6 +27,7 @@ import { RevenueCatWebhookController, SubscriptionController } from "./interface
             purchaseLink: config.get<string>("REVENUECAT_PURCHASE_LINK") || null,
           },
           new Logger(SubscriptionUseCases.name),
+          analytics,
         ),
     },
   ],

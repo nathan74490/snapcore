@@ -17,7 +17,7 @@ describe("PrismaSubscriptionRepository (Postgres réel)", () => {
 
   afterAll(() => prisma.$disconnect());
 
-  const newUser = () => users.create({ username: "nathan", firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
+  const newUser = () => users.create({ username: "nathan", firstName: "Nathan", lastName: null, birthday: null, firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
   const at = (iso: string) => new Date(iso);
 
   it("applique un événement plus récent, ignore un événement plus ancien ou rejoué", async () => {

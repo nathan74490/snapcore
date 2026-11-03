@@ -39,11 +39,15 @@ export class PrismaAccountDeletionRepository implements AccountDeletionRepositor
             where: { OR: [{ senderId: userId }, { recipientId: userId }], mediaKey: { not: null } },
             select: { mediaKey: true },
           }),
-          tx.storyItem.findMany({ where: { authorId: userId }, select: { mediaKey: true } }),
+          tx.storyItem.findMany({ where: { authorId: userId }, select: { mediaKey: true, thumbnailKey: true } }),
         ]);
         await onCollected({
           profilePhotoUrl: user.profilePhotoUrl,
-          privateKeys: [...messages.map((m) => m.mediaKey!), ...stories.map((s) => s.mediaKey)],
+          // Vignettes des stories comprises (ADR-026).
+          privateKeys: [
+            ...messages.map((m) => m.mediaKey!),
+            ...stories.flatMap((s) => (s.thumbnailKey ? [s.mediaKey, s.thumbnailKey] : [s.mediaKey])),
+          ],
         });
 
         await tx.user.delete({ where: { id: userId } });

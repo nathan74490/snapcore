@@ -1,4 +1,4 @@
-import { ConflictError } from "../../../../shared/domain/errors";
+import { ConflictError, ValidationError } from "../../../../shared/domain/errors";
 import { FakeIdentityProvider } from "../../../../test/fakes";
 import { InMemoryUserRepository } from "../../../../test/in-memory-user.repository";
 import { SyncEmailFromIdentityProvider } from "./sync-email";
@@ -35,6 +35,48 @@ describe("UpdateProfile", () => {
     const updated = await updateProfile.execute(user, { phoneNumber: null });
 
     expect(updated.phoneNumber).toBeNull();
+  });
+
+  it("permet de changer de prénom (espaces superflus retirés, casse conservée)", async () => {
+    const user = await users.seed("nathan");
+
+    const updated = await updateProfile.execute(user, { firstName: "  Marie  Ève " });
+
+    expect(updated.firstName).toBe("Marie Ève");
+  });
+
+  it("refuse un prénom invalide sans modifier la ligne", async () => {
+    const user = await users.seed("nathan");
+
+    await expect(updateProfile.execute(user, { firstName: "<script>" })).rejects.toThrow(ValidationError);
+    expect(users.rows.get(user.id)!.firstName).toBe("Nathan");
+  });
+});
+
+describe("UpdateProfile : nom de famille (ADR-029)", () => {
+  let users: InMemoryUserRepository;
+  let updateProfile: UpdateProfile;
+
+  beforeEach(() => {
+    users = new InMemoryUserRepository();
+    updateProfile = new UpdateProfile(users);
+  });
+
+  it("permet d'ajouter puis de retirer le nom de famille (chaîne vide)", async () => {
+    const user = await users.seed("nathan");
+
+    const named = await updateProfile.execute(user, { lastName: "  Le  Goff " });
+    expect(named.lastName).toBe("Le Goff");
+
+    const unnamed = await updateProfile.execute(named, { lastName: "" });
+    expect(unnamed.lastName).toBeNull();
+  });
+
+  it("refuse un nom invalide sans modifier la ligne", async () => {
+    const user = await users.seed("nathan", { lastName: "Dupont" });
+
+    await expect(updateProfile.execute(user, { lastName: "Dupont2" })).rejects.toThrow(ValidationError);
+    expect(users.rows.get(user.id)!.lastName).toBe("Dupont");
   });
 });
 

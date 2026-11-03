@@ -1,10 +1,10 @@
-# ADR-022 — Filtres : filtres couleur choisis sur l'aperçu après la capture, Lenses visage en direct en V2
+# ADR-022 : Filtres : filtres couleur choisis sur l'aperçu après la capture, Lenses visage en direct en V2
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
-Les filtres font partie de l'identité de Snapchat, et ADR-001 justifiait déjà le choix du natif par l'accès performant à la caméra « pour les filtres AR ». Aucun ADR ne décidait pourtant comment ils fonctionnent : quel type de filtre, à quel moment il est choisi, et ce qui est réellement envoyé au destinataire — le média brut avec un « filtre à appliquer » à la lecture, ou un média déjà filtré.
+Les filtres font partie de l'identité de Snapchat, et ADR-001 justifiait déjà le choix du natif par l'accès performant à la caméra « pour les filtres AR ». Aucun ADR ne décidait pourtant comment ils fonctionnent : quel type de filtre, à quel moment il est choisi, et ce qui est réellement envoyé au destinataire : le média brut avec un « filtre à appliquer » à la lecture, ou un média déjà filtré.
 
 Snapchat distingue deux familles, qui n'interviennent pas au même moment :
 - les **filtres** (couleur, ambiance) se choisissent **après** la prise, sur l'aperçu, en glissant à gauche ou à droite ;
@@ -40,8 +40,8 @@ Le pipeline de capture et d'envoi existe (ADR-011 : CameraX, cache privé, uploa
 
 ### Négatives
 - **Temps d'attente à l'envoi d'une vidéo filtrée** : le réencodage prend une fraction de la durée de la vidéo (≈ 0,7 s pour 3 s sur un Galaxy A54), affiché « Application du filtre… ». Négligeable pour une photo.
-- La photo filtrée est réencodée en JPEG (qualité 90), d'où une légère perte par rapport à l'original — invisible à l'œil sur un Snap.
-- Un filtre incrusté ne peut plus être retiré par le destinataire, ni modifié après l'envoi — comme dans Snapchat.
+- La photo filtrée est réencodée en JPEG (qualité 90), d'où une légère perte par rapport à l'original, invisible à l'œil sur un Snap.
+- Un filtre incrusté ne peut plus être retiré par le destinataire, ni modifié après l'envoi, comme dans Snapchat.
 - Pas d'événement analytics « filtre utilisé » tant que PostHog (ADR-008) n'est pas intégré.
 
 ## Historique

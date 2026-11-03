@@ -129,6 +129,9 @@ export class RecordingMessageNotifier implements MessageNotifier {
   async snapRetained(senderId: string) {
     this.events.push(`retained→${senderId}`);
   }
+  async typing(recipientId: string, typistId: string) {
+    this.events.push(`typing ${typistId}→${recipientId}`);
+  }
   async snapExpired(participantIds: [string, string]) {
     this.events.push(`expired→${participantIds.join(",")}`);
   }

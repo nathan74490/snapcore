@@ -50,6 +50,9 @@ function toStoryItem(row: StoryItemRow): StoryItem {
     authorId: row.authorId,
     mediaKey: row.mediaKey,
     contentType: row.contentType,
+    thumbnailKey: row.thumbnailKey,
+    latitude: row.latitude,
+    longitude: row.longitude,
     createdAt: row.createdAt,
     expiresAt: row.expiresAt,
   };

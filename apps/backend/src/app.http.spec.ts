@@ -34,7 +34,7 @@ describe("API HTTP", () => {
     const res = await request(app.getHttpServer())
       .post("/auth/register")
       .set("Authorization", `Bearer ${token}`)
-      .send({ username });
+      .send({ username, firstName: username.charAt(0).toUpperCase() + username.slice(1), birthday: "2000-01-01" });
     expect(res.status).toBe(200);
     return { token, id: res.body.id as string };
   };
@@ -120,7 +120,7 @@ describe("API HTTP", () => {
 
     const me = await request(app.getHttpServer()).get("/me").set("Authorization", `Bearer ${token}`).expect(200);
 
-    expect(me.body).toMatchObject({ username: "nathan", email: "nathan@example.com", subscriptionTier: "free" });
+    expect(me.body).toMatchObject({ username: "nathan", firstName: "Nathan", email: "nathan@example.com", subscriptionTier: "free" });
     expect(me.body.firebaseUid).toBeUndefined();
   });
 
@@ -159,7 +159,7 @@ describe("API HTTP", () => {
     const friends = await http.get("/friendships").set("Authorization", `Bearer ${alice.token}`).expect(200);
 
     expect(friends.body).toEqual([
-      expect.objectContaining({ status: "ACCEPTED", user: { id: bob.id, username: "bob" } }),
+      expect.objectContaining({ status: "ACCEPTED", user: { id: bob.id, username: "bob", firstName: "Bob" } }),
     ]);
   });
 
@@ -170,7 +170,299 @@ describe("API HTTP", () => {
     await request(app.getHttpServer())
       .post("/auth/register")
       .set("Authorization", `Bearer ${token}`)
-      .send({ username: "ALICE" })
+      .send({ username: "ALICE", firstName: "Alice", birthday: "2000-01-01" })
       .expect(409);
+  });
+
+  it("le prénom est obligatoire à l'inscription et validé", async () => {
+    const token = identity.addAccount("uid-1");
+    const http = request(app.getHttpServer());
+
+    await http.post("/auth/register").set("Authorization", `Bearer ${token}`).send({ username: "nathan", birthday: "2000-01-01" }).expect(400);
+    await http
+      .post("/auth/register")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ username: "nathan", firstName: "N4than", birthday: "2000-01-01" })
+      .expect(400);
+    expect(users.rows.size).toBe(0);
+  });
+
+  it("le prénom est modifiable depuis le profil", async () => {
+    const { token } = await register("uid-1", "nathan");
+
+    const res = await request(app.getHttpServer())
+      .patch("/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ firstName: "Jean-Marc" })
+      .expect(200);
+
+    expect(res.body).toMatchObject({ username: "nathan", firstName: "Jean-Marc" });
+  });
+
+  describe("onboarding : nom, date de naissance, pseudo, contacts (ADR-029)", () => {
+    it("nom de famille et date de naissance enregistrés à l'inscription, visibles dans /me seulement", async () => {
+      const token = identity.addAccount("uid-1");
+      const http = request(app.getHttpServer());
+
+      const registered = await http
+        .post("/auth/register")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ username: "nathan", firstName: "Nathan", lastName: "Boudet", birthday: "2004-05-12" })
+        .expect(200);
+      expect(registered.body).toMatchObject({ firstName: "Nathan", lastName: "Boudet", birthday: "2004-05-12" });
+
+      const me = await http.get("/me").set("Authorization", `Bearer ${token}`).expect(200);
+      expect(me.body).toMatchObject({ lastName: "Boudet", birthday: "2004-05-12" });
+
+      const alice = await register("uid-a", "alice");
+      const search = await http.get("/users/search?username=nathan").set("Authorization", `Bearer ${alice.token}`).expect(200);
+      expect(search.body).not.toHaveProperty("lastName");
+      expect(search.body).not.toHaveProperty("birthday");
+    });
+
+    it("la date de naissance est obligatoire ; moins de 13 ans → 400 avec le message attendu", async () => {
+      const token = identity.addAccount("uid-1");
+      const http = request(app.getHttpServer());
+      const year = new Date().getUTCFullYear();
+
+      await http.post("/auth/register").set("Authorization", `Bearer ${token}`).send({ username: "nathan", firstName: "Nathan" }).expect(400);
+      const tooYoung = await http
+        .post("/auth/register")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ username: "nathan", firstName: "Nathan", birthday: `${year - 12}-01-01` })
+        .expect(400);
+      expect(tooYoung.body.message).toBe("Tu dois avoir au moins 13 ans pour t'inscrire");
+      await http
+        .post("/auth/register")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ username: "nathan", firstName: "Nathan", birthday: "2001-02-30" })
+        .expect(400);
+      expect(users.rows.size).toBe(0);
+    });
+
+    it("PATCH /me : nom de famille ajouté puis retiré (chaîne vide), absent de /me une fois retiré", async () => {
+      const { token } = await register("uid-1", "nathan");
+      const http = request(app.getHttpServer());
+
+      await http.patch("/me").set("Authorization", `Bearer ${token}`).send({ lastName: "Boudet" }).expect(200, /"lastName":"Boudet"/);
+      const cleared = await http.patch("/me").set("Authorization", `Bearer ${token}`).send({ lastName: "" }).expect(200);
+      expect(cleared.body).not.toHaveProperty("lastName");
+      expect(cleared.body.birthday).toBe("2000-01-01");
+    });
+
+    it("GET /users/username-availability est public et ne renvoie que disponible / raison", async () => {
+      await register("uid-1", "nathan");
+      const http = request(app.getHttpServer());
+
+      await http.get("/users/username-availability?username=NaThAn").expect(200, { available: false, reason: "Ce pseudo est déjà pris" });
+      await http.get("/users/username-availability?username=marie").expect(200, { available: true });
+      const invalid = await http.get("/users/username-availability?username=1abc").expect(200);
+      expect(invalid.body).toMatchObject({ available: false, reason: expect.stringContaining("Pseudo invalide") });
+      await http.get("/users/username-availability").expect(400);
+    });
+
+    it("POST /users/contacts/match : authentifié, borné, renvoie la chaîne envoyée et la relation", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      const http = request(app.getHttpServer());
+      await http.patch("/me").set("Authorization", `Bearer ${bob.token}`).send({ phoneNumber: "+33612345678" }).expect(200);
+
+      await http.post("/users/contacts/match").send({ phoneNumbers: ["0612345678"] }).expect(401);
+      const auth = { Authorization: `Bearer ${alice.token}` };
+      await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: [] }).expect(400);
+      await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: Array(2001).fill("0612345678") }).expect(400);
+      await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: ["0".repeat(33)] }).expect(400);
+      await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: [612345678] }).expect(400);
+
+      const res = await http.post("/users/contacts/match").set(auth).send({ phoneNumbers: ["06 12 34 56 78", "123"] }).expect(200);
+      expect(res.body).toEqual([
+        { phoneNumber: "06 12 34 56 78", user: { id: bob.id, username: "bob", firstName: "Bob" }, relation: "NONE" },
+      ]);
+    });
+  });
+
+  describe("avatars dessinés (ADR-028)", () => {
+    const AVATAR = {
+      top: "bob",
+      hairColor: "724133",
+      skinColor: "ffdbb4",
+      eyes: "happy",
+      eyebrows: "defaultNatural",
+      mouth: "smile",
+      facialHair: "none",
+      accessories: "round",
+      clothing: "overall",
+      clothesColor: "ffafb9",
+      backgroundColor: "fffaa1",
+    };
+
+    it("PUT /me/avatar enregistre, l'avatar apparaît dans /me et chez les amis ; DELETE le retire (204)", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      const http = request(app.getHttpServer());
+      const sent = await http.post("/friendships/requests").set("Authorization", `Bearer ${alice.token}`).send({ username: "bob" });
+      await http.post(`/friendships/requests/${sent.body.friendshipId}/accept`).set("Authorization", `Bearer ${bob.token}`).expect(200);
+
+      const saved = await http.put("/me/avatar").set("Authorization", `Bearer ${alice.token}`).send({ options: AVATAR }).expect(200);
+      expect(saved.body).toMatchObject({ id: alice.id, username: "alice", avatar: AVATAR });
+
+      await http.get("/me").set("Authorization", `Bearer ${alice.token}`).expect(200).expect((res) => expect(res.body.avatar).toEqual(AVATAR));
+      const friends = await http.get("/friendships").set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect(friends.body[0].user).toEqual({ id: alice.id, username: "alice", firstName: "Alice", avatar: AVATAR });
+      const conversations = await http.get("/conversations").set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect(conversations.body[0].friend.avatar).toEqual(AVATAR);
+
+      await http.delete("/me/avatar").set("Authorization", `Bearer ${alice.token}`).expect(204, "");
+      const me = await http.get("/me").set("Authorization", `Bearer ${alice.token}`).expect(200);
+      expect(me.body).not.toHaveProperty("avatar");
+    });
+
+    it("PUT /me/avatar refuse des options invalides (400) et exige un compte", async () => {
+      const { token } = await register("uid-1", "nathan");
+      const http = request(app.getHttpServer());
+      const put = (body: object) => http.put("/me/avatar").set("Authorization", `Bearer ${token}`).send(body);
+
+      await put({ options: { ...AVATAR, mouth: "vomit" } }).expect(400);
+      await put({ options: { ...AVATAR, seed: "x" } }).expect(400);
+      await put({ options: { top: "bob" } }).expect(400);
+      await put({ options: "bob" }).expect(400);
+      await put({ ...AVATAR }).expect(400);
+      await http.put("/me/avatar").send({ options: AVATAR }).expect(401);
+      expect([...users.rows.values()][0].avatar).toBeNull();
+    });
+
+    it("GET /avatars/catalog exige un ID token et renvoie défauts et valeurs", async () => {
+      const { token } = await register("uid-1", "nathan");
+      await request(app.getHttpServer()).get("/avatars/catalog").expect(401);
+
+      const res = await request(app.getHttpServer()).get("/avatars/catalog").set("Authorization", `Bearer ${token}`).expect(200);
+      expect(res.body.defaults).toMatchObject({ top: "shortFlat", facialHair: "none", backgroundColor: "b6e3f4" });
+      expect(res.body.options.top[0]).toBe("none");
+      expect(res.body.options.mouth).not.toContain("vomit");
+      expect(Object.keys(res.body.options)).toHaveLength(11);
+    });
+
+    it("GET /avatars/avataaars.png est public, PNG immuable en cache ; paramètre invalide → 400", async () => {
+      const http = request(app.getHttpServer());
+
+      const res = await http.get("/avatars/avataaars.png").query({ ...AVATAR, size: 128 }).buffer(true).expect(200);
+      expect(res.headers["content-type"]).toBe("image/png");
+      expect(res.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+      const png = res.body as Buffer;
+      expect(png.subarray(1, 4).toString()).toBe("PNG");
+      expect(png.readUInt32BE(16)).toBe(128);
+
+      await http.get("/avatars/avataaars.png").query({ ...AVATAR, size: 1024 }).expect(400);
+      await http.get("/avatars/avataaars.png").query({ ...AVATAR, mouth: "vomit" }).expect(400);
+      await http.get("/avatars/avataaars.png").query({ ...AVATAR, userId: "x" }).expect(400);
+      await http.get("/avatars/avataaars.png").query({ top: "bob" }).expect(400);
+    });
+  });
+
+  describe("Snap Map (ADR-031)", () => {
+    const befriend = async (a: { token: string }, b: { token: string }, username: string) => {
+      const http = request(app.getHttpServer());
+      const sent = await http.post("/friendships/requests").set("Authorization", `Bearer ${a.token}`).send({ username });
+      await http.post(`/friendships/requests/${sent.body.friendshipId}/accept`).set("Authorization", `Bearer ${b.token}`).expect(200);
+    };
+
+    const publishStory = async (token: string, extra: object) => {
+      const http = request(app.getHttpServer());
+      const ticket = await http
+        .post("/media/uploads")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ purpose: "STORY_PHOTO", contentType: "image/jpeg", contentLength: 1000 })
+        .expect(201);
+      world.storage.simulateUpload(`tmp/${ticket.body.uploadId}`, 1000, "image/jpeg");
+      return http.post("/stories").set("Authorization", `Bearer ${token}`).send({ uploadId: ticket.body.uploadId, contentType: "PHOTO", ...extra });
+    };
+
+    it("réglages : GHOST par défaut, validation du corps, liste filtrée aux amis", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      const carol = await register("uid-c", "carol");
+      await befriend(alice, bob, "bob");
+      const http = request(app.getHttpServer());
+      const auth = { Authorization: `Bearer ${alice.token}` };
+
+      await http.get("/me/location-sharing").expect(401);
+      await http.get("/me/location-sharing").set(auth).expect(200, { mode: "GHOST", friendIds: [] });
+
+      const saved = await http
+        .put("/me/location-sharing")
+        .set(auth)
+        .send({ mode: "FRIENDS_EXCEPT", friendIds: [bob.id, bob.id, carol.id] })
+        .expect(200);
+      expect(saved.body).toEqual({ mode: "FRIENDS_EXCEPT", friendIds: [bob.id] });
+      await http.get("/me/location-sharing").set(auth).expect(200, saved.body);
+
+      await http.put("/me/location-sharing").set(auth).send({ mode: "INVISIBLE", friendIds: [] }).expect(400);
+      await http.put("/me/location-sharing").set(auth).send({ mode: "GHOST" }).expect(400);
+      await http.put("/me/location-sharing").set(auth).send({ mode: "GHOST", friendIds: [1] }).expect(400);
+      const tooMany = Array.from({ length: 2001 }, (_, i) => `id-${i}`);
+      await http.put("/me/location-sharing").set(auth).send({ mode: "ONLY_FRIENDS", friendIds: tooMany }).expect(400);
+    });
+
+    it("position : 204, ignorée en mode fantôme, visible des amis sur GET /map/friends", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      await befriend(alice, bob, "bob");
+      const http = request(app.getHttpServer());
+      const auth = { Authorization: `Bearer ${alice.token}` };
+      const position = { latitude: 45.899247, longitude: 6.129384 };
+
+      await http.put("/me/location").set(auth).send({ latitude: 91, longitude: 0 }).expect(400);
+      await http.put("/me/location").set(auth).send({ latitude: 45 }).expect(400);
+      await http.put("/me/location").set(auth).send({ latitude: "45", longitude: "6" }).expect(400);
+
+      await http.put("/me/location").set(auth).send(position).expect(204);
+      expect(world.locations.entries.has(alice.id)).toBe(false); // mode fantôme par défaut
+
+      await http.put("/me/location-sharing").set(auth).send({ mode: "ALL_FRIENDS", friendIds: [] }).expect(200);
+      await http.put("/me/location").set(auth).send(position).expect(204);
+
+      const map = await http.get("/map/friends").set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect(map.body).toEqual([
+        { user: { id: alice.id, username: "alice", firstName: "Alice" }, ...position, updatedAt: expect.any(String) },
+      ]);
+      await http.get("/map/friends").set(auth).expect(200, []);
+
+      await http.put("/me/location-sharing").set(auth).send({ mode: "GHOST", friendIds: [] }).expect(200);
+      expect(world.locations.entries.has(alice.id)).toBe(false);
+      await http.get("/map/friends").set("Authorization", `Bearer ${bob.token}`).expect(200, []);
+    });
+
+    it("stories : coordonnées facultatives (les deux ou aucune), GET /map/stories", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      await befriend(alice, bob, "bob");
+      const http = request(app.getHttpServer());
+
+      expect((await publishStory(alice.token, { latitude: 45.9 })).status).toBe(400);
+      expect((await publishStory(alice.token, { latitude: 45.9, longitude: 200 })).status).toBe(400);
+      expect((await publishStory(alice.token, { latitude: null, longitude: null })).status).toBe(201); // null = absent
+
+      await http.put("/me/location-sharing").set("Authorization", `Bearer ${alice.token}`).send({ mode: "ALL_FRIENDS", friendIds: [] }).expect(200);
+      const published = await publishStory(alice.token, { latitude: 45.899247, longitude: 6.129384 });
+      expect(published.status).toBe(201);
+      await publishStory(alice.token, {}); // sans position
+
+      const map = await http.get("/map/stories").set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect(map.body).toEqual([
+        {
+          id: published.body.id,
+          author: { id: alice.id, username: "alice", firstName: "Alice" },
+          contentType: "PHOTO",
+          latitude: 45.899,
+          longitude: 6.129,
+          createdAt: published.body.createdAt,
+          expiresAt: published.body.expiresAt,
+          viewed: false,
+        },
+      ]);
+
+      await http.post(`/stories/${published.body.id}/view`).set("Authorization", `Bearer ${bob.token}`).expect(200);
+      expect((await http.get("/map/stories").set("Authorization", `Bearer ${bob.token}`)).body[0].viewed).toBe(true);
+    });
   });
 });

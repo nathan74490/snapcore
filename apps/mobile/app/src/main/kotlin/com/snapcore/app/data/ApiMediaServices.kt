@@ -1,6 +1,7 @@
 package com.snapcore.app.data
 
 import com.snapcore.app.data.api.ApiException
+import com.snapcore.app.data.api.ContactsMatchRequest
 import com.snapcore.app.data.api.FriendRequestBody
 import com.snapcore.app.data.api.FriendshipItemDto
 import com.snapcore.app.data.api.PublicProfileDto
@@ -9,7 +10,9 @@ import com.snapcore.app.data.api.SendSnapRequest
 import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.data.api.UploadRequest
 import com.snapcore.app.data.api.apiCall
+import com.snapcore.app.domain.ContactMatch
 import com.snapcore.app.domain.Friend
+import com.snapcore.app.domain.GeoPoint
 import com.snapcore.app.domain.FriendRequest
 import com.snapcore.app.domain.FriendsService
 import com.snapcore.app.domain.MediaUploader
@@ -54,8 +57,8 @@ class ApiSnapService(private val api: SnapCoreApi) : SnapService {
         apiCall { api.sendSnap(friendId, SendSnapRequest(uploadId, messageContentType)) }
     }
 
-    override suspend fun publishStory(uploadId: String, storyContentType: String) {
-        apiCall { api.publishStory(PublishStoryRequest(uploadId, storyContentType)) }
+    override suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String?, location: GeoPoint?) {
+        apiCall { api.publishStory(PublishStoryRequest(uploadId, storyContentType, thumbnailUploadId, location?.latitude, location?.longitude)) }
     }
 }
 
@@ -67,7 +70,7 @@ class ApiFriendsService(private val api: SnapCoreApi) : FriendsService {
     override suspend fun search(username: String): UserSearchResult {
         val result = apiCall { api.searchUser(username) }
         return UserSearchResult(
-            Friend(result.id, result.username, result.profilePhotoUrl),
+            Friend(result.id, result.username, result.profilePhotoUrl, result.firstName, result.avatar?.let(::avatarImageUrl)),
             runCatching { Relation.valueOf(result.relation) }.getOrDefault(Relation.NONE),
         )
     }
@@ -82,7 +85,15 @@ class ApiFriendsService(private val api: SnapCoreApi) : FriendsService {
 
     override suspend fun decline(friendshipId: String) = apiCall { api.declineFriendRequest(friendshipId) }
 
+    // Le backend borne la requête à 2000 numéros : un grand carnet d'adresses part en plusieurs fois.
+    override suspend fun matchContacts(phoneNumbers: List<String>): List<ContactMatch> =
+        phoneNumbers.distinct().chunked(2000).flatMap { chunk ->
+            apiCall { api.matchContacts(ContactsMatchRequest(chunk)) }.map {
+                ContactMatch(it.phoneNumber, it.user.toFriend(), runCatching { Relation.valueOf(it.relation) }.getOrDefault(Relation.NONE))
+            }
+        }
+
     private fun toRequest(item: FriendshipItemDto) = FriendRequest(item.friendshipId, item.user.toFriend())
 }
 
-private fun PublicProfileDto.toFriend() = Friend(id, username, profilePhotoUrl)
+internal fun PublicProfileDto.toFriend() = Friend(id, username, profilePhotoUrl, firstName, avatar?.let(::avatarImageUrl))

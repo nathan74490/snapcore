@@ -13,6 +13,10 @@ data class ChatMessage(
     val createdAt: Instant,
     val openedAt: Instant?,
     val mediaPurged: Boolean,
+    /** Chat affiché avant la réponse du backend (interface optimiste), jamais reçu de l'API. */
+    val pending: Boolean = false,
+    /** Snap dont l'envoi en arrière-plan a échoué : un appui le relance. */
+    val failed: Boolean = false,
 ) {
     val isSnap get() = type != ChatContentType.TEXT
     fun isFrom(userId: String) = senderId == userId
@@ -47,6 +51,8 @@ fun statusOf(message: ChatMessage, myId: String): MessageStatus {
         ChatContentType.TEXT -> StatusColor.BLUE
     }
     val label = when {
+        message.failed -> "Échec de l'envoi · appuie pour réessayer"
+        message.pending -> "Envoi…"
         sent && opened -> "Ouvert"
         sent -> "Envoyé"
         opened -> "Reçu"
@@ -74,5 +80,7 @@ interface ChatService {
     suspend fun messages(friendId: String): List<ChatMessage>
     suspend fun sendText(friendId: String, content: String): ChatMessage
     suspend fun markRead(friendId: String)
+    /** Signale à l'ami qu'on écrit (ADR-027) ; best-effort, rien n'est enregistré. */
+    suspend fun sendTyping(friendId: String)
     suspend fun openSnap(message: ChatMessage): SnapOpenResult
 }

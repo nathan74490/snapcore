@@ -1,7 +1,7 @@
-# ADR-004 — Prisma comme ORM du backend et du backoffice
+# ADR-004 : Prisma comme ORM du backend et du backoffice
 
 ## Statut
-Proposé
+Accepté
 
 ## Contexte
 Le backend NestJS et le backoffice Next.js doivent tous deux accéder à PostgreSQL, avec des types cohérents entre les deux applications, dans un contexte d'apprentissage où la simplicité de prise en main compte autant que la rigueur d'architecture.

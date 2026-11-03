@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.SnapCorePlus
+import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
@@ -61,8 +62,8 @@ private val DATE = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRENCH)
 
 // Paywall SnapCore+ (ADR-025). `returnedFromCheckout` : ouvert par le lien de retour du paiement.
 @Composable
-fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountChanged: (Account) -> Unit) {
-    val vm = containerViewModel { PaywallViewModel(it.accounts, it.subscriptions) }
+fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountChanged: (Account) -> Unit, initialAccount: Account? = null) {
+    val vm = containerViewModel { PaywallViewModel(it.accounts, it.subscriptions, analytics = it.analytics, initial = initialAccount, experiments = it.experiments) }
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -153,15 +154,12 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                     Text("Activation de SnapCore+…", color = Color.White, modifier = Modifier.padding(top = 12.dp))
                 }
                 else -> {
-                    Button(
-                        onClick = vm::subscribe,
-                        enabled = !state.opening,
-                        colors = ButtonDefaults.buttonColors(containerColor = SnapColors.Yellow, contentColor = SnapColors.Black),
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                    ) {
-                        if (state.opening) CircularProgressIndicator(color = SnapColors.Black, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                        else Text("S'abonner — ${SnapCorePlus.PRICE_LABEL}", fontWeight = FontWeight.Bold)
-                    }
+                    // Button 9:43, style Yellow : pilule 50pt, texte #16191C.
+                    // Libellé soumis à l'expérience A/B « paywall-cta » (ADR-030) ; le prix reste affiché plus haut.
+                    PrimaryButton(
+                        state.cta.label, vm::subscribe,
+                        loading = state.opening, container = SnapColors.Yellow, content = SnapColors.Ink,
+                    )
                     Text(
                         "Paiement sécurisé dans le navigateur. Mode test : aucun débit réel.",
                         color = Color.White.copy(alpha = 0.7f),

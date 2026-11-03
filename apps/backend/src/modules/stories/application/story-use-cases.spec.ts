@@ -1,11 +1,14 @@
 import { NotFoundError, ValidationError } from "../../../shared/domain/errors";
 import { FixedClock, RecordingFriendshipNotifier } from "../../../test/fakes";
+import { noAnalytics } from "../../../shared/domain/analytics";
 import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
+import { InMemoryLocationSharingRepository } from "../../../test/in-memory-location";
 import { InMemoryObjectStorage, InMemoryUploadTicketStore, silentLogger } from "../../../test/in-memory-media";
 import { InMemoryStoryRepository, InMemoryStoryViews, RecordingStoryPurgeScheduler } from "../../../test/in-memory-stories";
 import { InMemoryUserRepository } from "../../../test/in-memory-user.repository";
 import { FriendshipUseCases } from "../../friendships/application/friendship-use-cases";
 import type { UserAccount } from "../../identity/domain/user";
+import { LocationVisibility } from "../../location/application/location-visibility";
 import { RequestUpload } from "../../media/application/request-upload";
 import { UploadPromoter } from "../../media/application/upload-promoter";
 import { StoryUseCases } from "./story-use-cases";
@@ -22,6 +25,7 @@ describe("StoryUseCases (ADR-013)", () => {
   let storage: InMemoryObjectStorage;
   let requestUpload: RequestUpload;
   let scheduler: RecordingStoryPurgeScheduler;
+  let sharing: InMemoryLocationSharingRepository;
   let useCases: StoryUseCases;
   let alice: UserAccount;
   let bob: UserAccount;
@@ -38,6 +42,7 @@ describe("StoryUseCases (ADR-013)", () => {
     const tickets = new InMemoryUploadTicketStore();
     requestUpload = new RequestUpload(storage, tickets, clock);
     scheduler = new RecordingStoryPurgeScheduler();
+    sharing = new InMemoryLocationSharingRepository(users);
     useCases = new StoryUseCases(
       stories,
       views,
@@ -48,6 +53,8 @@ describe("StoryUseCases (ADR-013)", () => {
       scheduler,
       clock,
       silentLogger,
+      noAnalytics,
+      new LocationVisibility(sharing),
     );
     alice = await users.seed("alice");
     bob = await users.seed("bob");
@@ -60,13 +67,28 @@ describe("StoryUseCases (ADR-013)", () => {
     await friendships.accept(b, friendshipId);
   }
 
-  async function publish(author = alice, contentType: "PHOTO" | "VIDEO" = "PHOTO") {
+  async function publish(
+    author = alice,
+    contentType: "PHOTO" | "VIDEO" = "PHOTO",
+    thumbnailUploadId?: string,
+    coordinates: { latitude?: number; longitude?: number } = {},
+  ) {
     const purpose = contentType === "PHOTO" ? "STORY_PHOTO" : "STORY_VIDEO";
     const type = contentType === "PHOTO" ? "image/jpeg" : "video/mp4";
     const { uploadId } = await requestUpload.execute(author, { purpose, contentType: type, contentLength: 1000 });
     storage.simulateUpload(`tmp/${uploadId}`, 1000, type);
-    return useCases.publish(author, { uploadId, contentType });
+    return useCases.publish(author, { uploadId, contentType, thumbnailUploadId, ...coordinates });
   }
+
+  // Vignette fabriquée par l'app et envoyée via POST /media/uploads (ADR-026).
+  async function uploadThumbnail(author = alice) {
+    const { uploadId } = await requestUpload.execute(author, { purpose: "STORY_THUMBNAIL", contentType: "image/jpeg", contentLength: 500 });
+    storage.simulateUpload(`tmp/${uploadId}`, 500, "image/jpeg");
+    return uploadId;
+  }
+
+  const publishWithThumbnail = async (author = alice) => publish(author, "PHOTO", await uploadThumbnail(author));
+  const thumbnailObjects = () => [...storage.objects.keys()].filter((key) => key.includes("story-thumbnails/"));
 
   const advance = (ms: number) => {
     clock.current = new Date(clock.current.getTime() + ms);
@@ -177,6 +199,121 @@ describe("StoryUseCases (ADR-013)", () => {
     await expect(useCases.remove(bob, item.id)).rejects.toThrow(NotFoundError);
   });
 
+  describe("vignettes (ADR-026)", () => {
+    it("publie avec vignette : copiée en story-thumbnails/<id>, clé en base, URL renvoyée", async () => {
+      const thumbnailUploadId = await uploadThumbnail();
+
+      const item = await publish(alice, "VIDEO", thumbnailUploadId);
+
+      expect(stories.rows.get(item.id)!.thumbnailKey).toBe(`story-thumbnails/${item.id}`);
+      expect(storage.has({ area: "private", key: `story-thumbnails/${item.id}` })).toBe(true);
+      expect(storage.has({ area: "private", key: `tmp/${thumbnailUploadId}` })).toBe(false);
+      expect(item.thumbnailUrl).toBe(`https://r2.test/story-thumbnails/${item.id}?get&expires=900`);
+    });
+
+    it.each([
+      ["un upload inconnu", async () => "00000000-0000-4000-8000-000000000000"],
+      ["un upload d'un autre usage", async () => {
+        const { uploadId } = await requestUpload.execute(alice, { purpose: "STORY_PHOTO", contentType: "image/jpeg", contentLength: 500 });
+        storage.simulateUpload(`tmp/${uploadId}`, 500, "image/jpeg");
+        return uploadId;
+      }],
+      ["un fichier jamais envoyé", async () => {
+        const { uploadId } = await requestUpload.execute(alice, { purpose: "STORY_THUMBNAIL", contentType: "image/jpeg", contentLength: 500 });
+        return uploadId;
+      }],
+      ["un fichier plus gros que demandé", async () => {
+        const { uploadId } = await requestUpload.execute(alice, { purpose: "STORY_THUMBNAIL", contentType: "image/jpeg", contentLength: 500 });
+        storage.simulateUpload(`tmp/${uploadId}`, 600 * 1024, "image/jpeg");
+        return uploadId;
+      }],
+      ["l'upload d'un autre utilisateur", async () => uploadThumbnail(bob)],
+    ])("une vignette invalide (%s) n'empêche pas la publication", async (_label, thumbnail) => {
+      const item = await publish(alice, "PHOTO", await thumbnail());
+
+      expect(stories.rows.get(item.id)!.thumbnailKey).toBeNull();
+      expect(item).not.toHaveProperty("thumbnailUrl");
+      expect(storage.has({ area: "private", key: `stories/${item.id}` })).toBe(true);
+      expect(thumbnailObjects()).toEqual([]);
+    });
+
+    it("si le média principal échoue, la vignette déjà copiée est supprimée", async () => {
+      const thumbnailUploadId = await uploadThumbnail();
+
+      await expect(
+        useCases.publish(alice, { uploadId: "00000000-0000-4000-8000-000000000000", contentType: "PHOTO", thumbnailUploadId }),
+      ).rejects.toThrow(NotFoundError);
+
+      expect(stories.rows.size).toBe(0);
+      expect(thumbnailObjects()).toEqual([]);
+    });
+
+    it("le fil montre la vignette du premier élément non vu, sinon du plus récent", async () => {
+      const first = await publishWithThumbnail();
+      advance(MINUTE);
+      await publish(); // sans vignette
+      advance(MINUTE);
+      const third = await publishWithThumbnail();
+      const thumbnailOf = async () => (await useCases.feed(bob))[0].thumbnailUrl;
+
+      expect(await thumbnailOf()).toContain(`story-thumbnails/${first.id}`);
+      await useCases.view(bob, first.id);
+      expect(await thumbnailOf()).toContain(`story-thumbnails/${third.id}`);
+      await useCases.view(bob, third.id);
+      // Tout est vu (l'élément sans vignette ne compte pas) : le plus récent avec vignette.
+      expect(await thumbnailOf()).toContain(`story-thumbnails/${third.id}?get&expires=900`);
+    });
+
+    it("le fil n'enregistre aucune vue", async () => {
+      const item = await publishWithThumbnail();
+
+      const [entry] = await useCases.feed(bob);
+
+      expect(entry.thumbnailUrl).toBeDefined();
+      expect(views.sets.size).toBe(0);
+      expect(await useCases.mine(alice)).toMatchObject([{ id: item.id, viewCount: 0 }]);
+    });
+
+    it("sans vignette, le champ est absent du fil et de ma story", async () => {
+      await publish();
+
+      const [entry] = await useCases.feed(bob);
+      const [own] = await useCases.mine(alice);
+
+      expect(entry).not.toHaveProperty("thumbnailUrl");
+      expect(own).not.toHaveProperty("thumbnailUrl");
+    });
+
+    it("ma story donne la vignette de chaque élément qui en a une", async () => {
+      const withThumbnail = await publishWithThumbnail();
+      advance(MINUTE);
+      await publish();
+
+      const [first, second] = await useCases.mine(alice);
+
+      expect(first).toMatchObject({ id: withThumbnail.id, thumbnailUrl: `https://r2.test/story-thumbnails/${withThumbnail.id}?get&expires=900` });
+      expect(second).not.toHaveProperty("thumbnailUrl");
+    });
+
+    it("la vignette est supprimée au retrait par l'auteur", async () => {
+      const item = await publishWithThumbnail();
+
+      await useCases.remove(alice, item.id);
+
+      expect(storage.has({ area: "private", key: `story-thumbnails/${item.id}` })).toBe(false);
+    });
+
+    it("la vignette est supprimée par la purge à expiration", async () => {
+      const item = await publishWithThumbnail();
+      advance(24 * HOUR);
+
+      await useCases.runPurgeJob(item.id);
+
+      expect(stories.rows.has(item.id)).toBe(false);
+      expect(storage.has({ area: "private", key: `story-thumbnails/${item.id}` })).toBe(false);
+    });
+  });
+
   describe("purge", () => {
     it("à expiration : média R2, ligne et vues supprimés", async () => {
       const item = await publish();
@@ -210,6 +347,87 @@ describe("StoryUseCases (ADR-013)", () => {
       await useCases.sweepOverdue();
 
       expect(scheduler.recovered).toEqual([expired.id]);
+    });
+  });
+
+  describe("Snap Map (ADR-031)", () => {
+    const annecy = { latitude: 45.899247, longitude: 6.129384 };
+    const publishAt = (author: UserAccount, coordinates: { latitude?: number; longitude?: number } = annecy, thumbnailUploadId?: string) =>
+      publish(author, "PHOTO", thumbnailUploadId, coordinates);
+    const positionOf = async (id: string) => {
+      const row = (await stories.findById(id))!;
+      return { latitude: row.latitude, longitude: row.longitude };
+    };
+
+    it("publication : position arrondie à 3 décimales si l'auteur partage, ignorée en mode fantôme", async () => {
+      sharing.set(alice.id, "ONLY_FRIENDS");
+      const shared = await publishAt(alice);
+      expect(await positionOf(shared.id)).toEqual({ latitude: 45.899, longitude: 6.129 });
+
+      sharing.set(alice.id, "GHOST");
+      const ghost = await publishAt(alice);
+      expect(await positionOf(ghost.id)).toEqual({ latitude: null, longitude: null });
+      expect(await positionOf((await publish()).id)).toEqual({ latitude: null, longitude: null });
+    });
+
+    it("publication : les deux coordonnées ou aucune, dans les bornes, vérifié avant tout upload", async () => {
+      sharing.set(alice.id, "ALL_FRIENDS");
+      await expect(publishAt(alice, { latitude: 45 })).rejects.toThrow(ValidationError);
+      await expect(publishAt(alice, { longitude: 6 })).rejects.toThrow(ValidationError);
+      await expect(publishAt(alice, { latitude: 91, longitude: 6 })).rejects.toThrow(ValidationError);
+      expect(stories.rows.size).toBe(0);
+    });
+
+    it("carte : éléments géolocalisés visibles des amis qui me rendent leur position visible", async () => {
+      await befriend(alice, carol);
+      sharing.set(alice.id, "ALL_FRIENDS");
+      sharing.set(carol.id, "ALL_FRIENDS");
+      const thumbnailUploadId = await uploadThumbnail(alice);
+      const located = await publishAt(alice, annecy, thumbnailUploadId);
+      await publish(alice); // sans position : jamais sur la carte
+      await publishAt(carol); // carol n'est pas amie de bob
+
+      const map = await useCases.mapStories(bob);
+
+      expect(map).toEqual([
+        {
+          id: located.id,
+          author: { id: alice.id, username: "alice", firstName: "Alice" },
+          contentType: "PHOTO",
+          latitude: 45.899,
+          longitude: 6.129,
+          createdAt: located.createdAt,
+          expiresAt: located.expiresAt,
+          thumbnailUrl: `https://r2.test/story-thumbnails/${located.id}?get&expires=900`,
+          viewed: false,
+        },
+      ]);
+      expect(await views.viewers(located.id)).toEqual([]); // la carte ne compte aucune vue (ADR-026)
+
+      await useCases.view(bob, located.id);
+      expect((await useCases.mapStories(bob))[0].viewed).toBe(true);
+    });
+
+    it("carte : règle évaluée à la lecture (mode fantôme, liste, blocage, expiration)", async () => {
+      sharing.set(alice.id, "ALL_FRIENDS");
+      const located = await publishAt(alice);
+      const mapOfBob = async () => (await useCases.mapStories(bob)).map((story) => story.id);
+      expect(await mapOfBob()).toEqual([located.id]);
+
+      sharing.set(alice.id, "GHOST");
+      expect(await mapOfBob()).toEqual([]);
+      sharing.set(alice.id, "FRIENDS_EXCEPT", [bob.id]);
+      expect(await mapOfBob()).toEqual([]);
+      sharing.set(alice.id, "ONLY_FRIENDS", [bob.id]);
+      expect(await mapOfBob()).toEqual([located.id]);
+
+      advance(24 * HOUR);
+      expect(await mapOfBob()).toEqual([]);
+      advance(-24 * HOUR);
+
+      await friendships.block(bob, alice.id);
+      expect(await mapOfBob()).toEqual([]);
+      expect(await useCases.mapStories(alice)).toEqual([]); // jamais ses propres stories
     });
   });
 });

@@ -8,6 +8,11 @@
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
     <!-- Notifications push (ADR-018), demandée à l'exécution depuis Android 13. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Retrouver ses amis par leurs numéros, à l'inscription, après accord explicite (ADR-029). -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Snap Map (ADR-031) : position pendant l'utilisation de l'app seulement, jamais en arrière-plan. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
         android:name=".SnapCoreApplication"

@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { ANALYTICS, type Analytics } from "../../shared/domain/analytics";
 import { CLOCK, type Clock } from "../../shared/domain/clock";
 import { USER_REPOSITORY, type UserRepository } from "../identity/application/ports/user.repository";
 import { IdentityModule } from "../identity/identity.module";
@@ -23,13 +24,14 @@ import { FriendshipsController } from "./interface/http/friendships.controller";
     },
     {
       provide: FriendshipUseCases,
-      inject: [FRIENDSHIP_REPOSITORY, USER_REPOSITORY, FRIENDSHIP_NOTIFIER, CLOCK],
+      inject: [FRIENDSHIP_REPOSITORY, USER_REPOSITORY, FRIENDSHIP_NOTIFIER, CLOCK, ANALYTICS],
       useFactory: (
         friendships: FriendshipRepository,
         users: UserRepository,
         notifier: FriendshipNotifier,
         clock: Clock,
-      ) => new FriendshipUseCases(friendships, users, notifier, clock),
+        analytics: Analytics,
+      ) => new FriendshipUseCases(friendships, users, notifier, clock, analytics),
     },
   ],
   exports: [FRIENDSHIP_REPOSITORY],

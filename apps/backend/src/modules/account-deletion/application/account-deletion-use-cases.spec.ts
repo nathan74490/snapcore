@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { FakeIdentityProvider, FixedClock } from "../../../test/fakes";
 import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "../../../test/in-memory-account-deletion";
 import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
+import { InMemoryLocationStore } from "../../../test/in-memory-location";
 import { InMemoryObjectStorage, silentLogger } from "../../../test/in-memory-media";
 import { InMemoryMessageRepository } from "../../../test/in-memory-messages";
 import { RecordingRealtime } from "../../../test/in-memory-notifications";
@@ -24,6 +25,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
   let identity: FakeIdentityProvider;
   let storage: InMemoryObjectStorage;
   let realtime: RecordingRealtime;
+  let locations: InMemoryLocationStore;
   let steps: string[];
   let useCases: AccountDeletionUseCases;
   let alice: UserAccount;
@@ -39,6 +41,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     identity = new FakeIdentityProvider();
     storage = new InMemoryObjectStorage();
     realtime = new RecordingRealtime();
+    locations = new InMemoryLocationStore();
     steps = [];
     const subscriptions: SubscriptionCanceller = { cancelFor: async () => void steps.push("abonnement") };
     const deleteAccount = identity.deleteAccount.bind(identity);
@@ -56,12 +59,14 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
       realtime,
       new FixedClock(),
       silentLogger,
+      locations,
     );
     alice = await users.seed("alice", { profilePhotoUrl: urls.urlFor("profiles/alice/photo") });
     bob = await users.seed("bob");
   });
 
-  // Données d'Alice : un Snap envoyé, un Snap reçu (déjà purgé), un Chat texte, une story, sa photo.
+  // Données d'Alice : un Snap envoyé, un Snap reçu (déjà purgé), un Chat texte, une story avec
+  // vignette (ADR-026), une story sans vignette, sa photo.
   async function seedAliceData() {
     const snap = async (from: UserAccount, to: UserAccount, mediaKey: string | null) => {
       const id = randomUUID();
@@ -80,15 +85,21 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     await snap(alice, bob, "messages/sent");
     await snap(bob, alice, "messages/received");
     await snap(alice, bob, null);
-    storage.simulateUpload("stories/s1", 10, "image/jpeg");
-    await stories.create({
-      id: "s1",
-      authorId: alice.id,
-      mediaKey: "stories/s1",
-      contentType: "PHOTO",
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 1000),
-    });
+    for (const [id, thumbnailKey] of [["s1", "story-thumbnails/s1"], ["s2", null]] as const) {
+      storage.simulateUpload(`stories/${id}`, 10, "image/jpeg");
+      if (thumbnailKey) storage.simulateUpload(thumbnailKey, 10, "image/jpeg");
+      await stories.create({
+        id,
+        authorId: alice.id,
+        mediaKey: `stories/${id}`,
+        contentType: "PHOTO",
+        thumbnailKey,
+        latitude: null,
+        longitude: null,
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 1000),
+      });
+    }
   }
 
   function jobContext() {
@@ -113,6 +124,18 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     expect(realtime.disconnected).toEqual([alice.id]);
   });
 
+  it("la demande efface aussi la position de la Snap Map, sans bloquer si Redis échoue (ADR-031)", async () => {
+    await locations.save(alice.id, { latitude: 45.9, longitude: 6.12, updatedAt: new Date() });
+    await useCases.request(alice);
+    expect(locations.entries.has(alice.id)).toBe(false);
+
+    locations.remove = async () => {
+      throw new Error("Redis indisponible");
+    };
+    await expect(useCases.request(bob)).resolves.toBeUndefined();
+    expect(queue.enqueued.map((job) => job.userId)).toContain(bob.id);
+  });
+
   it("exécute les étapes dans l'ordre : abonnement → Firebase → base (clés avant suppression) → R2", async () => {
     await seedAliceData();
     await useCases.request(alice);
@@ -122,7 +145,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
       await originalDelete(object);
     };
 
-    await expect(useCases.runJob(jobContext())).resolves.toEqual({ kind: "deleted", removedObjects: 4 });
+    await expect(useCases.runJob(jobContext())).resolves.toEqual({ kind: "deleted", removedObjects: 6 });
 
     expect(steps).toEqual([
       "abonnement",
@@ -131,6 +154,8 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
       "r2:messages/sent",
       "r2:messages/received",
       "r2:stories/s1",
+      "r2:story-thumbnails/s1",
+      "r2:stories/s2",
       "r2:profiles/alice/photo",
     ]);
     expect(users.rows.has(alice.id)).toBe(false);
@@ -189,7 +214,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     expect(users.rows.has(alice.id)).toBe(false); // étape (c) déjà faite
 
     steps = [];
-    await expect(useCases.runJob(context)).resolves.toEqual({ kind: "deleted", removedObjects: 4 });
+    await expect(useCases.runJob(context)).resolves.toEqual({ kind: "deleted", removedObjects: 6 });
     expect(steps).toEqual([]); // ni abonnement ni Firebase rejoués : la ligne n'existe plus
     expect([...storage.objects.keys()]).toEqual([]);
   });

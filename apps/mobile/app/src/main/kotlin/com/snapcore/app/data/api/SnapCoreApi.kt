@@ -39,6 +39,32 @@ interface SnapCoreApi {
     @DELETE("me/photo")
     suspend fun removeProfilePhoto(): UserDto
 
+    // --- Avatar maison (ADR-028) ---
+    @GET("avatars/catalog")
+    suspend fun avatarCatalog(): AvatarCatalogDto
+
+    @PUT("me/avatar")
+    suspend fun setAvatar(@Body body: SetAvatarRequest): UserDto
+
+    @DELETE("me/avatar")
+    suspend fun removeAvatar()
+
+    // --- Snap Map (ADR-031) ---
+    @PUT("me/location")
+    suspend fun updateLocation(@Body body: LocationDto)
+
+    @GET("me/location-sharing")
+    suspend fun locationSharing(): LocationSharingDto
+
+    @PUT("me/location-sharing")
+    suspend fun updateLocationSharing(@Body body: LocationSharingDto): LocationSharingDto
+
+    @GET("map/friends")
+    suspend fun friendLocations(): List<FriendLocationDto>
+
+    @GET("map/stories")
+    suspend fun mapStories(): List<MapStoryDto>
+
     // --- Médias (ADR-016) ---
     @POST("media/uploads")
     suspend fun requestUpload(@Body body: UploadRequest): UploadInstructions
@@ -62,6 +88,9 @@ interface SnapCoreApi {
 
     @POST("conversations/{friendId}/read")
     suspend fun markRead(@Path("friendId") friendId: String)
+
+    @POST("conversations/{friendId}/typing")
+    suspend fun sendTyping(@Path("friendId") friendId: String)
 
     @POST("messages/{messageId}/view")
     suspend fun viewSnap(@Path("messageId") messageId: String): SnapViewUrlDto
@@ -99,6 +128,12 @@ interface SnapCoreApi {
     @GET("friendships/requests/outgoing")
     suspend fun outgoingRequests(): List<FriendshipItemDto>
 
+    @GET("users/username-availability")
+    suspend fun usernameAvailability(@Query("username") username: String): UsernameAvailabilityDto
+
+    @POST("users/contacts/match")
+    suspend fun matchContacts(@Body body: ContactsMatchRequest): List<ContactMatchDto>
+
     @GET("users/search")
     suspend fun searchUser(@Query("username") username: String): UserSearchResultDto
 
@@ -122,17 +157,44 @@ data class UserDto(
     val phoneNumber: String? = null,
     val email: String? = null,
     val premiumUntil: String? = null,
+    val firstName: String? = null,
+    val avatar: Map<String, String>? = null,
+    val lastName: String? = null,
+    /** YYYY-MM-DD. */
+    val birthday: String? = null,
 )
+
+@Serializable
+data class AvatarCatalogDto(val defaults: Map<String, String>, val options: Map<String, List<String>>)
+
+@Serializable
+data class SetAvatarRequest(val options: Map<String, String>)
 
 @Serializable
 data class CheckoutDto(val url: String)
 
 @Serializable
-data class RegisterRequest(val username: String, val phoneNumber: String? = null)
+data class RegisterRequest(
+    val username: String,
+    val firstName: String,
+    val phoneNumber: String? = null,
+    val lastName: String? = null,
+    /** YYYY-MM-DD (ADR-029). */
+    val birthday: String? = null,
+)
+
+@Serializable
+data class UsernameAvailabilityDto(val available: Boolean, val reason: String? = null)
+
+@Serializable
+data class ContactsMatchRequest(val phoneNumbers: List<String>)
+
+@Serializable
+data class ContactMatchDto(val phoneNumber: String, val user: PublicProfileDto, val relation: String)
 
 // Champs absents = inchangés ; `phoneNumber = null` explicite n'est pas utilisé en V1.
 @Serializable
-data class UpdateProfileRequest(val username: String? = null, val phoneNumber: String? = null)
+data class UpdateProfileRequest(val username: String? = null, val phoneNumber: String? = null, val firstName: String? = null, val lastName: String? = null)
 
 // Corps d'erreur renvoyé par DomainExceptionFilter côté backend.
 @Serializable
@@ -155,16 +217,23 @@ data class UploadInstructions(
 data class SendSnapRequest(val uploadId: String, val contentType: String)
 
 @Serializable
-data class PublishStoryRequest(val uploadId: String, val contentType: String)
+data class PublishStoryRequest(
+    val uploadId: String,
+    val contentType: String,
+    val thumbnailUploadId: String? = null,
+    // Position de publication, pour la Snap Map (ADR-031) : les deux ou aucune.
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+)
 
 @Serializable
 data class MessageDto(val id: String, val contentType: String, val createdAt: String)
 
 @Serializable
-data class OwnStoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewCount: Int)
+data class OwnStoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewCount: Int, val thumbnailUrl: String? = null)
 
 @Serializable
-data class PublicProfileDto(val id: String, val username: String, val profilePhotoUrl: String? = null)
+data class PublicProfileDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val firstName: String? = null, val avatar: Map<String, String>? = null)
 
 @Serializable
 data class FriendshipItemDto(
@@ -176,7 +245,7 @@ data class FriendshipItemDto(
 )
 
 @Serializable
-data class UserSearchResultDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val relation: String)
+data class UserSearchResultDto(val id: String, val username: String, val profilePhotoUrl: String? = null, val relation: String, val firstName: String? = null, val avatar: Map<String, String>? = null)
 
 @Serializable
 data class FriendRequestBody(val username: String)
@@ -207,10 +276,35 @@ data class SnapViewUrlDto(val url: String, val expiresAt: String)
 data class StoryItemDto(val id: String, val contentType: String, val createdAt: String, val expiresAt: String, val viewed: Boolean)
 
 @Serializable
-data class StoryFeedEntryDto(val author: PublicProfileDto, val items: List<StoryItemDto>, val hasUnviewed: Boolean)
+data class StoryFeedEntryDto(val author: PublicProfileDto, val items: List<StoryItemDto>, val hasUnviewed: Boolean, val thumbnailUrl: String? = null)
 
 @Serializable
 data class DeviceTokenRequest(val token: String)
 
 @Serializable
 data class ConfirmUploadRequest(val uploadId: String)
+
+// --- Snap Map (ADR-031) ---
+@Serializable
+data class LocationDto(val latitude: Double, val longitude: Double)
+
+@Serializable
+// Pas de valeur par défaut : la liste doit partir même vide (le backend l'exige, et une valeur par défaut
+// n'est pas sérialisée).
+data class LocationSharingDto(val mode: String, val friendIds: List<String>)
+
+@Serializable
+data class FriendLocationDto(val user: PublicProfileDto, val latitude: Double, val longitude: Double, val updatedAt: String)
+
+@Serializable
+data class MapStoryDto(
+    val id: String,
+    val author: PublicProfileDto,
+    val contentType: String,
+    val latitude: Double,
+    val longitude: Double,
+    val createdAt: String,
+    val expiresAt: String,
+    val thumbnailUrl: String? = null,
+    val viewed: Boolean = false,
+)

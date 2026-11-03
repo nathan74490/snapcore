@@ -6,19 +6,23 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "lint": "tsc --noEmit -p tsconfig.json",
+    "seed:demo": "tsc -p tsconfig.scripts.json && node --enable-source-maps dist-scripts/scripts/seed-demo.js",
+    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json",
     "test": "jest",
     "test:integration": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --runInBand --testRegex \"\\.int-spec\\.ts$\" --setupFiles \"<rootDir>/test/integration-setup.ts\" --globalSetup \"<rootDir>/test/integration-global-setup.ts\""
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1140.0",
     "@aws-sdk/s3-request-presigner": "^3.1140.0",
+    "@dicebear/avataaars": "^9.4.2",
+    "@dicebear/core": "^9.4.3",
     "@nestjs/common": "^11.1.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
     "@nestjs/platform-socket.io": "^11.2.6",
     "@nestjs/websockets": "^11.2.6",
+    "@resvg/resvg-js": "^2.6.2",
     "@snapcore/db": "*",
     "@snapcore/types": "*",
     "@socket.io/redis-adapter": "^8.3.0",
@@ -54,8 +58,23 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.ts$": "ts-jest"
+      "^.+\\.ts$": "ts-jest",
+      "^.+\\.js$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "allowJs": true,
+            "module": "commonjs",
+            "target": "ES2022",
+            "esModuleInterop": true
+          },
+          "diagnostics": false
+        }
+      ]
     },
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "transformIgnorePatterns": [
+      "/node_modules/(?!@dicebear/)"
+    ]
   }
 }

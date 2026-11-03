@@ -48,11 +48,22 @@ enum ReportStatus {
   DISMISSED
 }
 
+enum LocationSharingMode {
+  GHOST            // voir ADR-031 : mode fantôme, valeur par défaut (confidentialité d'abord)
+  ALL_FRIENDS
+  FRIENDS_EXCEPT   // tous les amis sauf ceux de LocationShareRule
+  ONLY_FRIENDS     // uniquement les amis de LocationShareRule
+}
+
 model User {
   id                String    @id @default(uuid())
   username          String    @unique // normalisé en minuscules, modifiable, unicité revérifiée (ADR-014)
   firebaseUid       String    @unique // identifiant du compte Firebase Authentication (ADR-015)
+  firstName         String?             // prénom affiché à la place du pseudo ; null pour les comptes créés avant son introduction
+  lastName          String?             // nom de famille, facultatif et privé : jamais dans un profil public (ADR-029)
+  birthday          DateTime? @db.Date  // date de naissance (13 ans révolus à l'inscription), privée ; null pour les comptes créés avant son introduction (ADR-029)
   profilePhotoUrl   String?             // URL publique CDN, recadrée/redimensionnée côté app avant upload (ADR-014, ADR-016)
+  avatar            Json?               // options de l'avatar dessiné avataaars (AvatarOptions) ; null = pas d'avatar (ADR-028)
   phoneNumber       String?   @unique // collecté à l'onboarding, jamais vérifié (ADR-010)
   email             String?   @unique // copie de lecture de l'email Firebase ; Firebase reste la source de vérité pour la connexion, tout changement passe par verifyBeforeUpdateEmail avant mise à jour ici (ADR-014, ADR-015)
   subscriptionTier  SubscriptionTier @default(free)
@@ -65,6 +76,7 @@ model User {
   suspendedById     String?
   suspendedBy       Moderator? @relation("UserSuspendedBy", fields: [suspendedById], references: [id], onDelete: SetNull)
   suspensionReason  String?
+  locationSharing   LocationSharingMode @default(GHOST) // partage de position sur la Snap Map ; la position elle-même n'est jamais en base, seulement dans Redis avec TTL (ADR-003, ADR-031)
 
   sentMessages         Message[]     @relation("MessageSender")
   receivedMessages     Message[]     @relation("MessageRecipient")
@@ -75,6 +87,8 @@ model User {
   deviceTokens         DeviceToken[]
   reportsMade          Report[]      @relation("ReportsMade")
   reportsReceived      Report[]      @relation("ReportsReceivedAsUser")
+  locationShareRules   LocationShareRule[] @relation("LocationShareRuleOwner")
+  locationShareTargets LocationShareRule[] @relation("LocationShareRuleFriend")
 }
 
 model Message {
@@ -140,13 +154,28 @@ model StoryItem {
   author        User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
   mediaKey      String           // clé d'objet R2, lue via URL pré-signée à la demande, jamais via CDN (ADR-013, ADR-016)
   contentType   StoryContentType // voir ADR-013
+  thumbnailKey  String?          // vignette privée story-thumbnails/<id>, fabriquée par l'app ; null sans vignette (ADR-026)
   createdAt     DateTime         @default(now())
   expiresAt     DateTime         // createdAt + 24h ; déclenche le job BullMQ de purge (ADR-017)
+  latitude      Float?           // position de publication arrondie à 3 décimales (~100 m), seulement si l'auteur ne partageait pas en mode fantôme (ADR-031)
+  longitude     Float?
 
   reports Report[]
 
   @@index([authorId])
   @@index([expiresAt])
+}
+
+// Liste d'amis du partage de position (ADR-031) : exclus en FRIENDS_EXCEPT, autorisés en ONLY_FRIENDS.
+// Conservée quel que soit le mode, pour qu'un retour à l'un de ces modes la retrouve.
+model LocationShareRule {
+  ownerId  String
+  owner    User   @relation("LocationShareRuleOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  friendId String
+  friend   User   @relation("LocationShareRuleFriend", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@id([ownerId, friendId])
+  @@index([friendId])
 }
 
 model DeviceToken {

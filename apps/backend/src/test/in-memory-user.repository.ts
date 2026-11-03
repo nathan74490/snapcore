@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { AvatarOptions } from "@snapcore/types";
 import { UniqueViolationError } from "../shared/domain/errors";
 import type { NewUser, ProfilePatch, UserRepository } from "../modules/identity/application/ports/user.repository";
 import { isActive, type UserAccount } from "../modules/identity/domain/user";
@@ -18,6 +19,14 @@ export class InMemoryUserRepository implements UserRepository {
   async findActiveByUsername(username: string) {
     return this.active((u) => u.username === username);
   }
+  async isUsernameTaken(username: string) {
+    return [...this.rows.values()].some((u) => u.username === username);
+  }
+  async findActiveByPhoneNumberSuffixes(suffixes: string[]) {
+    return [...this.rows.values()]
+      .filter((u) => isActive(u) && u.phoneNumber !== null && suffixes.some((s) => u.phoneNumber!.endsWith(s)))
+      .map((u) => ({ ...u }));
+  }
   async findByFirebaseUidIncludingDeleted(firebaseUid: string) {
     return [...this.rows.values()].find((u) => u.firebaseUid === firebaseUid) ?? null;
   }
@@ -26,6 +35,7 @@ export class InMemoryUserRepository implements UserRepository {
     const row: UserAccount = {
       id: randomUUID(),
       profilePhotoUrl: null,
+      avatar: null,
       subscriptionTier: "free",
       premiumUntil: null,
       createdAt: new Date(),
@@ -55,9 +65,27 @@ export class InMemoryUserRepository implements UserRepository {
     return { ...next };
   }
 
+  async updateAvatar(id: string, avatar: AvatarOptions | null): Promise<UserAccount> {
+    const current = this.rows.get(id);
+    if (!current) throw new Error(`User ${id} introuvable`);
+    const next = { ...current, avatar: avatar && { ...avatar } };
+    this.rows.set(id, next);
+    return { ...next };
+  }
+
   /** Raccourci de test : crée directement un compte actif. */
   async seed(username: string, overrides: Partial<UserAccount> = {}): Promise<UserAccount> {
-    const user = await this.create({ username, firebaseUid: `uid-${username}`, email: null, phoneNumber: null });
+    // Prénom dérivé du pseudo ("alice" -> "Alice") pour vérifier sa propagation dans les profils publics.
+    const firstName = username.charAt(0).toUpperCase() + username.slice(1);
+    const user = await this.create({
+      username,
+      firstName,
+      lastName: null,
+      birthday: null,
+      firebaseUid: `uid-${username}`,
+      email: null,
+      phoneNumber: null,
+    });
     const seeded = { ...user, ...overrides };
     this.rows.set(user.id, seeded);
     return { ...seeded };

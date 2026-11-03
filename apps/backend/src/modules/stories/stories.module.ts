@@ -1,4 +1,5 @@
 import { Logger, Module } from "@nestjs/common";
+import { ANALYTICS, type Analytics } from "../../shared/domain/analytics";
 import type Redis from "ioredis";
 import { CLOCK, type Clock } from "../../shared/domain/clock";
 import { REDIS } from "../../shared/infrastructure/redis/redis.module";
@@ -6,6 +7,8 @@ import { FRIENDSHIP_REPOSITORY, type FriendshipRepository } from "../friendships
 import { FriendshipsModule } from "../friendships/friendships.module";
 import { USER_REPOSITORY, type UserRepository } from "../identity/application/ports/user.repository";
 import { IdentityModule } from "../identity/identity.module";
+import { LocationVisibility } from "../location/application/location-visibility";
+import { LocationModule } from "../location/location.module";
 import { OBJECT_STORAGE, type ObjectStorage } from "../media/application/ports/object-storage.port";
 import { UploadPromoter } from "../media/application/upload-promoter";
 import { MediaModule } from "../media/media.module";
@@ -21,11 +24,11 @@ import {
 import { StoryUseCases } from "./application/story-use-cases";
 import { PrismaStoryRepository } from "./infrastructure/prisma-story.repository";
 import { RedisStoryViewStore } from "./infrastructure/redis-story-view.store";
-import { StoriesController } from "./interface/stories.controller";
+import { MapStoriesController, StoriesController } from "./interface/stories.controller";
 
 @Module({
-  imports: [IdentityModule, FriendshipsModule, MediaModule, PurgeModule],
-  controllers: [StoriesController],
+  imports: [IdentityModule, FriendshipsModule, MediaModule, PurgeModule, LocationModule],
+  controllers: [StoriesController, MapStoriesController],
   providers: [
     { provide: STORY_REPOSITORY, useClass: PrismaStoryRepository },
     { provide: STORY_VIEW_STORE, inject: [REDIS], useFactory: (redis: Redis) => new RedisStoryViewStore(redis) },
@@ -40,6 +43,8 @@ import { StoriesController } from "./interface/stories.controller";
         OBJECT_STORAGE,
         STORY_PURGE_SCHEDULER,
         CLOCK,
+        ANALYTICS,
+        LocationVisibility,
       ],
       useFactory: (
         stories: StoryRepository,
@@ -50,6 +55,8 @@ import { StoriesController } from "./interface/stories.controller";
         storage: ObjectStorage,
         scheduler: StoryPurgeScheduler,
         clock: Clock,
+        analytics: Analytics,
+        location: LocationVisibility,
       ) =>
         new StoryUseCases(
           stories,
@@ -61,6 +68,8 @@ import { StoriesController } from "./interface/stories.controller";
           scheduler,
           clock,
           new Logger(StoryUseCases.name),
+          analytics,
+          location,
         ),
     },
   ],

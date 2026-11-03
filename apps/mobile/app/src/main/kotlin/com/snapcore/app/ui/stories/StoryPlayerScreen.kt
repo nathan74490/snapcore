@@ -43,6 +43,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.common.util.UnstableApi
+import androidx.annotation.OptIn
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -120,11 +123,12 @@ private fun StoryPhoto(url: String) {
             ImageRequest.Builder(context).data(url).diskCachePolicy(CachePolicy.DISABLED).build()
         },
         contentDescription = "Story",
-        contentScale = ContentScale.Fit,
+        contentScale = ContentScale.Crop,
         modifier = Modifier.fillMaxSize(),
     )
 }
 
+@OptIn(UnstableApi::class)
 @Composable
 private fun StoryVideo(url: String, onProgress: (Float) -> Unit, onEnded: () -> Unit) {
     val context = LocalContext.current
@@ -153,5 +157,5 @@ private fun StoryVideo(url: String, onProgress: (Float) -> Unit, onEnded: () -> 
             delay(100)
         }
     }
-    AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false } }, modifier = Modifier.fillMaxSize())
+    AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM } }, modifier = Modifier.fillMaxSize())
 }

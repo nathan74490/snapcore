@@ -15,7 +15,7 @@ import java.time.Instant
 
 class ApiChatService(private val api: SnapCoreApi) : ChatService {
     override suspend fun conversations() = apiCall { api.conversations() }.map { dto ->
-        Conversation(Friend(dto.friend.id, dto.friend.username, dto.friend.profilePhotoUrl), dto.lastMessage?.toDomain())
+        Conversation(dto.friend.toFriend(), dto.lastMessage?.toDomain())
     }
 
     override suspend fun messages(friendId: String) = apiCall { api.messages(friendId) }.map { it.toDomain() }
@@ -24,6 +24,8 @@ class ApiChatService(private val api: SnapCoreApi) : ChatService {
         apiCall { api.sendText(friendId, SendTextRequest(content)) }.toDomain()
 
     override suspend fun markRead(friendId: String) = apiCall { api.markRead(friendId) }
+
+    override suspend fun sendTyping(friendId: String) = apiCall { api.sendTyping(friendId) }
 
     // 403 = déjà vu hors fenêtre de grâce, 410 = média purgé (ADR-009).
     override suspend fun openSnap(message: ChatMessage): SnapOpenResult =

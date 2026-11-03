@@ -16,7 +16,7 @@ describe("Modération (Postgres réel)", () => {
   let moderatorId: string;
 
   const newUser = (username: string) =>
-    users.create({ username, firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
+    users.create({ username, firstName: "Test", lastName: null, birthday: null, firebaseUid: `uid-${randomUUID()}`, email: null, phoneNumber: null });
 
   beforeEach(async () => {
     await prisma.report.deleteMany();

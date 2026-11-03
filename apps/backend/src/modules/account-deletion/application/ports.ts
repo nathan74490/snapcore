@@ -10,7 +10,7 @@ export type DeletionState = "absent" | "active" | "deletion-requested";
 // Médias relevés sous verrou, juste avant la suppression de la ligne User (ADR-019).
 export interface CollectedMedia {
   profilePhotoUrl: string | null;
-  /** mediaKey des Messages envoyés ET reçus, et des StoryItem de l'utilisateur. */
+  /** mediaKey des Messages envoyés ET reçus, et mediaKey + thumbnailKey des StoryItem de l'utilisateur. */
   privateKeys: string[];
 }
 

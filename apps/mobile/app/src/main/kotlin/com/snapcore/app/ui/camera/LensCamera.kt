@@ -60,7 +60,10 @@ class LensCamera(context: Context, lifecycleOwner: LifecycleOwner, videosDir: Fi
         }
     }
 
-    fun startPreview(front: Boolean) = source.startPreview(front)
+    fun startPreview(front: Boolean) {
+        zoom = 1f // la nouvelle caméra démarre sans zoom
+        source.startPreview(front)
+    }
 
     /** Active [lens], ou retire la Lens courante si null ; [onApplied] est appelé une fois la Lens prête. */
     fun show(lens: Lens?, onApplied: (Boolean) -> Unit = {}) {
@@ -73,6 +76,17 @@ class LensCamera(context: Context, lifecycleOwner: LifecycleOwner, videosDir: Fi
         if (on) AllowsCameraFlash.FlashConfiguration.Enabled(FLASH_DELAY_MS, TimeUnit.MILLISECONDS)
         else AllowsCameraFlash.FlashConfiguration.Disabled,
     )
+
+    // Camera Kit ne zoome que par multiplication du zoom courant : on retient le zoom demandé pour
+    // envoyer le bon rapport. 1 = zoom d'origine de la caméra.
+    private var zoom = 1f
+
+    /** Fixe le zoom à [ratio] fois le zoom d'origine (glisser vers le haut pendant une vidéo). */
+    fun setZoom(ratio: Float) {
+        if (ratio == zoom) return
+        source.zoomBy(ratio / zoom)
+        zoom = ratio
+    }
 
     fun takePhoto(onPhoto: (Bitmap) -> Unit) = source.takePhoto { bitmap -> main.execute { onPhoto(bitmap) } }
 

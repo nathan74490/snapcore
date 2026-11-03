@@ -18,6 +18,9 @@ import com.snapcore.app.domain.MessageStatus
 import com.snapcore.app.domain.StatusColor
 import com.snapcore.app.domain.StatusShape
 import com.snapcore.app.ui.theme.SnapColors
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.time.Duration
 import java.time.Instant
 
@@ -70,4 +73,14 @@ fun relativeTime(instant: Instant, now: Instant = Instant.now()): String {
         elapsed.toDays() < 1 -> "${elapsed.toHours()} h"
         else -> "${elapsed.toDays()} j"
     }
+}
+
+private val DAY = DateTimeFormatter.ofPattern("d MMMM", Locale.FRENCH)
+private val DAY_AND_YEAR = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRENCH)
+
+/** Séparateur de jour d'une conversation, en majuscules comme dans Snapchat (« 25 SEPTEMBRE »). */
+fun dayLabel(day: LocalDate, today: LocalDate): String = when (day) {
+    today -> "AUJOURD'HUI"
+    today.minusDays(1) -> "HIER"
+    else -> day.format(if (day.year == today.year) DAY else DAY_AND_YEAR).uppercase(Locale.FRENCH)
 }
