@@ -110,6 +110,10 @@ private val HOME_TAB_SCREENS = listOf("Map", "Chat", "Camera", "Stories")
 @Serializable private data class PreviewRoute(val path: String, val kind: MediaKind)
 @Serializable private data class SendToRoute(val path: String, val kind: MediaKind, val recipientId: String? = null)
 
+/** Conversation à deux ou de groupe : elles partagent la même animation d'ouverture et de retour. */
+private fun androidx.navigation.NavDestination.isConversation() =
+    hasRoute<ConversationRoute>() || hasRoute<GroupConversationRoute>()
+
 private fun PreviewRoute.media() = CapturedMedia(File(path), kind)
 private fun SendToRoute.media() = CapturedMedia(File(path), kind)
 
@@ -211,13 +215,14 @@ fun SnapCoreNavHost(
         // Retour prédictif d'Android (touche ou geste retour du système) : par défaut, la page qui se ferme
         // rétrécit (scaleOut 0.7). Une conversation glisse plutôt vers la droite et révèle l'accueil, comme
         // avec la flèche de l'en-tête ou le glissement du doigt. L'animation suit la progression du retour.
+        // Même glissement pour une conversation de groupe (ADR-032) : sans lui, elle rétrécissait au retour.
         predictivePopEnterTransition = {
-            if (initialState.destination.hasRoute<ConversationRoute>())
+            if (initialState.destination.isConversation())
                 slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 }
             else fadeIn(spring(dampingRatio = 1f, stiffness = 1600f))
         },
         predictivePopExitTransition = {
-            if (initialState.destination.hasRoute<ConversationRoute>())
+            if (initialState.destination.isConversation())
                 slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { it }
             else scaleOut(targetScale = .7f)
         },
@@ -410,7 +415,12 @@ fun SnapCoreNavHost(
                 onOpenGroup = { group -> navController.navigate(GroupConversationRoute(group.id)) { popUpTo<NewChatRoute> { inclusive = true } } },
             )
         }
-        composable<GroupConversationRoute> { entry ->
+        composable<GroupConversationRoute>(
+            enterTransition = { slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { it } },
+            exitTransition = { slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 } },
+            popEnterTransition = { slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 } },
+            popExitTransition = { slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { it } },
+        ) { entry ->
             val me = account
             if (me == null) StartScreen(onSession = ::go)
             else GroupConversationScreen(
