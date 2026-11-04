@@ -27,6 +27,12 @@ export interface MessageRepository {
   /** Dernier message échangé avec chacun des `otherUserIds` (absent si aucun message). */
   findLastMessagesWith(userId: string, otherUserIds: string[]): Promise<Map<string, Message>>;
 
+  /**
+   * Plus ancien snap reçu par `recipientId` de chacun des `senderIds`, pas encore ouvert et dont le média
+   * existe encore (absent sinon) : il passe avant le dernier message dans la liste des conversations.
+   */
+  findOldestUnopenedSnapsFrom(recipientId: string, senderIds: string[]): Promise<Map<string, Message>>;
+
   /** Vide `mediaKey` après suppression du média : la ligne Message n'est jamais supprimée (ADR-017). */
   clearMedia(id: string): Promise<void>;
 

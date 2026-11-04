@@ -176,6 +176,8 @@ export interface MessageView {
 export interface ConversationSummary {
   friend: PublicUserProfile;
   lastMessage?: MessageView;
+  /** Plus ancien snap reçu encore à ouvrir (média présent), même si d'autres messages l'ont suivi. */
+  unopenedSnap?: MessageView;
 }
 
 // URL de lecture d'un Snap, à durée de vie courte (~1 min), jamais mise en cache disque (voir ADR-009).

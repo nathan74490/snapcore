@@ -111,18 +111,28 @@ export class MessagingUseCases {
   // Liste de conversations = amis ACCEPTED uniquement, même règle que le droit d'écrire (ADR-012).
   async listConversations(me: UserAccount): Promise<ConversationSummary[]> {
     const friends = await this.friendships.listFriends(me.id);
-    const lastMessages = await this.messages.findLastMessagesWith(
-      me.id,
-      friends.map((f) => f.user.id),
-    );
+    const friendIds = friends.map((f) => f.user.id);
+    const [lastMessages, unopenedSnaps] = await Promise.all([
+      this.messages.findLastMessagesWith(me.id, friendIds),
+      // Un snap non ouvert reste « Nouveau snap » même si un chat plus récent le suit (BUG-014 d'ADR-023).
+      this.messages.findOldestUnopenedSnapsFrom(me.id, friendIds),
+    ]);
 
     return friends
       .map(({ user }) => {
         const last = lastMessages.get(user.id);
-        return { friend: user, lastMessage: last && presentMessage(last), sortKey: last?.createdAt.getTime() ?? 0 };
+        const unopened = unopenedSnaps.get(user.id);
+        return {
+          summary: {
+            friend: user,
+            ...(last && { lastMessage: presentMessage(last) }),
+            ...(unopened && { unopenedSnap: presentMessage(unopened) }),
+          },
+          sortKey: last?.createdAt.getTime() ?? 0,
+        };
       })
-      .sort((a, b) => b.sortKey - a.sortKey || a.friend.username.localeCompare(b.friend.username))
-      .map(({ friend, lastMessage }) => (lastMessage ? { friend, lastMessage } : { friend }));
+      .sort((a, b) => b.sortKey - a.sortKey || a.summary.friend.username.localeCompare(b.summary.friend.username))
+      .map(({ summary }) => summary);
   }
 
   // L'historique n'est jamais supprimé par un changement de statut de la relation, mais il

@@ -31,7 +31,7 @@ import com.snapcore.app.ui.theme.SnapColors
 // Toutes les icônes de la liste à la taille de celles de l'en-tête (24).
 private val ICON = 24.dp
 
-private fun Conversation.unread(myId: String) = lastMessage?.let { !it.isFrom(myId) && it.openedAt == null && !it.mediaPurged } == true
+private fun Conversation.unread(myId: String) = headline?.let { !it.isFrom(myId) && it.openedAt == null && !it.mediaPurged } == true
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,9 +74,9 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
                 }
                 items(visible, key = { it.friend.id }) { conversation ->
                     // Nouveau snap reçu : il s'ouvre directement, comme dans Snapchat.
-                    val snap = conversation.lastMessage?.takeIf { canTryToOpen(it, myId) && it.openedAt == null }
+                    val snap = conversation.headline?.takeIf { canTryToOpen(it, myId) && it.openedAt == null }
                     ConversationRow(conversation, myId, onSnap = { onSnapTo(conversation.friend) }) {
-                        val last = conversation.lastMessage
+                        val last = conversation.headline
                         // Envoi en échec : un appui le relance, comme dans Snapchat.
                         if (last?.failed == true) vm.retry(last)
                         else {
@@ -114,7 +114,7 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
 
 @Composable
 private fun ConversationRow(conversation: Conversation, myId: String, onSnap: () -> Unit, onClick: () -> Unit) {
-    val last = conversation.lastMessage
+    val last = conversation.headline
     val unread = conversation.unread(myId)
     // Chat Row 11:281 : nom toujours en Regular 18 ; seul le statut non lu passe en gras et en couleur,
     // l'horodatage reste à part en gris clair.

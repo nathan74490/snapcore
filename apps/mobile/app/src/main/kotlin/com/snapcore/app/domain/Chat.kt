@@ -22,7 +22,18 @@ data class ChatMessage(
     fun isFrom(userId: String) = senderId == userId
 }
 
-data class Conversation(val friend: Friend, val lastMessage: ChatMessage?)
+data class Conversation(
+    val friend: Friend,
+    val lastMessage: ChatMessage?,
+    /** Plus ancien snap reçu encore à ouvrir, même si d'autres messages l'ont suivi (BUG-014 d'ADR-023). */
+    val unopenedSnap: ChatMessage? = null,
+) {
+    /**
+     * Message résumé sur la ligne de la liste Chat : un envoi en cours ou en échec, sinon le snap à ouvrir
+     * (comme Snapchat, un snap non vu reste en avant tant qu'il existe), sinon le dernier message.
+     */
+    val headline: ChatMessage? get() = lastMessage?.takeIf { it.pending || it.failed } ?: unopenedSnap ?: lastMessage
+}
 
 // --- Icônes de statut façon Snapchat (ADR-009) --------------------------------------------------
 

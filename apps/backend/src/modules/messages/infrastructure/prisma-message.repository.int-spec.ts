@@ -51,6 +51,29 @@ describe("PrismaMessageRepository (Postgres réel)", () => {
     expect(await messages.findLastMessagesWith(alice.id, [])).toEqual(new Map());
   });
 
+  it("plus ancien snap non ouvert reçu de chaque ami, média présent seulement", async () => {
+    const snap = (from: UserAccount, to: UserAccount, at: string, extra: Partial<NewMessage> = {}) =>
+      messages.create({
+        ...text(from, to, "", at),
+        contentType: "SNAP_PHOTO",
+        content: null,
+        mediaKey: `messages/${at}`,
+        scheduledPurgeAt: new Date("2026-10-25T10:00:00Z"),
+        ...extra,
+      });
+    const oldest = await snap(bob, alice, "2026-09-25T10:00:00Z");
+    await snap(bob, alice, "2026-09-25T10:05:00Z");
+    await messages.clearMedia((await snap(carol, alice, "2026-09-25T10:01:00Z")).id); // purgé (ADR-017)
+    await snap(alice, bob, "2026-09-25T10:02:00Z"); // envoyé par alice : pas à ouvrir pour elle
+    await messages.create(text(bob, alice, "après", "2026-09-25T10:10:00Z"));
+
+    const unopened = await messages.findOldestUnopenedSnapsFrom(alice.id, [bob.id, carol.id]);
+
+    expect(unopened.get(bob.id)?.id).toBe(oldest.id);
+    expect(unopened.has(carol.id)).toBe(false);
+    expect(await messages.findOldestUnopenedSnapsFrom(alice.id, [])).toEqual(new Map());
+  });
+
   it("l'ouverture atomique ne réussit qu'une fois, même en concurrence", async () => {
     const message = await messages.create({
       ...text(alice, bob, "", "2026-09-25T10:00:00Z"),

@@ -54,6 +54,31 @@ private fun message(
     mediaPurged = purged,
 )
 
+class ConversationHeadlineTest {
+    private val friend = Friend(FRIEND, "ines", null)
+
+    @Test
+    fun `un snap non ouvert passe avant un chat plus recent deja lu (BUG-014)`() {
+        val snap = message(ChatContentType.SNAP_PHOTO, FRIEND)
+        val readChat = message(ChatContentType.TEXT, FRIEND, opened = true)
+        val conversation = Conversation(friend, lastMessage = readChat, unopenedSnap = snap)
+
+        assertEquals(snap, conversation.headline)
+        assertEquals("Nouveau snap", statusOf(conversation.headline!!, ME).label)
+    }
+
+    @Test
+    fun `un envoi en cours ou en echec reste prioritaire, et sans snap a ouvrir c'est le dernier message`() {
+        val snap = message(ChatContentType.SNAP_PHOTO, FRIEND)
+        val failed = message(ChatContentType.SNAP_PHOTO, ME, id = "outbox-1").copy(failed = true)
+        assertEquals(failed, Conversation(friend, failed, snap).headline)
+
+        val chat = message(ChatContentType.TEXT, ME)
+        assertEquals(chat, Conversation(friend, chat).headline)
+        assertNull(Conversation(friend, null).headline)
+    }
+}
+
 class StatusIconTest {
     private fun status(type: ChatContentType, from: String, opened: Boolean = false, purged: Boolean = false): MessageStatus =
         statusOf(message(type, from, opened, purged), ME)

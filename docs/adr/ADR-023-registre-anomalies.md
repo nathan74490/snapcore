@@ -30,6 +30,11 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 | BUG-011 | Moyenne | Mobile / chat | Un snap ouvert reste « Nouveau snap » dans la liste Chat jusqu'à un rafraîchissement manuel | Corrigé (branche feat/v1-finitions) |
 | BUG-012 | Moyenne | Mobile / chat | Une conversation qui reçoit un message reste cachée au-dessus de l'écran dans la liste Chat et dans une conversation | Corrigé (branche feat/v1-finitions) |
 | BUG-013 | Faible | Mobile / chat | Le clavier reste ouvert par-dessus un snap ouvert depuis une conversation | Corrigé (branche feat/v1-finitions) |
+| BUG-014 | Moyenne | Mobile / chat | Un snap non ouvert disparaît de la liste Chat quand un chat plus récent suit dans la conversation | Corrigé (branche fix/campagne-2026-11-04) |
+| BUG-015 | Faible | Mobile / interface | Les icônes des barres système restent blanches sur fond blanc après la fermeture d'un snap | Corrigé (branche fix/campagne-2026-11-04) |
+| BUG-016 | Faible | Mobile / amis | Nom et pseudo coupés sans points de suspension dans les demandes d'ami reçues | Corrigé (branche fix/campagne-2026-11-04) |
+| BUG-017 | Faible | Mobile / notifications | Les notifications affichent le pseudo de l'expéditeur au lieu de son prénom | Corrigé (branche fix/campagne-2026-11-04) |
+| BUG-018 | Faible | Mobile / stories | La barre de progression du lecteur de stories semble compter un segment de trop | Corrigé (branche fix/campagne-2026-11-04) |
 
 ### BUG-001 : Une vidéo de 60 s sans filtre dépasse la limite de 60 Mo
 - **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/camera/CameraScreen.kt` (`videoCaptureQualitySelector = QualitySelector.from(Quality.HD)`), limite dans `apps/backend/src/modules/media/domain/media-purpose.ts` (`SNAP_VIDEO`/`STORY_VIDEO` : 60 Mo).
@@ -119,6 +124,57 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - **Impact** : le snap, visible une seule fois, est en partie caché.
 - **Correction** : à l'ouverture du lecteur, le clavier est fermé et le champ perd le focus. Vérifié sur Galaxy A54 (snap reçu en direct, clavier ouvert, puis ouvert : clavier fermé).
 
+### BUG-014 : Un snap non ouvert disparaît de la liste Chat
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/chat/ChatListScreen.kt` et `domain/Chat.kt` : la ligne d'une conversation ne regarde que `Conversation.lastMessage`, pour le statut (`statusOf`) comme pour l'ouverture directe du snap.
+- **Constat** (campagne de test du 2026-11-04, Galaxy A54) :
+  - Inès a envoyé à nathan un snap, puis deux chats ; nathan a lu les chats sans ouvrir le snap.
+  - Dans la liste Chat, la ligne d'Inès affiche « Reçu · 18 j », sans « Nouveau snap », et toucher la ligne ouvre la conversation au lieu du snap.
+  - Le snap est pourtant toujours là dans la conversation (« Appuie pour voir »), et il s'ouvre normalement.
+- **Impact** : un snap reçu passe inaperçu. Snapchat met en avant un snap non ouvert tant qu'il existe, quel que soit le dernier message.
+- **Correction** :
+  - `GET /conversations` renvoie aussi `unopenedSnap`, le plus ancien snap reçu non ouvert dont le média existe encore (requête `DISTINCT ON`).
+  - L'app résume chaque ligne par `Conversation.headline` : d'abord un envoi en cours ou en échec, puis le snap à ouvrir, sinon le dernier message.
+  - Vérifié sur Galaxy A54 : Léa envoie un snap puis un chat, la ligne affiche « Nouveau snap », et la toucher ouvre le snap.
+
+### BUG-015 : Barres système illisibles après la fermeture d'un snap
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/components/SystemBars.kt` (`StatusBarIcons` applique son réglage dans un `SideEffect`, sans rien rétablir quand l'écran quitte la composition) et `ui/chat/SnapViewer.kt`, affiché par-dessus la conversation.
+- **Constat** (campagne de test du 2026-11-04, Galaxy A54) :
+  - Le lecteur de snap passe les icônes en blanc.
+  - Une fois le snap fermé, la conversation n'est pas recomposée et ne remet pas les icônes sombres.
+  - L'heure, le réseau et les boutons de navigation restent blancs sur le fond blanc, au moins plusieurs secondes après la fermeture.
+- **Impact** : barre d'état et barre de navigation illisibles jusqu'au prochain changement d'écran.
+- **Correction** :
+  - La conversation, qui affiche le lecteur, règle les icônes selon l'état du lecteur (`StatusBarIcons(dark = state.viewer == null)`), et le lecteur ne les règle plus lui-même.
+  - Le réglage est donc réappliqué à la fermeture du snap.
+  - Une restauration générale à la sortie de chaque écran a été écartée : pendant une transition, l'écran qui part écraserait le réglage de celui qui arrive.
+  - Vérifié sur Galaxy A54 : un snap revu dans une conversation repasse aux icônes sombres dès sa fermeture.
+
+### BUG-016 : Demandes d'ami, nom et pseudo coupés
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/friends/FriendsScreen.kt`, ligne d'une demande reçue avec les boutons « Refuser » et « Accepter ».
+- **Constat** (campagne de test du 2026-11-04, Galaxy A54) :
+  - Les deux boutons prennent presque toute la largeur.
+  - Le prénom devient « Sar… ».
+  - Les pseudos sont tronqués **sans points de suspension** : « @sara » pour `sarah.lmb`, « @tom » pour `tom_grd`. Une fois Tom accepté, la liste d'amis affiche bien « @tom_grd ».
+- **Impact** : le pseudo affiché ressemble à un autre pseudo, qui peut exister. L'utilisateur risque d'accepter la mauvaise personne.
+- **Correction** :
+  - Comme dans Snapchat, « Refuser » devient une croix dans un rond gris, à côté de « Accepter ».
+  - Le pseudo est coupé avec des points de suspension s'il reste trop long.
+  - Vérifié sur Galaxy A54 : « Sarah », « @sarah.lmb » en entier.
+
+### BUG-017 : Notifications avec le pseudo au lieu du prénom
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/push/PushServices.kt`, lignes 59 et 62 : `PushDetails(conversation?.friend?.username, …)`.
+- **Constat** (campagne de test du 2026-11-04, Galaxy A54, app en arrière-plan) : un chat de Léa produit « Nouveau chat de lea.martin ». Partout ailleurs, l'app affiche le prénom (« Léa »).
+- **Impact** : incohérence visible, et notification moins lisible.
+- **Correction** : les trois types de notification (message, demande reçue, demande acceptée) utilisent le nom affiché de l'ami. Vérifié sur Galaxy A54 : « Nouveau chat de Léa ».
+
+### BUG-018 : Barre de progression des stories, un segment de trop en apparence
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/stories/StoryPlayerScreen.kt` : un `LinearProgressIndicator` Material 3 par élément.
+- **Constat** (campagne de test du 2026-11-04, Galaxy A54) :
+  - Le composant Material 3 laisse un espace (`gapSize`) entre la partie lue et la partie restante d'un même indicateur.
+  - Pendant la lecture, le segment en cours paraît donc coupé en deux : la story de Léa, qui a 2 éléments, semble en avoir 3.
+- **Impact** : l'utilisateur croit qu'il reste un élément de plus à voir.
+- **Correction** : `gapSize = 0.dp` sur chaque indicateur. Vérifié sur Galaxy A54 : une story d'un seul élément affiche une seule barre continue.
+
 ## Alternatives
 - **Corriger chaque anomalie dès qu'elle est trouvée** : rien n'est oublié, mais la fonctionnalité en cours se retrouve mêlée à des changements sans rapport, plus difficiles à relire et à annuler. Écarté.
 - **Un outil de suivi externe (issues GitHub, Notion)** : plus adapté à une équipe nombreuse, mais sépare le registre du code alors que tout le reste des décisions vit dans `docs/adr`. Écarté pour l'instant ; le registre pourra y être migré si le projet grandit.
@@ -135,6 +191,8 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - Cet ADR n'est pas une décision d'architecture au sens strict, mais un outil de suivi ; il est rangé avec les ADR pour rester à côté des décisions qu'il référence.
 
 ## Historique
+- Révision 10 : BUG-014 à BUG-018 corrigés (branche `fix/campagne-2026-11-04`).
+- Révision 9 : BUG-014 à BUG-018 relevés pendant la campagne de test du 2026-11-04 (Galaxy A54), voir `docs/tests/campagne-2026-11-04.md`.
 - Révision 8 : BUG-012 étendu aux conversations, BUG-013 relevé et corrigé.
 - Révision 7 : BUG-012 relevé et corrigé.
 - Révision 6 : BUG-011 relevé et corrigé.
