@@ -20,6 +20,7 @@ import com.snapcore.app.data.api.DeviceTokenRequest
 import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.data.api.apiCall
 import com.snapcore.app.domain.DeviceRegistry
+import com.snapcore.app.data.toFriend
 import com.snapcore.app.domain.LaunchTarget
 import com.snapcore.app.domain.PushDetails
 import com.snapcore.app.domain.PushNotification
@@ -51,17 +52,18 @@ class FcmDeviceRegistry(private val api: SnapCoreApi, private val auth: Firebase
 }
 
 // Retrouve l'expéditeur via l'API : le push ne contient qu'un type et un identifiant (ADR-018).
+// Le nom affiché est le prénom (à défaut le pseudo), comme partout dans l'app (BUG-017 d'ADR-023).
 class PushDetailsResolver(private val api: SnapCoreApi) {
     suspend fun resolve(data: Map<String, String>): PushDetails = runCatching {
         when (data["type"]) {
             "message.received" -> {
                 val conversation = api.conversations().firstOrNull { it.lastMessage?.id == data["messageId"] }
-                PushDetails(conversation?.friend?.username, conversation?.lastMessage?.let { it.contentType != "TEXT" })
+                PushDetails(conversation?.friend?.toFriend()?.displayName, conversation?.lastMessage?.let { it.contentType != "TEXT" })
             }
             "friend_request.received" ->
-                PushDetails(api.incomingRequests().firstOrNull { it.friendshipId == data["friendshipId"] }?.user?.username)
+                PushDetails(api.incomingRequests().firstOrNull { it.friendshipId == data["friendshipId"] }?.user?.toFriend()?.displayName)
             "friend_request.accepted" ->
-                PushDetails(api.friends().firstOrNull { it.friendshipId == data["friendshipId"] }?.user?.username)
+                PushDetails(api.friends().firstOrNull { it.friendshipId == data["friendshipId"] }?.user?.toFriend()?.displayName)
             else -> PushDetails()
         }
     }.getOrDefault(PushDetails())

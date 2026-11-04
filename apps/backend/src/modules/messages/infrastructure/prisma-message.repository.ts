@@ -64,6 +64,22 @@ export class PrismaMessageRepository implements MessageRepository {
     return new Map(rows.map((row) => [row.otherId, toMessage(row)]));
   }
 
+  async findOldestUnopenedSnapsFrom(recipientId: string, senderIds: string[]): Promise<Map<string, Message>> {
+    if (senderIds.length === 0) return new Map();
+    const senders = Prisma.join(senderIds);
+    // DISTINCT ON : le plus ancien snap non ouvert de chaque ami, en une requête (ouvert dans l'ordre d'arrivée).
+    const rows = await this.prisma.$queryRaw<MessageRow[]>`
+      SELECT DISTINCT ON (m."senderId") m.*
+      FROM "Message" m
+      WHERE m."recipientId" = ${recipientId}
+        AND m."senderId" IN (${senders})
+        AND m."contentType" <> 'TEXT'
+        AND m."openedAt" IS NULL
+        AND m."mediaKey" IS NOT NULL
+      ORDER BY m."senderId", m."createdAt" ASC, m.id ASC`;
+    return new Map(rows.map((row) => [row.senderId, toMessage(row)]));
+  }
+
   async clearMedia(id: string): Promise<void> {
     await this.prisma.message.update({ where: { id }, data: { mediaKey: null } });
   }

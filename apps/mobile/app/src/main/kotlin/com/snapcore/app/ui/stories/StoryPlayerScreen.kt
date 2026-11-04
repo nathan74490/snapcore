@@ -99,6 +99,9 @@ fun StoryPlayerScreen(title: String, authorId: String?, startItemId: String?, on
                                 trackColor = Color.White.copy(alpha = 0.35f),
                                 modifier = Modifier.weight(1f).height(3.dp).background(Color.Transparent, RoundedCornerShape(2.dp)),
                                 drawStopIndicator = {},
+                                // Sans espace entre la partie lue et le reste : sinon le segment en cours
+                                // semble coupé en deux, comme un élément de plus (BUG-018 d'ADR-023).
+                                gapSize = 0.dp,
                             )
                         }
                     }

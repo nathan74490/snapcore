@@ -264,7 +264,7 @@ data class ChatMessageDto(
 )
 
 @Serializable
-data class ConversationDto(val friend: PublicProfileDto, val lastMessage: ChatMessageDto? = null)
+data class ConversationDto(val friend: PublicProfileDto, val lastMessage: ChatMessageDto? = null, val unopenedSnap: ChatMessageDto? = null)
 
 @Serializable
 data class SendTextRequest(val content: String)

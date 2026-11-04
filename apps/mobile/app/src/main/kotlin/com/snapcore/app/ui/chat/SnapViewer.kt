@@ -25,13 +25,12 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import com.snapcore.app.domain.ChatContentType
-import com.snapcore.app.ui.components.StatusBarIcons
 
 // Lecture d'un Snap en plein écran ; un appui ferme. Le média n'est JAMAIS écrit sur le disque de
 // l'appareil (caches désactivés), uniquement gardé en mémoire le temps de l'affichage (ADR-009).
 @Composable
 fun SnapViewer(state: SnapViewerState, onClose: () -> Unit) {
-    StatusBarIcons(dark = false)
+    // Barres système : réglées par la conversation qui affiche ce lecteur (BUG-015 d'ADR-023).
     Box(
         Modifier.fillMaxSize().background(Color.Black).clickable(onClick = onClose),
         contentAlignment = Alignment.Center,

@@ -1,6 +1,13 @@
 package com.snapcore.app.ui.friends
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -45,7 +52,6 @@ import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.Relation
 import com.snapcore.app.ui.components.Avatar
 import com.snapcore.app.ui.components.ChipButton
-import com.snapcore.app.ui.components.ChipStyle
 import com.snapcore.app.ui.components.SectionTitle
 import com.snapcore.app.ui.components.SnapCard
 import com.snapcore.app.ui.components.SnapSearchBar
@@ -100,9 +106,11 @@ fun FriendsScreen(onBack: () -> Unit) {
                 item {
                     SnapCard {
                         state.incoming.forEach { request ->
+                            // Comme Snapchat : « Accepter » et une petite croix, pour laisser la place au nom
+                            // et au pseudo, qui étaient coupés (BUG-016 d'ADR-023).
                             PersonRow(request.user) {
-                                ChipButton("Refuser", { vm.decline(request) }, style = ChipStyle.Gray)
                                 ChipButton("Accepter", { vm.accept(request) })
+                                DeclineButton { vm.decline(request) }
                             }
                         }
                     }
@@ -116,6 +124,14 @@ fun FriendsScreen(onBack: () -> Unit) {
             if (state.friends.isNotEmpty()) item { SnapCard { state.friends.forEach { friend -> PersonRow(friend) {} } } }
             item { Spacer(Modifier.navigationBarsPadding().height(16.dp)) }
         }
+    }
+}
+
+/** Refuser une demande : croix dans un rond gris, comme Snapchat. */
+@Composable
+private fun DeclineButton(onClick: () -> Unit) {
+    Box(Modifier.size(36.dp).clip(CircleShape).background(SnapColors.Control).clickable(onClick = onClick), Alignment.Center) {
+        Icon(Icons.Filled.Close, contentDescription = "Refuser", tint = SnapColors.Ink, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -141,7 +157,8 @@ private fun PersonRow(user: Friend, actions: @Composable () -> Unit) {
         Column(Modifier.weight(1f)) {
             Text(user.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            if (user.firstName != null) Text("@${user.username}", style = MaterialTheme.typography.bodySmall, color = SnapColors.Grey, maxLines = 1)
+            if (user.firstName != null) Text("@${user.username}", style = MaterialTheme.typography.bodySmall, color = SnapColors.Grey, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
     }

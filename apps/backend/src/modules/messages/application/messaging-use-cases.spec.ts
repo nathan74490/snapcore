@@ -226,6 +226,27 @@ describe("MessagingUseCases (ADR-009)", () => {
       expect(conversations.some((c) => c.friend.id === dave.id)).toBe(false);
     });
 
+    it("un snap non ouvert reste signalé même si des chats plus récents le suivent (BUG-014)", async () => {
+      const first = await sendSnap(alice, bob);
+      advance(MINUTE);
+      const second = await sendSnap(alice, bob);
+      advance(MINUTE);
+      await messaging.sendText(alice, bob.id, "tu as vu ?");
+      await messaging.sendText(bob, alice.id, "pas encore");
+
+      const [forBob] = await messaging.listConversations(bob);
+      expect(forBob.lastMessage).toMatchObject({ content: "pas encore" });
+      expect(forBob.unopenedSnap).toMatchObject({ id: first.id }); // le plus ancien d'abord
+
+      await messaging.requestSnapView(bob, first.id);
+      expect((await messaging.listConversations(bob))[0].unopenedSnap).toMatchObject({ id: second.id });
+
+      messages.rows.get(second.id)!.mediaKey = null; // purgé : plus rien à ouvrir
+      expect((await messaging.listConversations(bob))[0].unopenedSnap).toBeUndefined();
+      // Côté expéditeur, ses propres snaps ne sont jamais « à ouvrir ».
+      expect((await messaging.listConversations(alice))[0].unopenedSnap).toBeUndefined();
+    });
+
     it("l'historique est conservé après un blocage et réapparaît quand la paire redevient ACCEPTED", async () => {
       await messaging.sendText(alice, bob.id, "avant");
       await friendships.block(alice, bob.id);

@@ -54,6 +54,17 @@ export class InMemoryMessageRepository implements MessageRepository {
     return result;
   }
 
+  async findOldestUnopenedSnapsFrom(recipientId: string, senderIds: string[]) {
+    const result = new Map<string, Message>();
+    for (const sender of senderIds) {
+      const oldest = this.between(recipientId, sender)
+        .filter((m) => m.senderId === sender && m.contentType !== "TEXT" && !m.openedAt && m.mediaKey)
+        .at(-1);
+      if (oldest) result.set(sender, oldest);
+    }
+    return result;
+  }
+
   async clearMedia(id: string) {
     this.rows.get(id)!.mediaKey = null;
   }

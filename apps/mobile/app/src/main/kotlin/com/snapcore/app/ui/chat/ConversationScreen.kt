@@ -136,7 +136,9 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
         )
     }
 
-    StatusBarIcons(dark = true)
+    // Icônes claires sur le snap plein écran, sombres sur la conversation. Le réglage dépend de l'état du
+    // lecteur pour être réappliqué à sa fermeture : sinon il restait blanc sur fond blanc (BUG-015 d'ADR-023).
+    StatusBarIcons(dark = state.viewer == null)
     SwipeBackPane(backdrop, enabled = state.viewer == null, onBack = onSwipeBack) { backGesture ->
         Scaffold(
             topBar = {
