@@ -72,7 +72,7 @@ import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
 // supprime le fichier local : rien n'est conservé sans action explicite (ADR-011).
 @Composable
 fun PreviewScreen(media: CapturedMedia, onDiscard: () -> Unit, onSendTo: (CapturedMedia) -> Unit) {
-    val vm = containerViewModel { PreviewViewModel(media, it.filterRenderer, it.analytics) }
+    val vm = containerViewModel { PreviewViewModel(media, it.filterRenderer, it.analytics, it.experiments) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.ready) {
         state.ready?.let {
@@ -164,7 +164,7 @@ fun PreviewScreen(media: CapturedMedia, onDiscard: () -> Unit, onSendTo: (Captur
                         CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                         Text("Application du filtre…", modifier = Modifier.padding(start = 8.dp))
                     } else {
-                        Text("Envoyer à")
+                        Text(state.sendLabel.label)
                         Icon(Icons.AutoMirrored.Filled.Send, null, modifier = Modifier.padding(start = 8.dp))
                     }
                 }

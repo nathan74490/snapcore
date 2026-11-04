@@ -29,7 +29,7 @@ object AnalyticsEvents {
     const val ONBOARDING_STEP_VIEWED = "onboarding_step_viewed"
     /** { step } */
     const val ONBOARDING_STEP_SKIPPED = "onboarding_step_skipped"
-    /** { granted } */
+    /** { granted, variante de onboarding-contacts-copy } */
     const val CONTACTS_PERMISSION_ANSWERED = "contacts_permission_answered"
     /** { count } */
     const val INVITES_SENT = "invites_sent"
@@ -46,6 +46,8 @@ object AnalyticsEvents {
     const val FLASH_TOGGLED = "flash_toggled"
     /** { filter, media } */
     const val FILTER_APPLIED = "filter_applied"
+    /** « Envoyer à » touché sur l'aperçu { media, variante de preview-send-label } (ADR-030). */
+    const val SNAP_PREVIEW_CONFIRMED = "snap_preview_confirmed"
     /** Aperçu fermé sans envoyer { media }. */
     const val SNAP_DISCARDED = "snap_discarded"
     /** Envoi lancé depuis « Envoyer à » { media, friends: nombre, story: bool }. */
@@ -76,6 +78,8 @@ object AnalyticsEvents {
     const val AVATAR_RANDOMIZED = "avatar_randomized"
 
     // --- SnapCore+ (ADR-025, ADR-030) ---
+    /** Paywall ouvert { source: profile, variante de profile-plus-card } (ADR-030). */
+    const val PAYWALL_OPENED = "paywall_opened"
     /** { variante de l'expérience paywall-cta si exposée } */
     const val CHECKOUT_STARTED = "checkout_started"
     /** Retour de la page de paiement { activated } : l'abonnement est-il actif au retour ? */

@@ -7,6 +7,11 @@ import com.snapcore.app.domain.AccountRules
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.Analytics
 import com.snapcore.app.domain.AnalyticsEvents
+import com.snapcore.app.domain.Experiments
+import com.snapcore.app.domain.Exposure
+import com.snapcore.app.domain.NoExperiments
+import com.snapcore.app.domain.OnboardingContactsCopy
+import com.snapcore.app.domain.expose
 import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.ContactMatch
 import com.snapcore.app.domain.ContactsReader
@@ -32,6 +37,8 @@ enum class OnboardingStep { PHONE, FIND_FRIENDS, ADD_FRIENDS, INVITE, AVATAR, NO
 data class OnboardingState(
     val step: OnboardingStep = OnboardingStep.PHONE,
     val country: Country,
+    /** Texte de l'écran « Trouve tous tes amis » (expérience onboarding-contacts-copy, ADR-030). */
+    val contactsCopy: OnboardingContactsCopy = OnboardingContactsCopy.CONTROL,
     val national: String = "",
     val phoneError: String? = null,
     val savingPhone: Boolean = false,
@@ -66,11 +73,15 @@ class OnboardingViewModel(
     private val contactsReader: ContactsReader,
     countryCode: String?,
     private val analytics: Analytics = NoAnalytics,
+    private val experiments: Experiments = NoExperiments,
     /** Notifications à demander à la fin (Android 13+, permission pas encore accordée ni demandée). */
     private val needsNotificationPrompt: () -> Boolean = { false },
 ) : ViewModel() {
     private val _state = MutableStateFlow(OnboardingState(country = Countries.byCode(countryCode)))
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
+
+    /** Variante vue de l'expérience onboarding-contacts-copy, lue une fois à l'affichage de l'écran. */
+    private var contactsExposure: Exposure<OnboardingContactsCopy>? = null
 
     // Toute modification passe par ici : un changement d'étape est capturé au moment même où il a lieu,
     // y compris deux étapes enchaînées sans pause (un observateur du StateFlow ne verrait que la dernière).
@@ -120,7 +131,8 @@ class OnboardingViewModel(
 
     /** Réponse de l'utilisateur à la demande d'accès aux contacts (refus = recherche par pseudo seule). */
     fun onContactsPermission(granted: Boolean) {
-        analytics.capture(AnalyticsEvents.CONTACTS_PERMISSION_ANSWERED, mapOf("granted" to granted))
+        analytics.capture(AnalyticsEvents.CONTACTS_PERMISSION_ANSWERED,
+            mapOf("granted" to granted) + contactsExposure?.conversionProperties.orEmpty())
         update { it.copy(contactsGranted = granted, step = OnboardingStep.ADD_FRIENDS, loadingContacts = granted) }
         if (!granted) return
         viewModelScope.launch {
@@ -225,9 +237,16 @@ class OnboardingViewModel(
     private fun go(step: OnboardingStep) = update { it.copy(step = step) }
 
     /** Entonnoir des premiers pas (ADR-008, ADR-029) : chaque étape affichée, puis la fin. */
-    private fun captureStep(step: OnboardingStep) =
+    private fun captureStep(step: OnboardingStep) {
         if (step == OnboardingStep.DONE) analytics.capture(AnalyticsEvents.ONBOARDING_COMPLETED)
         else analytics.capture(AnalyticsEvents.ONBOARDING_STEP_VIEWED, mapOf("step" to step.name.lowercase()))
+        // Exposition à l'affichage de l'écran testé, une seule fois (ADR-030).
+        if (step == OnboardingStep.FIND_FRIENDS && contactsExposure == null) {
+            val exposure = experiments.expose(OnboardingContactsCopy.FLAG, OnboardingContactsCopy::of)
+            contactsExposure = exposure
+            _state.update { it.copy(contactsCopy = exposure.value) }
+        }
+    }
 
     private fun skip(next: OnboardingStep) {
         captureSkip()

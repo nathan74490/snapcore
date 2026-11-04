@@ -84,7 +84,7 @@ fun OnboardingScreen(
         OnboardingViewModel(it.accounts, it.friends, it.contacts, sim ?: java.util.Locale.getDefault().country, needsNotificationPrompt = {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifications.canNotify(context) &&
                 Notifications.claimFirstPermissionRequest(context)
-        }, analytics = it.analytics)
+        }, analytics = it.analytics, experiments = it.experiments)
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -218,15 +218,15 @@ private fun CountryPicker(onPick: (Country) -> Unit, onClose: () -> Unit) {
 @Composable
 private fun FindFriendsStep(vm: OnboardingViewModel) {
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission(), vm::onContactsPermission)
+    val copy = vm.state.collectAsStateWithLifecycle().value.contactsCopy
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth()) { Box(Modifier.align(Alignment.CenterEnd)) { SkipAction(vm::skipFindFriends) } }
-        Text("Trouve tous tes amis", fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
-        Text("Autorise l'accès à tes contacts : SnapCore te montrera ceux qui ont déjà un compte, pour les ajouter d'un appui. " +
-            "Seuls les numéros servent à la recherche, rien n'est conservé.",
+        Text(copy.title, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+        Text(copy.text,
             fontSize = 16.sp, color = SnapColors.Grey, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp))
         Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 24.dp), Alignment.Center) { ContactsIllustration() }
-        PrimaryButton("Continuer", { permission.launch(Manifest.permission.READ_CONTACTS) }, container = SnapColors.Yellow,
+        PrimaryButton(copy.button, { permission.launch(Manifest.permission.READ_CONTACTS) }, container = SnapColors.Yellow,
             content = SnapColors.Ink, height = 50.dp, modifier = Modifier.padding(bottom = 16.dp))
     }
 }

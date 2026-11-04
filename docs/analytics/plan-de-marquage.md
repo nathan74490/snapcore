@@ -35,7 +35,7 @@ Référence de tous les événements envoyés à PostHog (ADR-008). Les noms cô
 |---|---|---|
 | `onboarding_step_viewed` | `step` : phone, find_friends, add_friends, invite, avatar, notifications | Chaque étape affichée |
 | `onboarding_step_skipped` | `step` | « Passer » |
-| `contacts_permission_answered` | `granted` | Réponse à l'accès aux contacts |
+| `contacts_permission_answered` | `granted`, `$feature/onboarding-contacts-copy` | Réponse à l'accès aux contacts |
 | `invites_sent` | `count` | SMS d'invitation ouvert |
 | `onboarding_completed` | | Fin des premiers pas |
 
@@ -47,7 +47,8 @@ Référence de tous les événements envoyés à PostHog (ADR-008). Les noms cô
 | `camera_flipped` | `facing` : front ou back | Changement de caméra |
 | `flash_toggled` | `on` | Flash activé ou coupé |
 | `filter_applied` | `filter`, `media` | Filtre incrusté avant l'envoi |
-| `snap_discarded` | `media` | Aperçu fermé sans envoyer |
+| `snap_preview_confirmed` | `media`, `$feature/preview-send-label` | Bouton d'envoi de l'aperçu touché |
+| `snap_discarded` | `media`, `$feature/preview-send-label` | Aperçu fermé sans envoyer |
 | `snap_send_started` | `media`, `friends` (nombre), `story` (booléen) | « Envoyer » touché |
 | `snap_send_failed` | `media`, `target` : friend ou story | Un envoi en échec (une cible) |
 | `snap_send_retried` | `media`, `target` | Réessai d'un envoi en échec |
@@ -67,6 +68,7 @@ Référence de tous les événements envoyés à PostHog (ADR-008). Les noms cô
 |---|---|---|
 | `notification_opened` | `target` : chat ou friends | Notification push touchée |
 | `avatar_randomized` | | « Au hasard » dans l'éditeur d'avatar |
+| `paywall_opened` | `source` : profile_card ou settings, `$feature/profile-plus-card` depuis la carte | Paywall ouvert depuis le profil |
 | `checkout_started` | `$feature/paywall-cta` si exposé (ADR-030) | Bouton du paywall |
 | `checkout_returned` | `activated` | Retour du paiement : abonnement actif ou non |
 
@@ -112,6 +114,17 @@ Référence de tous les événements envoyés à PostHog (ADR-008). Les noms cô
 `user_suspended`, `user_reactivated`, `message_redacted`, `story_item_deleted`, et `report_closed` avec `status`.
 - Ces événements portent la propriété `by_moderator: true`.
 - Ils sont envoyés avec l'id du **modérateur**, qui est un compte du backoffice (table `Moderator`), pas un utilisateur de l'app : filtrer sur `by_moderator` pour les séparer.
+
+## Expériences A/B (ADR-030)
+`$feature_flag_called` est envoyé à l'affichage de chaque variante testée. Les conversions envoyées par l'app portent `$feature/<flag>` avec la variante vue.
+
+| Flag | Variantes | Mesure principale |
+|---|---|---|
+| `paywall-cta` | control, benefit | `checkout_started` |
+| `onboarding-contacts-copy` | control, social | `contacts_permission_answered` (`granted = true`) |
+| `preview-send-label` | control, short | `snap_preview_confirmed` |
+| `map-ghost-banner` | control, friends | `location_sharing_changed` (mode autre que GHOST) |
+| `profile-plus-card` | control, price | `paywall_opened` (`source = profile_card`) |
 
 ## Ce qui n'est pas mesuré
 - Le contenu : texte des messages, médias, motifs de signalement.

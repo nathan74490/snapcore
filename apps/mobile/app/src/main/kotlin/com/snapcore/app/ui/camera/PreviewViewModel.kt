@@ -7,6 +7,10 @@ import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.CameraFilter
 import com.snapcore.app.domain.CameraFilters
 import com.snapcore.app.domain.CapturedMedia
+import com.snapcore.app.domain.Experiments
+import com.snapcore.app.domain.NoExperiments
+import com.snapcore.app.domain.PreviewSendLabel
+import com.snapcore.app.domain.expose
 import com.snapcore.app.domain.FilterRenderer
 import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.analyticsName
@@ -22,6 +26,8 @@ data class PreviewState(
     val error: String? = null,
     /** Média filtré prêt à envoyer, consommé par la navigation vers l'écran d'envoi. */
     val ready: CapturedMedia? = null,
+    /** Libellé du bouton d'envoi (expérience preview-send-label, ADR-030). */
+    val sendLabel: PreviewSendLabel = PreviewSendLabel.CONTROL,
 ) {
     val filter: CameraFilter get() = CameraFilters.ALL[filterIndex]
 }
@@ -33,9 +39,13 @@ class PreviewViewModel(
     private val media: CapturedMedia,
     private val renderer: FilterRenderer,
     private val analytics: Analytics = NoAnalytics,
+    experiments: Experiments = NoExperiments,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(PreviewState())
+    // Le bouton testé s'affiche avec l'aperçu : l'exposition se lit à l'ouverture (ADR-030).
+    private val sendLabel = experiments.expose(PreviewSendLabel.FLAG, PreviewSendLabel::of)
+    private val _state = MutableStateFlow(PreviewState(sendLabel = sendLabel.value))
     val state: StateFlow<PreviewState> = _state.asStateFlow()
+    private val mediaProperties get() = mapOf("media" to media.kind.analyticsName) + sendLabel.conversionProperties
 
     private var rendered: CapturedMedia? = null
 
@@ -45,6 +55,7 @@ class PreviewViewModel(
 
     fun confirm() {
         if (_state.value.rendering) return
+        analytics.capture(AnalyticsEvents.SNAP_PREVIEW_CONFIRMED, mediaProperties)
         _state.update { it.copy(rendering = true, error = null) }
         viewModelScope.launch {
             discardRendered()
@@ -62,7 +73,7 @@ class PreviewViewModel(
     }
 
     /** Aperçu fermé sans envoyer. */
-    fun onDiscarded() = analytics.capture(AnalyticsEvents.SNAP_DISCARDED, mapOf("media" to media.kind.analyticsName))
+    fun onDiscarded() = analytics.capture(AnalyticsEvents.SNAP_DISCARDED, mediaProperties)
 
     fun consumeReady() = _state.update { it.copy(ready = null) }
 

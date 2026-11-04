@@ -32,6 +32,25 @@ Un A/B test demande quatre choses :
 - **Mesure principale** : `checkout_started` (lien de paiement ouvert). Mesure secondaire : `snapcoreplus_started` (abonnement payé, envoyé par le backend).
 - **Répartition** : 50 / 50. L'expérience se lance depuis le tableau de bord PostHog : Experiments, puis New experiment, clé de flag `paywall-cta`, variantes `control` et `benefit`.
 
+**Expériences suivantes (révision 2)** : une par grande partie de l'app, toutes sur le même modèle.
+- **Témoin** : l'interface actuelle, inchangée.
+- **Une seule différence** : un texte ou un libellé, pour que le résultat s'explique.
+- **Lecture** par `Experiments.expose(flag)` au moment de l'affichage, une seule fois.
+
+| Flag | Écran | Variantes | Exposition | Mesure principale |
+|---|---|---|---|---|
+| `onboarding-contacts-copy` | Premiers pas, « Trouve tous tes amis » (ADR-029) | `control` : explication du fonctionnement ; `social` : « Tes amis t'attendent », bouton « Retrouver mes amis » | À l'arrivée sur l'étape | `contacts_permission_answered` avec `granted = true` |
+| `preview-send-label` | Aperçu d'un snap | `control` : « Envoyer à » ; `short` : « Envoyer » | À l'ouverture de l'aperçu | `snap_preview_confirmed` ; secondaire : `snap_discarded` à la baisse |
+| `map-ghost-banner` | Snap Map, bandeau du mode fantôme (ADR-031) | `control` : « Partager ma position » ; `friends` : « Me montrer à mes amis » | Quand le bandeau s'affiche, une fois par ouverture de la carte | `location_sharing_changed` (backend), mode autre que GHOST |
+| `profile-plus-card` | Profil, carte SnapCore+ d'un compte gratuit (ADR-025) | `control` : avantages seuls ; `price` : avantages et prix | Affichage de la carte (comptes gratuits) | `paywall_opened` avec `source = profile_card` ; secondaire : `checkout_started` |
+
+Garde-fous :
+- `map-ghost-banner` ne change que le libellé. Le choix de l'audience reste dans la même fenêtre de confirmation, et le mode fantôme reste le réglage par défaut.
+- Aucune variante ne coche une option à la place de l'utilisateur, par exemple « Ma story » à l'envoi : une publication par erreur coûterait plus que ce que le test rapporterait.
+- Une conversion envoyée par le backend ne porte pas de propriété `$feature/<flag>` : PostHog la rattache à la variante d'après l'exposition enregistrée pour la même personne.
+
+Chaque expérience se crée dans PostHog avec la clé de flag ci-dessus, deux variantes à 50 / 50 et sa mesure principale. Tant qu'elle n'existe pas, tout le monde voit le témoin.
+
 ## Alternatives
 - **Attribution maison** (hachage de l'id du compte modulo 2, côté app ou backend) : aucune dépendance, mais il faudrait réécrire l'exposition, le suivi des conversions et surtout l'analyse statistique, que PostHog fournit déjà. Écarté.
 - **Firebase Remote Config + A/B Testing** : gratuit et déjà dans le projet via FCM, mais l'analyse repose sur Google Analytics for Firebase, que le projet n'utilise pas (ADR-008). Les données seraient alors coupées en deux outils. Écarté.
@@ -49,4 +68,4 @@ Un A/B test demande quatre choses :
 - Une variante affichée dépend d'un service tiers. En cas d'indisponibilité de PostHog, tout le monde revient au témoin.
 
 ## Liens
-- ADR liés : ADR-008, ADR-025
+- ADR liés : ADR-008, ADR-025, ADR-029, ADR-031

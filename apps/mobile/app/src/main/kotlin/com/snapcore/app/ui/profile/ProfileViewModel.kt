@@ -6,6 +6,11 @@ import com.snapcore.app.data.api.ApiException
 import com.snapcore.app.data.avatarImageUrl
 import com.snapcore.app.domain.Analytics
 import com.snapcore.app.domain.AnalyticsEvents
+import com.snapcore.app.domain.Experiments
+import com.snapcore.app.domain.Exposure
+import com.snapcore.app.domain.NoExperiments
+import com.snapcore.app.domain.ProfilePlusCard
+import com.snapcore.app.domain.expose
 import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.AccountRules
@@ -30,6 +35,8 @@ enum class EditableField(val title: String) {
 
 data class ProfileState(
     val account: Account? = null,
+    /** Sous-titre de la carte SnapCore+ d'un compte gratuit (expérience profile-plus-card, ADR-030). */
+    val plusCard: ProfilePlusCard = ProfilePlusCard.CONTROL,
     val emailVerified: Boolean? = null,
     val loading: Boolean = true,
     val editing: EditableField? = null,
@@ -53,6 +60,7 @@ class ProfileViewModel(
     initial: Account? = null,
     private val avatarUrl: (Map<String, String>) -> String = ::avatarImageUrl,
     private val analytics: Analytics = NoAnalytics,
+    private val experiments: Experiments = NoExperiments,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ProfileState(account = initial, loading = initial == null))
     val state: StateFlow<ProfileState> = _state.asStateFlow()
@@ -225,6 +233,20 @@ class ProfileViewModel(
             _state.update { it.copy(signedOut = true) }
         }
     }
+
+    private var plusCardExposure: Exposure<ProfilePlusCard>? = null
+
+    /** Carte SnapCore+ affichée à un compte gratuit : exposition à l'expérience, une fois (ADR-030). */
+    fun onPlusCardShown() {
+        if (plusCardExposure != null) return
+        val exposure = experiments.expose(ProfilePlusCard.FLAG, ProfilePlusCard::of)
+        plusCardExposure = exposure
+        _state.update { it.copy(plusCard = exposure.value) }
+    }
+
+    /** Paywall ouvert depuis le profil : [source] « profile_card » (carte testée) ou « settings ». */
+    fun onPlusOpened(source: String) = analytics.capture(AnalyticsEvents.PAYWALL_OPENED,
+        mapOf("source" to source) + (if (source == "profile_card") plusCardExposure?.conversionProperties.orEmpty() else emptyMap()))
 
     fun askDeletion() {
         analytics.capture(AnalyticsEvents.ACCOUNT_DELETION_PROMPTED)
