@@ -1,10 +1,12 @@
 import { Queue, Worker } from "bullmq";
 import { randomUUID } from "node:crypto";
 import { systemClock } from "../../../shared/domain/clock";
+import { InMemoryGroupRepository } from "../../../test/in-memory-groups";
 import { InMemoryObjectStorage, silentLogger } from "../../../test/in-memory-media";
 import { InMemoryMessageRepository, RecordingMessageNotifier } from "../../../test/in-memory-messages";
 import { InMemoryUserRepository } from "../../../test/in-memory-user.repository";
 import type { UserAccount } from "../../identity/domain/user";
+import { GroupSnapPurge } from "../../groups/application/group-snap-purge";
 import { SnapPurgeUseCases } from "../../messages/application/snap-purge-use-cases";
 import { BullMqPurgeScheduler } from "./bullmq-purge.scheduler";
 import { PurgeWorker } from "./purge.worker";
@@ -24,6 +26,7 @@ describe("Purge BullMQ (Redis réel)", () => {
   let users: InMemoryUserRepository;
   let messages: InMemoryMessageRepository;
   let storage: InMemoryObjectStorage;
+  let groups: InMemoryGroupRepository;
   let worker: PurgeWorker | undefined;
   let alice: UserAccount;
   let bob: UserAccount;
@@ -32,6 +35,7 @@ describe("Purge BullMQ (Redis réel)", () => {
     users = new InMemoryUserRepository();
     messages = new InMemoryMessageRepository();
     storage = new InMemoryObjectStorage();
+    groups = new InMemoryGroupRepository(users);
     alice = await users.seed("alice");
     bob = await users.seed("bob");
   });
@@ -59,11 +63,16 @@ describe("Purge BullMQ (Redis réel)", () => {
       silentLogger,
     );
     // File dédiée, fermée par le worker à l'arrêt : on lui en donne une propre.
+    const groupSnaps = new GroupSnapPurge(groups, storage, new BullMqPurgeScheduler(queue, systemClock, "groupMessage"), systemClock, silentLogger);
     const unused = { run: async () => ({ kind: "done" as const }), sweepOverdue: async () => undefined };
     worker = new PurgeWorker(
       new Queue(queue.name, { connection }),
       connection,
-      { message: { run: (id) => useCases.runPurgeJob(id), sweepOverdue: () => useCases.sweepOverdue() }, story: unused },
+      {
+        message: { run: (id) => useCases.runPurgeJob(id), sweepOverdue: () => useCases.sweepOverdue() },
+        story: unused,
+        groupMessage: { run: (id) => groupSnaps.runPurgeJob(id), sweepOverdue: () => groupSnaps.sweepOverdue() },
+      },
       true,
     );
     return worker.onModuleInit();
@@ -127,6 +136,31 @@ describe("Purge BullMQ (Redis réel)", () => {
 
     expect(storage.has({ area: "private", key: `messages/${id}` })).toBe(false);
     await waitFor(async () => (await queue.getJob(purgeMessageJobId(id))) === undefined);
+  });
+
+  it("snap de groupe (ADR-032) : job purge-group-message-<id> dans la même file, traité par le même worker", async () => {
+    await startWorker();
+    const id = randomUUID();
+    const now = new Date();
+    await groups.create({ id: "g", name: null, createdById: alice.id, createdAt: now }, [alice.id, bob.id]);
+    storage.simulateUpload(`group-messages/${id}`, 100, "image/jpeg");
+    const purgeAt = new Date(Date.now() + 300);
+    await groups.createMessage({
+      id,
+      groupId: "g",
+      senderId: alice.id,
+      contentType: "SNAP_PHOTO",
+      content: null,
+      mediaKey: `group-messages/${id}`,
+      createdAt: now,
+      scheduledPurgeAt: purgeAt,
+    });
+    const groupScheduler = new BullMqPurgeScheduler(queue, systemClock, "groupMessage");
+    await groupScheduler.schedule(id, purgeAt);
+    expect((await queue.getJob(`purge-group-message-${id}`))?.name).toBe("purge-group-message");
+
+    await waitFor(() => groups.messages.get(id)!.mediaKey === null);
+    expect(storage.has({ area: "private", key: `group-messages/${id}` })).toBe(false);
   });
 
   it("abonnement actif : le job en cours se re-diffère lui-même à premiumUntil + 24h (moveToDelayed)", async () => {

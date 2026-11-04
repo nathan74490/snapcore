@@ -214,7 +214,7 @@ class MediaPublisherTest {
         outbox.send(CapturedMedia(file, MediaKind.PHOTO), setOf(SendTarget.ToFriend(alice), SendTarget.ToFriend(bob), SendTarget.ToStory))
         runCurrent()
 
-        assertEquals(mapOf("media" to "photo", "friends" to 2, "story" to true), analytics.propertiesOf(AnalyticsEvents.SNAP_SEND_STARTED))
+        assertEquals(mapOf("media" to "photo", "friends" to 2, "groups" to 0, "story" to true), analytics.propertiesOf(AnalyticsEvents.SNAP_SEND_STARTED))
         assertEquals(mapOf("media" to "photo", "target" to "friend"), analytics.propertiesOf(AnalyticsEvents.SNAP_SEND_FAILED))
 
         val failed = outbox.items.value.single { it.status == OutgoingStatus.FAILED }

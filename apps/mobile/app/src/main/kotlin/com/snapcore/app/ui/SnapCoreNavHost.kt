@@ -46,6 +46,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.snapcore.app.domain.Account
 import com.snapcore.app.ui.safety.BlockedUsersScreen
+import com.snapcore.app.ui.groups.GroupConversationScreen
+import com.snapcore.app.ui.groups.NewGroupScreen
+import com.snapcore.app.domain.asRecipient
 import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.Friend
@@ -93,6 +96,8 @@ private val HOME_TAB_SCREENS = listOf("Map", "Chat", "Camera", "Stories")
 @Serializable private object FriendsRoute
 @Serializable private object MyStoryRoute
 @Serializable private object BlockedUsersRoute
+@Serializable private object NewChatRoute
+@Serializable private data class GroupConversationRoute(val groupId: String)
 @Serializable private object AvatarEditorRoute
 // Paywall SnapCore+ ; returnedFromCheckout = ouvert par le lien de retour du paiement (ADR-025).
 @Serializable private data class PaywallRoute(val returnedFromCheckout: Boolean = false)
@@ -287,6 +292,8 @@ fun SnapCoreNavHost(
                         homeTab = CAMERA_TAB
                     },
                     onClearSnapRecipient = { snapRecipient = null },
+                    onOpenGroup = { group -> navController.navigate(GroupConversationRoute(group.id)) },
+                    onNewChat = { navController.navigate(NewChatRoute) },
                     onOpenProfile = { navController.navigate(ProfileRoute) },
                     onOpenFriends = { navController.navigate(FriendsRoute) },
                     onCaptured = { media -> navController.navigate(PreviewRoute(media.file.absolutePath, media.kind)) },
@@ -324,11 +331,12 @@ fun SnapCoreNavHost(
             SendToScreen(
                 media = entry.toRoute<SendToRoute>().media(),
                 recipientId = entry.toRoute<SendToRoute>().recipientId,
+                myId = account?.id.orEmpty(),
                 onBack = navController::popBackStack,
                 // Comme dans Snapchat : on suit l'envoi là où il s'affiche (« Envoi… » dans le chat, ou sur Ma story).
                 onSent = { targets ->
                     snapRecipient = null
-                    homeTab = if (targets.any { it is SendTarget.ToFriend }) CHAT_TAB else STORIES_TAB
+                    homeTab = if (targets.any { it !is SendTarget.ToStory }) CHAT_TAB else STORIES_TAB
                     backToHome()
                 },
                 onAddFriends = { navController.navigate(FriendsRoute) },
@@ -392,6 +400,31 @@ fun SnapCoreNavHost(
             )
         }
         composable<BlockedUsersRoute> { BlockedUsersScreen(onBack = navController::popBackStack) }
+        // Groupes de discussion (ADR-032).
+        composable<NewChatRoute> {
+            NewGroupScreen(
+                onBack = navController::popBackStack,
+                onOpenFriend = { f ->
+                    navController.navigate(ConversationRoute(f.id, f.username, f.pictureUrl, f.firstName)) { popUpTo<NewChatRoute> { inclusive = true } }
+                },
+                onOpenGroup = { group -> navController.navigate(GroupConversationRoute(group.id)) { popUpTo<NewChatRoute> { inclusive = true } } },
+            )
+        }
+        composable<GroupConversationRoute> { entry ->
+            val me = account
+            if (me == null) StartScreen(onSession = ::go)
+            else GroupConversationScreen(
+                groupId = entry.toRoute<GroupConversationRoute>().groupId,
+                myId = me.id,
+                onBack = navController::popBackStack,
+                onOpenPlus = { navController.navigate(PaywallRoute()) },
+                onOpenCamera = { group ->
+                    snapRecipient = group.asRecipient(me.id)
+                    homeTab = CAMERA_TAB
+                    backToHome()
+                },
+            )
+        }
         composable<AvatarEditorRoute> {
             val me = account
             if (me == null) StartScreen(onSession = ::go)

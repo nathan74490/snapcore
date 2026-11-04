@@ -34,22 +34,40 @@ export class PrismaAccountDeletionRepository implements AccountDeletionRepositor
           SELECT "profilePhotoUrl" FROM "User" WHERE id = ${userId} FOR UPDATE`;
         if (!user) return false;
 
-        const [messages, stories] = await Promise.all([
+        const [messages, stories, groupMessages, soleGroups] = await Promise.all([
           tx.message.findMany({
             where: { OR: [{ senderId: userId }, { recipientId: userId }], mediaKey: { not: null } },
             select: { mediaKey: true },
           }),
           tx.storyItem.findMany({ where: { authorId: userId }, select: { mediaKey: true, thumbnailKey: true } }),
+          // Groupes (ADR-032) : ses snaps de groupe partent avec lui (cascade) ; ceux des autres restent.
+          tx.groupMessage.findMany({ where: { senderId: userId, mediaKey: { not: null } }, select: { mediaKey: true } }),
+          // Groupes dont il est le dernier membre : supprimés avec tous leurs médias, comme à un départ.
+          tx.$queryRaw<Array<{ groupId: string }>>`
+            SELECT gm."groupId" FROM "GroupMember" gm
+            WHERE gm."userId" = ${userId}
+              AND NOT EXISTS (
+                SELECT 1 FROM "GroupMember" o WHERE o."groupId" = gm."groupId" AND o."userId" <> ${userId}
+              )`,
         ]);
+        const soleGroupIds = soleGroups.map((g) => g.groupId);
+        const soleGroupMedia = soleGroupIds.length
+          ? await tx.groupMessage.findMany({
+              where: { groupId: { in: soleGroupIds }, senderId: { not: userId }, mediaKey: { not: null } },
+              select: { mediaKey: true },
+            })
+          : [];
         await onCollected({
           profilePhotoUrl: user.profilePhotoUrl,
           // Vignettes des stories comprises (ADR-026).
           privateKeys: [
             ...messages.map((m) => m.mediaKey!),
             ...stories.flatMap((s) => (s.thumbnailKey ? [s.mediaKey, s.thumbnailKey] : [s.mediaKey])),
+            ...[...groupMessages, ...soleGroupMedia].map((m) => m.mediaKey!),
           ],
         });
 
+        if (soleGroupIds.length) await tx.group.deleteMany({ where: { id: { in: soleGroupIds } } });
         await tx.user.delete({ where: { id: userId } });
         return true;
       },

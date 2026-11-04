@@ -8,6 +8,8 @@ import com.snapcore.app.domain.ChatMessage
 import com.snapcore.app.domain.ChatService
 import com.snapcore.app.domain.Conversation
 import com.snapcore.app.domain.Friend
+import com.snapcore.app.domain.GroupService
+import com.snapcore.app.domain.GroupSummary
 import com.snapcore.app.domain.OutgoingSnap
 import com.snapcore.app.domain.SentTracker
 import com.snapcore.app.domain.SnapOpenResult
@@ -26,7 +28,9 @@ import java.util.UUID
 
 // Événements qui changent ce qu'affiche le chat. "Connected" couvre la resynchronisation
 // obligatoire à chaque (re)connexion, Socket.io ne garantissant pas la livraison (ADR-006).
-private val CHAT_EVENTS = setOf("message.received", "snap.opened", "texts.read", "snap.expired", "friend_request.accepted")
+private val CHAT_EVENTS = setOf("message.received", "snap.opened", "texts.read", "snap.expired", "friend_request.accepted",
+    // Groupes (ADR-032) : la liste Chat les affiche à côté des amis.
+    "group.message.received", "group.message.seen", "group.updated")
 
 private fun RealtimeEvent.affectsChat() = this is RealtimeEvent.Connected || (this is RealtimeEvent.Message && type in CHAT_EVENTS)
 
@@ -34,6 +38,8 @@ private fun RealtimeEvent.affectsChat() = this is RealtimeEvent.Connected || (th
 
 data class ChatListState(
     val conversations: List<Conversation> = emptyList(),
+    /** Groupes de discussion (ADR-032), mêlés aux amis par l'écran selon leur dernière activité. */
+    val groups: List<GroupSummary> = emptyList(),
     val loading: Boolean = true,
     val error: String? = null,
 )
@@ -49,6 +55,7 @@ class ChatListViewModel(
     /** Relance d'un snap en échec, par son identifiant dans la file d'envoi. */
     private val retrySend: (String) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
+    private val groupService: GroupService? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ChatListState())
     val state: StateFlow<ChatListState> = _state.asStateFlow()
@@ -56,6 +63,7 @@ class ChatListViewModel(
     /** Derniers Chats reçus que l'utilisateur vient d'ouvrir, avec l'heure de l'ouverture. */
     private val seenLocally = mutableMapOf<String, Long>()
     private var server = emptyList<Conversation>()
+    private var serverGroups = emptyList<GroupSummary>()
     private val sent = SentTracker()
 
     init {
@@ -72,6 +80,8 @@ class ChatListViewModel(
     fun refresh() {
         val known = sent.mark()
         viewModelScope.launch {
+            // Les groupes sont un plus : s'ils échouent, la liste des amis s'affiche quand même.
+            groupService?.let { service -> runCatching { service.groups() }.onSuccess { serverGroups = it } }
             runCatching { chat.conversations() }
                 .onSuccess { list ->
                     server = list
@@ -91,7 +101,18 @@ class ChatListViewModel(
             if (local == null) conversation else conversation.copy(lastMessage = local.asMessage(myId))
         }
         val (sending, rest) = conversations.partition { it.friend.id in outgoing }
-        _state.update { it.copy(conversations = sending.sortedByDescending { c -> c.lastMessage?.createdAt } + rest) }
+        // Snap en cours d'envoi à un groupe : il devient le dernier message de la ligne du groupe.
+        val groupOutgoing = sent.visible(outbox.value).filter { it.groupId != null }.groupBy { it.groupId!! }
+        val groups = serverGroups.map { summary ->
+            val local = groupOutgoing[summary.group.id]?.maxByOrNull { it.createdAt }
+            if (local == null) summary else summary.copy(lastMessage = local.asGroupMessage(myId))
+        }
+        _state.update { it.copy(conversations = sending.sortedByDescending { c -> c.lastMessage?.createdAt } + rest, groups = groups) }
+    }
+
+    /** Relance un snap de groupe dont l'envoi a échoué. */
+    fun retryGroup(message: com.snapcore.app.domain.GroupMessage) {
+        if (message.failed) retrySend(message.id.removePrefix(OutgoingSnap.OUTBOX_PREFIX))
     }
 
     /** Relance un snap dont l'envoi a échoué (ligne « Échec de l'envoi »). */

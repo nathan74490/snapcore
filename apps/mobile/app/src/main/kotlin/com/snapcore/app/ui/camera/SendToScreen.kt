@@ -56,14 +56,16 @@ import com.snapcore.app.ui.components.SnapCard
 import com.snapcore.app.ui.components.SnapCheckbox
 import com.snapcore.app.ui.components.SnapSearchBar
 import com.snapcore.app.ui.containerViewModel
+import com.snapcore.app.ui.groups.GroupAvatar
 import com.snapcore.app.ui.theme.SnapColors
 
 // Sélection multiple des destinataires (référence : amis-nouvelle-conversation-multi.png) :
 // "Ma story" en tête, puis les amis ACCEPTED.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: (Set<SendTarget>) -> Unit, onAddFriends: () -> Unit, recipientId: String? = null) {
-    val vm = containerViewModel { SendToViewModel(media, it.friends, it.outbox, recipientId) }
+fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: (Set<SendTarget>) -> Unit, onAddFriends: () -> Unit, recipientId: String? = null,
+    myId: String = "") {
+    val vm = containerViewModel { SendToViewModel(media, it.friends, it.outbox, recipientId, groupService = it.groups) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.done) { if (state.done) onSent(state.selected) }
 
@@ -101,6 +103,22 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: (Set<SendTarg
                     checked = SendTarget.ToStory in state.selected,
                     onToggle = { vm.toggle(SendTarget.ToStory) },
                 ) }
+                val groups = state.groups.filter { it.title(myId).contains(query, ignoreCase = true) }
+                if (groups.isNotEmpty()) {
+                    SectionTitle("Groupes", Modifier.padding(top = 14.dp, bottom = 6.dp))
+                    SnapCard {
+                        groups.forEach { group ->
+                            val target = SendTarget.ToGroup(group)
+                            TargetRow(
+                                label = group.title(myId),
+                                subtitle = "${group.members.size} membres",
+                                avatar = { GroupAvatar(group, myId, 40.dp) },
+                                checked = target in state.selected,
+                                onToggle = { vm.toggle(target) },
+                            )
+                        }
+                    }
+                }
                 SectionTitle("Amis", Modifier.padding(top = 14.dp, bottom = 6.dp))
             }
             when {

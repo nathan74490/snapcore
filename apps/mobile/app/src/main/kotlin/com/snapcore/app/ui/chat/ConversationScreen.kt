@@ -362,15 +362,15 @@ private fun MessageRow(message: ChatMessage, myId: String, friendName: String, d
 // Trois points qui rebondissent à tour de rôle sous le nom de l'ami, avec la même barre bleue que
 // ses messages ; le nom est omis s'il ouvre déjà la suite de messages juste au-dessus.
 @Composable
-private fun TypingIndicator(friendName: String, showName: Boolean) {
+internal fun TypingIndicator(friendName: String, showName: Boolean, color: Color = SnapColors.ChatBlue) {
     val transition = rememberInfiniteTransition(label = "typing")
     Column(Modifier.fillMaxWidth().semantics { contentDescription = "$friendName est en train d'écrire" }) {
         if (showName) {
-            Text(friendName.uppercase(), color = SnapColors.ChatBlue, style = MaterialTheme.typography.labelMedium,
+            Text(friendName.uppercase(), color = color, style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
         }
         Row(Modifier.height(IntrinsicSize.Min)) {
-            Box(Modifier.width(2.dp).fillMaxHeight().background(SnapColors.ChatBlue))
+            Box(Modifier.width(2.dp).fillMaxHeight().background(color))
             Row(Modifier.padding(start = 12.dp, top = 12.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 repeat(3) { index ->
                     val lift by transition.animateFloat(

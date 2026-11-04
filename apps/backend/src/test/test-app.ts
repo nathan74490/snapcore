@@ -5,6 +5,7 @@ import { configureApp } from "../app.setup";
 import { ACCOUNT_DELETION_REPOSITORY, DELETION_JOB_QUEUE, SUBSCRIPTION_CANCELLER } from "../modules/account-deletion/application/ports";
 import { ACCOUNT_DELETION_QUEUE, AccountDeletionWorker } from "../modules/account-deletion/infrastructure/bullmq-deletion";
 import { FRIENDSHIP_REPOSITORY } from "../modules/friendships/application/ports/friendship.repository";
+import { GROUP_MESSAGE_PURGE_SCHEDULER, GROUP_REPOSITORY } from "../modules/groups/application/ports";
 import { IDENTITY_PROVIDER } from "../modules/identity/application/ports/identity-provider.port";
 import { LOCATION_SHARING_REPOSITORY, LOCATION_STORE } from "../modules/location/application/ports";
 import { USER_REPOSITORY } from "../modules/identity/application/ports/user.repository";
@@ -22,6 +23,7 @@ import { SUBSCRIPTION_REPOSITORY } from "../modules/subscriptions/application/po
 import { FakeIdentityProvider } from "./fakes";
 import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "./in-memory-account-deletion";
 import { InMemoryFriendshipRepository } from "./in-memory-friendship.repository";
+import { InMemoryGroupRepository } from "./in-memory-groups";
 import { InMemoryLocationSharingRepository, InMemoryLocationStore } from "./in-memory-location";
 import { InMemoryObjectStorage, InMemoryUploadTicketStore } from "./in-memory-media";
 import { InMemoryMessageRepository, RecordingPurgeScheduler } from "./in-memory-messages";
@@ -45,7 +47,14 @@ export class TestWorld {
   readonly presence = new InMemoryPresence();
   readonly stories = new InMemoryStoryRepository();
   readonly storyViews = new InMemoryStoryViews();
-  readonly accountDeletion = new InMemoryAccountDeletionRepository(this.users, this.messages, this.stories, this.friendships);
+  readonly groups = new InMemoryGroupRepository(this.users);
+  readonly accountDeletion = new InMemoryAccountDeletionRepository(
+    this.users,
+    this.messages,
+    this.stories,
+    this.friendships,
+    this.groups,
+  );
   readonly deletionQueue = new RecordingDeletionQueue();
   readonly moderation = new InMemoryModerationRepository(this.users);
   readonly subscriptions = new InMemorySubscriptionRepository(this.users);
@@ -84,6 +93,10 @@ export async function createTestApp(
     .useValue(world.storyViews)
     .overrideProvider(STORY_PURGE_SCHEDULER)
     .useValue(new RecordingStoryPurgeScheduler())
+    .overrideProvider(GROUP_REPOSITORY)
+    .useValue(world.groups)
+    .overrideProvider(GROUP_MESSAGE_PURGE_SCHEDULER)
+    .useValue(new RecordingPurgeScheduler())
     .overrideProvider(PurgeWorker)
     .useValue({})
     .overrideProvider(ACCOUNT_DELETION_REPOSITORY)

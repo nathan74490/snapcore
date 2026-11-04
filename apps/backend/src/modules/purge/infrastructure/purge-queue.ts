@@ -2,17 +2,19 @@ import type { ConnectionOptions, JobsOptions } from "bullmq";
 
 export const PURGE_QUEUE = Symbol("PurgeQueue");
 
-// Une seule file pour toutes les purges de médias (ADR-017) : Snaps privés et éléments de story.
-export type PurgeTargetKind = "message" | "story";
+// Une seule file pour toutes les purges de médias (ADR-017) : Snaps privés, éléments de story et snaps
+// de groupe (ADR-032).
+export type PurgeTargetKind = "message" | "story" | "groupMessage";
 
 export const PURGE_JOB_NAME: Record<PurgeTargetKind, string> = {
   message: "purge-message",
   story: "purge-story",
+  groupMessage: "purge-group-message",
 };
 export const PURGE_SWEEP_JOB = "purge-sweep";
 export const SWEEP_EVERY_MS = 60 * 60 * 1000;
 
-// Identifiant déterministe (ADR-017) : `purge-message-<id>` / `purge-story-<id>`. Séparateur "-" :
+// Identifiant déterministe (ADR-017) : `purge-message-<id>` / `purge-story-<id>` / `purge-group-message-<id>`. Séparateur "-" :
 // BullMQ refuse ":" dans un jobId personnalisé ("Custom Id cannot contain :", vérifié sur bullmq 5.81).
 export const purgeJobId = (kind: PurgeTargetKind, targetId: string) => `${PURGE_JOB_NAME[kind]}-${targetId}`;
 

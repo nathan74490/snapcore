@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { FakeIdentityProvider, FixedClock, RecordingAnalytics } from "../../../test/fakes";
 import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "../../../test/in-memory-account-deletion";
 import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
+import { InMemoryGroupRepository } from "../../../test/in-memory-groups";
 import { InMemoryLocationStore } from "../../../test/in-memory-location";
 import { InMemoryObjectStorage, silentLogger } from "../../../test/in-memory-media";
 import { InMemoryMessageRepository } from "../../../test/in-memory-messages";
@@ -20,6 +21,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
   let messages: InMemoryMessageRepository;
   let stories: InMemoryStoryRepository;
   let friendships: InMemoryFriendshipRepository;
+  let groups: InMemoryGroupRepository;
   let accounts: InMemoryAccountDeletionRepository;
   let queue: RecordingDeletionQueue;
   let identity: FakeIdentityProvider;
@@ -37,7 +39,8 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     messages = new InMemoryMessageRepository();
     stories = new InMemoryStoryRepository();
     friendships = new InMemoryFriendshipRepository(users);
-    accounts = new InMemoryAccountDeletionRepository(users, messages, stories, friendships);
+    groups = new InMemoryGroupRepository(users);
+    accounts = new InMemoryAccountDeletionRepository(users, messages, stories, friendships, groups);
     queue = new RecordingDeletionQueue();
     identity = new FakeIdentityProvider();
     storage = new InMemoryObjectStorage();
@@ -220,6 +223,50 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     await expect(useCases.runJob(context)).resolves.toEqual({ kind: "deleted", removedObjects: 6 });
     expect(steps).toEqual([]); // ni abonnement ni Firebase rejoués : la ligne n'existe plus
     expect([...storage.objects.keys()]).toEqual([]);
+  });
+
+  it("groupes (ADR-032) : ses messages de groupe et les groupes dont il était le dernier membre partent, médias compris", async () => {
+    const carol = await users.seed("carol");
+    const at = new Date("2026-11-01T10:00:00Z");
+    await groups.create({ id: "shared", name: null, createdById: alice.id, createdAt: at }, [alice.id, bob.id, carol.id]);
+    await groups.create({ id: "alone", name: "Vide", createdById: bob.id, createdAt: at }, [alice.id, bob.id]);
+    const snap = async (id: string, groupId: string, sender: UserAccount) => {
+      storage.simulateUpload(`group-messages/${id}`, 10, "image/jpeg");
+      await groups.createMessage({
+        id,
+        groupId,
+        senderId: sender.id,
+        contentType: "SNAP_PHOTO",
+        content: null,
+        mediaKey: `group-messages/${id}`,
+        createdAt: at,
+        scheduledPurgeAt: new Date(at.getTime() + 1000),
+      });
+    };
+    await snap("a1", "shared", alice);
+    await snap("b1", "shared", bob);
+    await snap("b2", "alone", bob);
+    await groups.recordOpening("b1", alice.id, at);
+    await groups.removeMember("alone", bob.id); // alice reste seule dans « alone »
+    await useCases.request(alice);
+    const context = jobContext();
+
+    await useCases.runJob(context);
+
+    expect(context.persisted[0]).toEqual(
+      expect.arrayContaining([
+        { area: "private", key: "group-messages/a1" },
+        { area: "private", key: "group-messages/b2" },
+      ]),
+    );
+    expect(context.persisted[0]).not.toContainEqual({ area: "private", key: "group-messages/b1" });
+    expect(storage.has({ area: "private", key: "group-messages/b1" })).toBe(true);
+    expect(storage.has({ area: "private", key: "group-messages/b2" })).toBe(false);
+    expect([...groups.groups.keys()]).toEqual(["shared"]);
+    expect(groups.groups.get("shared")!.createdById).toBeNull();
+    expect(groups.members.map((m) => m.userId).sort()).toEqual([bob.id, carol.id].sort());
+    expect([...groups.messages.keys()]).toEqual(["b1"]);
+    expect(groups.openings).toEqual([]);
   });
 
   it("le rattrapage remet en file les comptes marqués dont la ligne existe encore", async () => {

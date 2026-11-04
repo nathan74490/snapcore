@@ -10,7 +10,10 @@ export type DeletionState = "absent" | "active" | "deletion-requested";
 // Médias relevés sous verrou, juste avant la suppression de la ligne User (ADR-019).
 export interface CollectedMedia {
   profilePhotoUrl: string | null;
-  /** mediaKey des Messages envoyés ET reçus, et mediaKey + thumbnailKey des StoryItem de l'utilisateur. */
+  /**
+   * mediaKey des Messages envoyés ET reçus, mediaKey + thumbnailKey des StoryItem de l'utilisateur, mediaKey
+   * de ses messages de groupe et de tous ceux des groupes dont il était le dernier membre (ADR-032).
+   */
   privateKeys: string[];
 }
 
@@ -21,8 +24,9 @@ export interface AccountDeletionRepository {
 
   /**
    * Dans UNE transaction : `SELECT ... FOR UPDATE` sur la ligne User, relevé des médias,
-   * appel de `onCollected` (qui persiste les clés dans le job), PUIS suppression de la ligne
-   * (cascade Message/Friendship/StoryItem/DeviceToken). Le verrou empêche qu'un Message soit
+   * appel de `onCollected` (qui persiste les clés dans le job), PUIS suppression des groupes dont il
+   * était le dernier membre et de la ligne (cascade Message/Friendship/StoryItem/DeviceToken/GroupMember/
+   * GroupMessage). Le verrou empêche qu'un Message soit
    * inséré entre le relevé et la suppression sans que sa clé ait été relevée.
    * @returns false si la ligne n'existait déjà plus.
    */

@@ -26,6 +26,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.*
 import com.snapcore.app.ui.components.*
 import com.snapcore.app.ui.containerViewModel
+import com.snapcore.app.ui.groups.GroupAvatar
+import java.time.Instant
 import com.snapcore.app.ui.theme.SnapColors
 
 // Toutes les icônes de la liste à la taille de celles de l'en-tête (24).
@@ -35,15 +37,24 @@ private fun Conversation.unread(myId: String) = headline?.let { !it.isFrom(myId)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAddFriends: () -> Unit, onSnapTo: (Friend) -> Unit, modifier: Modifier = Modifier) {
-    val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events, myId, it.outbox.items, it.outbox::retry) }
+fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAddFriends: () -> Unit, onSnapTo: (Friend) -> Unit, modifier: Modifier = Modifier,
+    onOpenGroup: (Group) -> Unit = {}, onSnapToGroup: (Group) -> Unit = {}, onNewChat: () -> Unit = onAddFriends) {
+    val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events, myId, it.outbox.items, it.outbox::retry, groupService = it.groups) }
     val state by vm.state.collectAsStateWithLifecycle()
     // Au retour d'une conversation : le snap ouvert ou les chats lus ne déclenchent un événement temps
     // réel que chez l'expéditeur, la liste se recharge donc elle-même (BUG-011 d'ADR-023).
     LifecycleResumeEffect(Unit) { vm.refresh(); onPauseOrDispose {} }
     var filter by rememberSaveable { mutableIntStateOf(0) }
-    val unread = state.conversations.count { it.unread(myId) }
-    val visible = state.conversations.filter { when(filter) { 1 -> it.unread(myId); 2 -> it.lastMessage == null; else -> true } }
+    val unread = state.conversations.count { it.unread(myId) } + state.groups.count { it.unread(myId) }
+    // Amis et groupes (ADR-032) dans une seule liste, les envois en cours et la plus récente en tête.
+    val rows: List<ChatRow> = remember(state.conversations, state.groups) { chatRows(state.conversations, state.groups) }
+    val visible = rows.filter { row ->
+        when (filter) {
+            1 -> row.unread(myId)
+            2 -> row.isNew
+            else -> true
+        }
+    }
     SnapRefresh(state.loading && state.conversations.isNotEmpty(), vm::refresh, modifier.fillMaxSize()) {
       Column(Modifier.fillMaxSize()) {
         // Même marge latérale (12) que l'en-tête et les lignes de conversation.
@@ -65,14 +76,23 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
             // Une conversation qui remonte en tête (message reçu) s'insère au-dessus de l'écran : la liste
             // garde sinon sa ligne de référence. En haut de liste, on remonte pour la montrer.
             val listState = rememberLazyListState()
-            val first = visible.firstOrNull()?.friend?.id
+            val first = visible.firstOrNull()?.key
             LaunchedEffect(first) { if (first != null && listState.firstVisibleItemIndex <= 1) listState.animateScrollToItem(0) }
             LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 90.dp)) {
                 state.error?.let { error -> item { TextButton(onClick = vm::refresh) { Text("$error · Réessayer", color = SnapColors.SnapRed) } } }
                 if(state.loading && state.conversations.isEmpty()) item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }
                 }
-                items(visible, key = { it.friend.id }) { conversation ->
+                items(visible, key = { it.key }) { row ->
+                    if (row is ChatRow.OfGroup) {
+                        val summary = row.summary
+                        GroupRow(summary, myId, onSnap = { onSnapToGroup(summary.group) }) {
+                            val last = summary.headline
+                            if (last?.failed == true) vm.retryGroup(last) else onOpenGroup(summary.group)
+                        }
+                        return@items
+                    }
+                    val conversation = (row as ChatRow.OfFriend).conversation
                     // Nouveau snap reçu : il s'ouvre directement, comme dans Snapchat.
                     val snap = conversation.headline?.takeIf { canTryToOpen(it, myId) && it.openedAt == null }
                     ConversationRow(conversation, myId, onSnap = { onSnapTo(conversation.friend) }) {
@@ -103,7 +123,8 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
                 }
             }
             // Jaune et icône noire, comme le bouton « Nouveau chat » de Snapchat.
-            FloatingActionButton(onClick = onAddFriends, containerColor = SnapColors.Yellow, contentColor = SnapColors.Ink,
+            // Il ouvre « Nouveau chat » : un ami, ou plusieurs pour créer un groupe (ADR-032).
+            FloatingActionButton(onClick = onNewChat, containerColor = SnapColors.Yellow, contentColor = SnapColors.Ink,
                 shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(60.dp)) {
                 FigmaAsset("15-925_imgIconEdit", "Nouveau chat", tint = SnapColors.Ink)
             }
@@ -136,6 +157,75 @@ private fun ConversationRow(conversation: Conversation, myId: String, onSnap: ()
         }
         // Comme dans Snapchat : l'appareil photo de la ligne ouvre la caméra pour répondre par un snap.
         IconButton(onClick = onSnap) { FigmaAsset("17-1301_imgIconCamera", "Envoyer un snap", Modifier.size(ICON), tint = SnapColors.Ink) }
+    }
+    HorizontalDivider(color = SnapColors.Border, thickness = 1.dp)
+}
+
+/** Une ligne de la liste Chat : un ami ou un groupe (ADR-032). */
+private sealed interface ChatRow {
+    val key: String
+    /** Dernière activité, pour trier les deux familles ensemble. */
+    val activity: Instant
+    val isNew: Boolean
+    fun unread(myId: String): Boolean
+
+    data class OfFriend(val conversation: Conversation) : ChatRow {
+        override val key get() = conversation.friend.id
+        override val activity: Instant get() = conversation.lastMessage?.createdAt ?: Instant.EPOCH
+        override val isNew get() = conversation.lastMessage == null
+        override fun unread(myId: String) = conversation.unread(myId)
+    }
+
+    data class OfGroup(val summary: GroupSummary) : ChatRow {
+        override val key get() = "group-" + summary.group.id
+        override val activity: Instant get() = summary.lastMessage?.createdAt ?: summary.group.createdAt
+        override val isNew get() = summary.lastMessage == null
+        override fun unread(myId: String) = summary.unread(myId)
+    }
+}
+
+private fun GroupSummary.unread(myId: String) =
+    unread || unopenedSnap != null
+
+// Les envois en cours restent en tête ; amis et groupes sont ensuite triés par dernière activité, les amis
+// sans conversation en bas, comme avant.
+private fun chatRows(conversations: List<Conversation>, groups: List<GroupSummary>): List<ChatRow> {
+    val friendRows = conversations.map { ChatRow.OfFriend(it) }
+    val (active, untouched) = friendRows.partition { it.conversation.lastMessage != null }
+    val sending: (ChatRow) -> Boolean = { row ->
+        when (row) {
+            is ChatRow.OfFriend -> row.conversation.lastMessage?.pending == true
+            is ChatRow.OfGroup -> row.summary.lastMessage?.pending == true
+        }
+    }
+    val withActivity = (active + groups.map { ChatRow.OfGroup(it) })
+        .sortedWith(compareByDescending<ChatRow> { sending(it) }.thenByDescending { it.activity })
+    return withActivity + untouched
+}
+
+@Composable
+private fun GroupRow(summary: GroupSummary, myId: String, onSnap: () -> Unit, onClick: () -> Unit) {
+    val group = summary.group
+    val last = summary.headline
+    val unread = summary.unread(myId)
+    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick).padding(start = 12.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        GroupAvatar(group, myId, 48.dp)
+        Column(Modifier.weight(1f)) {
+            Text(group.title(myId), fontSize = 18.sp, lineHeight = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (last != null) {
+                    val status = statusOf(last, group, myId, unread)
+                    StatusIcon(status, size = 16.dp)
+                    Text(status.label, color = if (last.failed) SnapColors.SnapRed else if (unread) status.color.toColor() else SnapColors.Grey,
+                        fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal,
+                        style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
+                    Text("· ${relativeTime(last.createdAt)}", color = SnapColors.Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                } else Text("Groupe créé · appuie pour discuter", color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        IconButton(onClick = onSnap) { FigmaAsset("17-1301_imgIconCamera", "Envoyer un snap au groupe", Modifier.size(ICON), tint = SnapColors.Ink) }
     }
     HorizontalDivider(color = SnapColors.Border, thickness = 1.dp)
 }

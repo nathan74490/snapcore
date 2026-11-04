@@ -54,7 +54,8 @@ private val icons = listOf("Map", "Chat", "Camera", "Stories")
 fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
     onOpenProfile: () -> Unit, onOpenFriends: () -> Unit, onCaptured: (CapturedMedia) -> Unit,
     onOpenConversation: (Friend, snapId: String?) -> Unit, onOpenMyStory: () -> Unit, onPlayStory: (FriendStory, fromMap: Boolean) -> Unit,
-    modifier: Modifier = Modifier, snapRecipient: Friend? = null, onSnapTo: (Friend) -> Unit = {}, onClearSnapRecipient: () -> Unit = {}) {
+    modifier: Modifier = Modifier, snapRecipient: Friend? = null, onSnapTo: (Friend) -> Unit = {}, onClearSnapRecipient: () -> Unit = {},
+    onOpenGroup: (Group) -> Unit = {}, onNewChat: () -> Unit = onOpenFriends) {
     // Demandes d'ami en attente : le bouton d'ajout passe en jaune avec un badge, comme dans Snapchat.
     val requestsVm = containerViewModel { FriendRequestsViewModel(it.friends, it.realtime.events) }
     val pendingRequests by requestsVm.count.collectAsStateWithLifecycle()
@@ -158,7 +159,8 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                             RoundAction("15-925_imgIconMore", "Mon profil et paramètres", onOpenProfile)
                         }
                     }
-                    if (page == CHAT_TAB) ChatListScreen(account.id, onOpenConversation, onOpenFriends, onSnapTo, Modifier.weight(1f))
+                    if (page == CHAT_TAB) ChatListScreen(account.id, onOpenConversation, onOpenFriends, onSnapTo, Modifier.weight(1f),
+                        onOpenGroup = onOpenGroup, onSnapToGroup = { onSnapTo(it.asRecipient(account.id)) }, onNewChat = onNewChat)
                     else StoriesScreen(account, onOpenMyStory, { onPlayStory(it, false) }, Modifier.weight(1f))
                 }
             }

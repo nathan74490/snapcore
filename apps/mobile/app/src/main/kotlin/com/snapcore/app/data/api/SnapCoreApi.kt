@@ -161,7 +161,86 @@ interface SnapCoreApi {
 
     @POST("reports")
     suspend fun report(@Body body: ReportRequest)
+
+    // --- Groupes (ADR-032) ---
+    @GET("groups")
+    suspend fun groups(): List<GroupSummaryDto>
+
+    @POST("groups")
+    suspend fun createGroup(@Body body: CreateGroupRequest): GroupDto
+
+    @GET("groups/{groupId}")
+    suspend fun group(@Path("groupId") groupId: String): GroupDto
+
+    @PATCH("groups/{groupId}")
+    suspend fun renameGroup(@Path("groupId") groupId: String, @Body body: RenameGroupRequest): GroupDto
+
+    @POST("groups/{groupId}/members")
+    suspend fun addGroupMembers(@Path("groupId") groupId: String, @Body body: AddGroupMembersRequest): GroupDto
+
+    @DELETE("groups/{groupId}/members/me")
+    suspend fun leaveGroup(@Path("groupId") groupId: String)
+
+    @GET("groups/{groupId}/messages")
+    suspend fun groupMessages(@Path("groupId") groupId: String, @Query("before") before: String? = null): List<GroupMessageDto>
+
+    @POST("groups/{groupId}/messages/text")
+    suspend fun sendGroupText(@Path("groupId") groupId: String, @Body body: SendTextRequest): GroupMessageDto
+
+    @POST("groups/{groupId}/messages/snap")
+    suspend fun sendGroupSnap(@Path("groupId") groupId: String, @Body body: SendSnapRequest): GroupMessageDto
+
+    @POST("groups/{groupId}/read")
+    suspend fun markGroupRead(@Path("groupId") groupId: String)
+
+    @POST("groups/{groupId}/typing")
+    suspend fun sendGroupTyping(@Path("groupId") groupId: String)
+
+    @POST("group-messages/{messageId}/view")
+    suspend fun viewGroupSnap(@Path("messageId") messageId: String): SnapViewUrlDto
 }
+
+// Miroirs de GroupView, GroupMessageView et GroupSummary (packages/types, ADR-032).
+@Serializable
+data class GroupDto(
+    val id: String,
+    val name: String? = null,
+    val members: List<PublicProfileDto>,
+    val createdAt: String,
+    val formerMembers: List<PublicProfileDto> = emptyList(),
+)
+
+@Serializable
+data class GroupMessageDto(
+    val id: String,
+    val groupId: String,
+    val senderId: String,
+    val contentType: String,
+    val content: String? = null,
+    val createdAt: String,
+    val mediaPurged: Boolean = false,
+    val openedByMe: Boolean = false,
+    val seenBy: List<String> = emptyList(),
+)
+
+@Serializable
+data class GroupSummaryDto(
+    val group: GroupDto,
+    val lastMessage: GroupMessageDto? = null,
+    val unopenedSnap: GroupMessageDto? = null,
+    val unread: Boolean = false,
+)
+
+// Nom absent = groupe sans nom (une valeur par défaut nulle n'est pas sérialisée).
+@Serializable
+data class CreateGroupRequest(val memberIds: List<String>, val name: String? = null)
+
+// Pas de valeur par défaut : le nom part toujours, vide pour retirer le nom.
+@Serializable
+data class RenameGroupRequest(val name: String)
+
+@Serializable
+data class AddGroupMembersRequest(val userIds: List<String>)
 
 @Serializable
 data class ReportRequest(val targetType: String, val targetId: String, val reason: String)

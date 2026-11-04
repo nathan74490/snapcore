@@ -11,7 +11,7 @@ Chaque point de ce document est couvert par `apps/backend/src/modules/purge/infr
 - Le balayage horaire est un *job scheduler* (`queue.upsertJobScheduler("purge-sweep", { every: 3600000 })`), idempotent : un redémarrage ne crée pas de second balayage.
 
 ## Identifiants de job
-`purge-message-<messageId>` / `purge-story-<storyItemId>` (séparateur `-`, pas `:`, car certaines versions récentes de BullMQ utilisent `:` en interne pour construire leurs clés Redis et pourraient refuser un `jobId` personnalisé qui en contient ; à confirmer dans la doc de la version installée avant implémentation), jamais un identifiant aléatoire. Ajouter un job dont l'identifiant existe déjà dans la file est silencieusement ignoré par BullMQ (aucune erreur), y compris si le job existant est déjà terminé ou en échec mais toujours conservé dans Redis, d'où les points ci-dessous.
+`purge-message-<messageId>` / `purge-story-<storyItemId>` / `purge-group-message-<groupMessageId>` (snaps de groupe, ADR-032) (séparateur `-`, pas `:`, car certaines versions récentes de BullMQ utilisent `:` en interne pour construire leurs clés Redis et pourraient refuser un `jobId` personnalisé qui en contient ; à confirmer dans la doc de la version installée avant implémentation), jamais un identifiant aléatoire. Ajouter un job dont l'identifiant existe déjà dans la file est silencieusement ignoré par BullMQ (aucune erreur), y compris si le job existant est déjà terminé ou en échec mais toujours conservé dans Redis, d'où les points ci-dessous.
 
 **Attention à la signature de `queue.add`** : le premier argument est le **nom** du job (une catégorie, ex. `'purge'`), pas son identifiant. L'identifiant déterministe se passe dans les options, via `jobId` :
 

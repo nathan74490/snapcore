@@ -111,7 +111,11 @@ describe("Stories (Postgres, Redis et BullMQ réels)", () => {
     const worker = new PurgeWorker(
       new Queue(queueName, { connection }),
       connection,
-      { message: unused, story: { run: (id) => useCases.runPurgeJob(id), sweepOverdue: () => useCases.sweepOverdue() } },
+      {
+        message: unused,
+        story: { run: (id) => useCases.runPurgeJob(id), sweepOverdue: () => useCases.sweepOverdue() },
+        groupMessage: unused,
+      },
       true,
     );
     await worker.onModuleInit();

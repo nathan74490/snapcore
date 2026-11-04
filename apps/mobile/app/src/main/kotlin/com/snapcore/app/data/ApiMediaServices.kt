@@ -61,6 +61,10 @@ class ApiSnapService(private val api: SnapCoreApi) : SnapService {
         apiCall { api.sendSnap(friendId, SendSnapRequest(uploadId, messageContentType)) }
     }
 
+    override suspend fun sendGroupSnap(groupId: String, uploadId: String, messageContentType: String) {
+        apiCall { api.sendGroupSnap(groupId, SendSnapRequest(uploadId, messageContentType)) }
+    }
+
     override suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String?, location: GeoPoint?) {
         apiCall { api.publishStory(PublishStoryRequest(uploadId, storyContentType, thumbnailUploadId, location?.latitude, location?.longitude)) }
     }
