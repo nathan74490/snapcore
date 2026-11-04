@@ -10,7 +10,7 @@ data class PushNotification(val title: String, val text: String, val target: Lau
  * Détails résolus via l'API au moment de la réception : le push lui-même ne contient que le type
  * d'événement et un identifiant (ADR-018). Tout est facultatif : sans réseau, le texte reste générique.
  */
-data class PushDetails(val senderName: String? = null, val isSnap: Boolean? = null)
+data class PushDetails(val senderName: String? = null, val isSnap: Boolean? = null, val groupName: String? = null)
 
 /**
  * Texte de la notification pour un push reçu, ou null pour un événement qui ne doit pas en afficher.
@@ -24,6 +24,17 @@ fun notificationFor(data: Map<String, String>, details: PushDetails): PushNotifi
             true -> PushNotification("SnapCore", if (who != null) "Nouveau snap de $who" else "Tu as reçu un snap", LaunchTarget.CHAT)
             false -> PushNotification("SnapCore", if (who != null) "Nouveau chat de $who" else "Tu as reçu un message", LaunchTarget.CHAT)
             null -> PushNotification("SnapCore", if (who != null) "Nouveau message de $who" else "Tu as reçu un message", LaunchTarget.CHAT)
+        }
+        // Groupe (ADR-032) : le nom du groupe en titre, comme Snapchat.
+        "group.message.received" -> {
+            val title = details.groupName ?: "SnapCore"
+            val text = when {
+                who == null -> "Nouveau message dans le groupe"
+                details.isSnap == true -> "$who a envoyé un snap"
+                details.isSnap == false -> "$who a envoyé un chat"
+                else -> "Nouveau message de $who"
+            }
+            PushNotification(title, text, LaunchTarget.CHAT)
         }
         "friend_request.received" ->
             PushNotification("Nouvelle demande d'ami", if (who != null) "$who veut t'ajouter en ami" else "Quelqu'un veut t'ajouter en ami", LaunchTarget.FRIENDS)

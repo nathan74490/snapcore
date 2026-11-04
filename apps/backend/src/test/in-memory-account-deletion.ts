@@ -5,6 +5,7 @@ import type {
   DeletionState,
 } from "../modules/account-deletion/application/ports";
 import type { InMemoryFriendshipRepository } from "./in-memory-friendship.repository";
+import type { InMemoryGroupRepository } from "./in-memory-groups";
 import type { InMemoryMessageRepository } from "./in-memory-messages";
 import type { InMemoryStoryRepository } from "./in-memory-stories";
 import type { InMemoryUserRepository } from "./in-memory-user.repository";
@@ -18,6 +19,7 @@ export class InMemoryAccountDeletionRepository implements AccountDeletionReposit
     private readonly messages: InMemoryMessageRepository,
     private readonly stories: InMemoryStoryRepository,
     private readonly friendships: InMemoryFriendshipRepository,
+    private readonly groups?: InMemoryGroupRepository,
   ) {}
 
   async markDeletionRequested(userId: string, at: Date) {
@@ -38,11 +40,16 @@ export class InMemoryAccountDeletionRepository implements AccountDeletionReposit
     if (!user) return false;
     const messages = [...this.messages.rows.values()].filter((m) => m.senderId === userId || m.recipientId === userId);
     const stories = [...this.stories.rows.values()].filter((s) => s.authorId === userId);
+    const soleGroupIds = this.groups?.soleMemberGroupIds(userId) ?? [];
+    const groupMessages = [...(this.groups?.messages.values() ?? [])].filter(
+      (m) => m.senderId === userId || soleGroupIds.includes(m.groupId),
+    );
     await onCollected({
       profilePhotoUrl: user.profilePhotoUrl,
       privateKeys: [
         ...messages.flatMap((m) => (m.mediaKey ? [m.mediaKey] : [])),
         ...stories.flatMap((s) => (s.thumbnailKey ? [s.mediaKey, s.thumbnailKey] : [s.mediaKey])),
+        ...groupMessages.flatMap((m) => (m.mediaKey ? [m.mediaKey] : [])),
       ],
     });
     // Simule un échec de la transaction APRÈS la persistance des clés : rien n'est supprimé.
@@ -55,6 +62,8 @@ export class InMemoryAccountDeletionRepository implements AccountDeletionReposit
     for (const f of [...this.friendships.rows.values()]) {
       if (f.requesterId === userId || f.addresseeId === userId) this.friendships.rows.delete(f.id);
     }
+    soleGroupIds.forEach((id) => this.groups!.deleteGroup(id));
+    this.groups?.deleteUser(userId);
     this.users.rows.delete(userId);
     return true;
   }

@@ -1,14 +1,15 @@
 import { Logger, type OnApplicationShutdown, type OnModuleInit } from "@nestjs/common";
 import { DelayedError, Worker, type ConnectionOptions, type Job, type Queue } from "bullmq";
-import { PURGE_JOB_NAME, PURGE_SWEEP_JOB, SWEEP_EVERY_MS, type PurgeJobData } from "./purge-queue";
+import { PURGE_JOB_NAME, PURGE_SWEEP_JOB, SWEEP_EVERY_MS, type PurgeJobData, type PurgeTargetKind } from "./purge-queue";
 
-// Ce qu'un contexte (messages, stories) doit fournir au worker pour une cible de purge.
+// Ce qu'un contexte (messages, stories, groupes) doit fournir au worker pour une cible de purge.
 export interface PurgeHandler {
   run(targetId: string): Promise<{ kind: "done" } | { kind: "delay"; until: Date }>;
   sweepOverdue(): Promise<unknown>;
 }
 
-// Consomme la file de purge : jobs purge-message-<id>, purge-story-<id> et balayage horaire.
+// Consomme la file de purge : jobs purge-message-<id>, purge-story-<id>, purge-group-message-<id> et
+// balayage horaire.
 export class PurgeWorker implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(PurgeWorker.name);
   private worker?: Worker;
@@ -16,7 +17,7 @@ export class PurgeWorker implements OnModuleInit, OnApplicationShutdown {
   constructor(
     private readonly queue: Queue,
     private readonly connection: ConnectionOptions,
-    private readonly handlers: { message: PurgeHandler; story: PurgeHandler },
+    private readonly handlers: Record<PurgeTargetKind, PurgeHandler>,
     private readonly enabled: boolean,
   ) {}
 
@@ -50,11 +51,12 @@ export class PurgeWorker implements OnModuleInit, OnApplicationShutdown {
       return {
         message: await this.handlers.message.sweepOverdue(),
         story: await this.handlers.story.sweepOverdue(),
+        groupMessage: await this.handlers.groupMessage.sweepOverdue(),
       };
     }
-    const handler =
-      job.name === PURGE_JOB_NAME.message ? this.handlers.message : job.name === PURGE_JOB_NAME.story ? this.handlers.story : null;
-    if (!handler) throw new Error(`Job inconnu : ${job.name}`);
+    const kind = (Object.keys(PURGE_JOB_NAME) as PurgeTargetKind[]).find((k) => PURGE_JOB_NAME[k] === job.name);
+    if (!kind) throw new Error(`Job inconnu : ${job.name}`);
+    const handler = this.handlers[kind];
 
     const outcome = await handler.run((job.data as PurgeJobData).targetId);
     if (outcome.kind === "delay") {

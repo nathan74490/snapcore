@@ -49,8 +49,8 @@ Référence de tous les événements envoyés à PostHog (ADR-008). Les noms cô
 | `filter_applied` | `filter`, `media` | Filtre incrusté avant l'envoi |
 | `snap_preview_confirmed` | `media`, `$feature/preview-send-label` | Bouton d'envoi de l'aperçu touché |
 | `snap_discarded` | `media`, `$feature/preview-send-label` | Aperçu fermé sans envoyer |
-| `snap_send_started` | `media`, `friends` (nombre), `story` (booléen) | « Envoyer » touché |
-| `snap_send_failed` | `media`, `target` : friend ou story | Un envoi en échec (une cible) |
+| `snap_send_started` | `media`, `friends` et `groups` (nombres), `story` (booléen) | « Envoyer » touché |
+| `snap_send_failed` | `media`, `target` : friend, group ou story | Un envoi en échec (une cible) |
 | `snap_send_retried` | `media`, `target` | Réessai d'un envoi en échec |
 | `snap_send_abandoned` | `media`, `target` | Envoi en échec abandonné |
 
@@ -106,6 +106,17 @@ Référence de tous les événements envoyés à PostHog (ADR-008). Les noms cô
 | `story_item_deleted_by_author` | `content_type` | Élément retiré de sa story par l'auteur |
 | `location_sharing_changed` | `mode` | Réglage de la Snap Map enregistré |
 | `content_reported` | `target` : message, story ou user | Signalement (le motif, texte libre, n'est pas envoyé) |
+
+### Groupes (ADR-032)
+Ces événements sont envoyés par le backend seulement : l'app ne les double pas.
+
+| Événement | Propriétés | Quand |
+|---|---|---|
+| `group_created` | `members` (nombre, créateur compris) | Groupe créé |
+| `group_message_sent` | `content_type` | Chat ou snap enregistré dans un groupe |
+| `group_renamed` | | Nom changé ou retiré |
+| `group_members_added` | `count` | Amis ajoutés au groupe |
+| `group_left` | | Membre parti |
 
 ### SnapCore+ (ADR-025)
 `snapcoreplus_started`, `_renewed`, `_cancelled`, `_expired`, `_updated`, avec `tier`, reçus par webhook RevenueCat.

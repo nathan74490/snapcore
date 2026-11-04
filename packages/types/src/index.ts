@@ -181,9 +181,52 @@ export interface ConversationSummary {
 }
 
 // URL de lecture d'un Snap, à durée de vie courte (~1 min), jamais mise en cache disque (voir ADR-009).
+// Aussi renvoyée par POST /group-messages/:id/view (ADR-032).
 export interface SnapViewUrl {
   url: string;
   expiresAt: string;
+}
+
+// Groupe de discussion (voir ADR-032) : sans administrateur, 32 membres au plus.
+export interface GroupView {
+  id: string;
+  name?: string;                     // absent = sans nom : l'app affiche les prénoms des autres membres
+  members: PublicUserProfile[];      // membres actuels actifs, moi compris, par ordre d'arrivée
+  // Anciens membres (partis du groupe) dont des messages restent dans l'historique, pour afficher leur
+  // nom au-dessus de leurs messages. Comptes actifs uniquement. Ajout au contrat d'ADR-032.
+  formerMembers: PublicUserProfile[];
+  createdAt: string;
+}
+
+// Message d'un groupe tel qu'exposé par l'API (voir ADR-032). La clé R2 n'est jamais exposée.
+export interface GroupMessageView {
+  id: string;
+  groupId: string;
+  senderId: string;
+  contentType: MessageContentType;
+  content?: string;                  // uniquement pour TEXT
+  createdAt: string;
+  mediaPurged: boolean;              // snap dont le média a été purgé ; toujours false pour TEXT
+  // Snap : je l'ai ouvert. Chat : je l'ai lu (mon lastReadAt >= sa date). Toujours false pour mes propres messages.
+  openedByMe: boolean;
+  // Membres actuels qui ont lu le chat ou ouvert le snap, expéditeur exclu (ordre non significatif).
+  seenBy: string[];
+}
+
+// Une ligne de GET /groups, triée par dernier message (à défaut, date de création du groupe), du plus récent au plus ancien.
+export interface GroupSummary {
+  group: GroupView;
+  lastMessage?: GroupMessageView;    // dernier message visible (envoyé depuis mon arrivée)
+  /** Plus ancien snap d'un autre membre, média présent, envoyé depuis mon arrivée et que je n'ai pas ouvert. */
+  unopenedSnap?: GroupMessageView;
+  /** Il existe un message d'un autre membre postérieur à ma dernière lecture (snaps non ouverts compris). */
+  unread: boolean;
+}
+
+// Corps de POST /groups (ADR-032) : 2 à 31 amis ACCEPTED ; `name` facultatif, 50 caractères au plus après trim.
+export interface CreateGroupRequest {
+  name?: string | null;
+  memberIds: string[];
 }
 
 // Élément de story tel qu'exposé à un ami : la clé R2 n'est jamais exposée (voir ADR-013, ADR-016).

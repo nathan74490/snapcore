@@ -465,4 +465,68 @@ describe("API HTTP", () => {
       expect((await http.get("/map/stories").set("Authorization", `Bearer ${bob.token}`)).body[0].viewed).toBe(true);
     });
   });
+
+  describe("groupes (ADR-032)", () => {
+    const befriend = async (a: { token: string }, b: { token: string }, username: string) => {
+      const http = request(app.getHttpServer());
+      const sent = await http.post("/friendships/requests").set("Authorization", `Bearer ${a.token}`).send({ username });
+      await http.post(`/friendships/requests/${sent.body.friendshipId}/accept`).set("Authorization", `Bearer ${b.token}`).expect(200);
+    };
+
+    it("parcours : création, liste, détail, renommage, ajout, chat, lecture, départ ; codes et validation", async () => {
+      const alice = await register("uid-a", "alice");
+      const bob = await register("uid-b", "bob");
+      const carol = await register("uid-c", "carol");
+      const dave = await register("uid-d", "dave");
+      for (const [friend, name] of [[bob, "bob"], [carol, "carol"], [dave, "dave"]] as const) await befriend(alice, friend, name);
+      const http = request(app.getHttpServer());
+      const as = (user: { token: string }) => ({ Authorization: `Bearer ${user.token}` });
+
+      await http.post("/groups").send({ memberIds: [bob.id, carol.id] }).expect(401);
+      await http.post("/groups").set(as(alice)).send({ memberIds: ["pas-un-uuid"] }).expect(400);
+      await http.post("/groups").set(as(alice)).send({ memberIds: [bob.id, carol.id], admin: true }).expect(400);
+      const tooFew = await http.post("/groups").set(as(alice)).send({ memberIds: [bob.id] }).expect(400);
+      expect(tooFew.body.message).toBe("Choisis au moins 2 amis pour créer un groupe");
+      const notFriend = await http.post("/groups").set(as(bob)).send({ memberIds: [carol.id, dave.id] }).expect(403);
+      expect(notFriend.body.message).toBe("Tu ne peux ajouter que tes amis à un groupe");
+
+      const created = await http.post("/groups").set(as(alice)).send({ name: " Soirée ", memberIds: [bob.id, carol.id] }).expect(201);
+      expect(created.body).toMatchObject({ name: "Soirée", formerMembers: [] });
+      expect(created.body.members).toHaveLength(3);
+      const groupId = created.body.id as string;
+
+      const notMember = await http.get(`/groups/${groupId}`).set(as(dave)).expect(404);
+      expect(notMember.body.message).toBe("Groupe introuvable");
+      await http.get("/groups/pas-un-uuid").set(as(alice)).expect(400);
+      await http.get(`/groups/${groupId}`).set(as(bob)).expect(200);
+
+      await http.patch(`/groups/${groupId}`).set(as(bob)).send({}).expect(400);
+      const renamed = await http.patch(`/groups/${groupId}`).set(as(bob)).send({ name: "" }).expect(200);
+      expect(renamed.body).not.toHaveProperty("name");
+      await http.patch(`/groups/${groupId}`).set(as(bob)).send({ name: null }).expect(200);
+      await http.patch(`/groups/${groupId}`).set(as(bob)).send({ name: "x".repeat(51) }).expect(400);
+
+      await http.post(`/groups/${groupId}/members`).set(as(alice)).send({ userIds: [] }).expect(400);
+      const added = await http.post(`/groups/${groupId}/members`).set(as(alice)).send({ userIds: [dave.id] }).expect(200);
+      expect(added.body.members).toHaveLength(4);
+
+      const chat = await http.post(`/groups/${groupId}/messages/text`).set(as(bob)).send({ content: "salut" }).expect(201);
+      expect(chat.body).toMatchObject({ groupId, senderId: bob.id, contentType: "TEXT", content: "salut", seenBy: [], openedByMe: false });
+      await http.post(`/groups/${groupId}/typing`).set(as(bob)).expect(204);
+
+      const [summary] = (await http.get("/groups").set(as(alice)).expect(200)).body;
+      expect(summary).toMatchObject({ group: { id: groupId }, lastMessage: { id: chat.body.id }, unread: true });
+      await http.post(`/groups/${groupId}/read`).set(as(alice)).expect(204);
+      const history = await http.get(`/groups/${groupId}/messages?limit=10`).set(as(bob)).expect(200);
+      expect(history.body[0].seenBy).toEqual([alice.id]);
+      await http.get(`/groups/${groupId}/messages?limit=0`).set(as(bob)).expect(400);
+
+      await http.post(`/group-messages/${chat.body.id}/view`).set(as(alice)).expect(404);
+      await http.post(`/groups/${groupId}/messages/snap`).set(as(bob)).send({ uploadId: chat.body.id, contentType: "PHOTO" }).expect(400);
+
+      await http.delete(`/groups/${groupId}/members/me`).set(as(carol)).expect(204);
+      await http.delete(`/groups/${groupId}/members/me`).set(as(carol)).expect(404);
+      expect((await http.get("/groups").set(as(carol)).expect(200)).body).toEqual([]);
+    });
+  });
 });

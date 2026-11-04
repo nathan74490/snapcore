@@ -4,6 +4,7 @@ import { HealthController } from "./health.controller";
 import { AccountDeletionModule } from "./modules/account-deletion/account-deletion.module";
 import { AvatarsModule } from "./modules/avatars/avatars.module";
 import { FriendshipsModule } from "./modules/friendships/friendships.module";
+import { GroupsModule } from "./modules/groups/groups.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { LocationModule } from "./modules/location/location.module";
 import { MessagesModule } from "./modules/messages/messages.module";
@@ -29,6 +30,7 @@ import { SharedModule } from "./shared/shared.module";
     SubscriptionsModule,
     AvatarsModule,
     LocationModule,
+    GroupsModule,
   ],
   controllers: [HealthController],
 })

@@ -89,6 +89,10 @@ model User {
   reportsReceived      Report[]      @relation("ReportsReceivedAsUser")
   locationShareRules   LocationShareRule[] @relation("LocationShareRuleOwner")
   locationShareTargets LocationShareRule[] @relation("LocationShareRuleFriend")
+  groupsCreated        Group[]             @relation("GroupCreatedBy")
+  groupMemberships     GroupMember[]
+  groupMessagesSent    GroupMessage[]
+  groupMessageViews    GroupMessageView[]
 }
 
 model Message {
@@ -176,6 +180,68 @@ model LocationShareRule {
 
   @@id([ownerId, friendId])
   @@index([friendId])
+}
+
+// Groupes de discussion (ADR-032) : tables à part, la messagerie à deux (Message) n'est pas touchée.
+// Pas d'administrateur : createdById n'est qu'une trace, remise à NULL si le créateur supprime son compte.
+model Group {
+  id          String   @id @default(uuid())
+  name        String?  // facultatif, 1 à 50 caractères après trim (CHECK "Group_name_length_check") ; null = sans nom, l'app affiche les prénoms
+  createdById String?
+  createdBy   User?    @relation("GroupCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  members  GroupMember[]
+  messages GroupMessage[]
+
+  @@index([createdById])
+}
+
+// Appartenance actuelle : la ligne disparaît quand le membre quitte le groupe (ses messages restent).
+model GroupMember {
+  groupId    String
+  group      Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime  @default(now()) // le membre ne voit que les messages envoyés depuis son arrivée
+  lastReadAt DateTime?                 // dernière ouverture de la conversation : un chat est lu si lastReadAt >= sa date
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+model GroupMessage {
+  id               String             @id @default(uuid())
+  groupId          String
+  group            Group              @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  senderId         String
+  sender           User               @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  contentType      MessageContentType // mêmes types que Message (ADR-009)
+  content          String?            // texte du chat, uniquement si TEXT ; permanent
+  mediaKey         String?            // clé R2 group-messages/<id>, uniquement pour un snap ; vidée par la purge (ADR-017)
+  createdAt        DateTime           @default(now())
+  scheduledPurgeAt DateTime?          // snaps seulement : createdAt + 30j, rapprochée à dernière ouverture + 24h quand tous les membres présents à l'envoi l'ont ouvert ; jamais de conservation SnapCore+ (ADR-032)
+
+  views GroupMessageView[]
+
+  @@index([groupId, createdAt]) // historique d'un groupe, dernier message
+  @@index([senderId])
+  @@index([scheduledPurgeAt])   // balayage de rattrapage de la purge
+  // Contrainte CHECK "GroupMessage_content_matches_type_check" en SQL brut (migration 20261105000000_groups),
+  // équivalente à celle de Message sans la rédaction de modération : TEXT → content non NULL, mediaKey et
+  // scheduledPurgeAt NULL ; snap → content NULL et scheduledPurgeAt renseigné, mediaKey NULL une fois purgé.
+}
+
+// Première ouverture d'un snap de groupe par un membre (vue unique par membre, ADR-032).
+model GroupMessageView {
+  messageId String
+  message   GroupMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  openedAt  DateTime
+
+  @@id([messageId, userId])
+  @@index([userId])
 }
 
 model DeviceToken {

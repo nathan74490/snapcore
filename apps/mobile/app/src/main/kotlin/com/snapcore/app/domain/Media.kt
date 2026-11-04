@@ -34,6 +34,8 @@ data class Friend(
 
 sealed interface SendTarget {
     data class ToFriend(val friend: Friend) : SendTarget
+    /** Groupe de discussion (ADR-032) : un seul envoi, vu par chaque membre. */
+    data class ToGroup(val group: Group) : SendTarget
     data object ToStory : SendTarget
 }
 
@@ -44,6 +46,8 @@ interface MediaUploader {
 
 interface SnapService {
     suspend fun sendSnap(friendId: String, uploadId: String, messageContentType: String)
+    /** Snap envoyé à un groupe (ADR-032) : même upload qu'un snap à un ami. */
+    suspend fun sendGroupSnap(groupId: String, uploadId: String, messageContentType: String) = Unit
     /** [location] : là où la story est publiée, pour l'épingler sur la carte des amis (ADR-031) ; null = nulle part. */
     suspend fun publishStory(uploadId: String, storyContentType: String, thumbnailUploadId: String? = null, location: GeoPoint? = null)
 }
@@ -73,6 +77,10 @@ class MediaPublisher(
             is SendTarget.ToFriend -> {
                 val uploadId = uploader.upload(media.file, media.kind.contentType, media.kind.snapUploadPurpose)
                 snaps.sendSnap(target.friend.id, uploadId, media.kind.messageContentType)
+            }
+            is SendTarget.ToGroup -> {
+                val uploadId = uploader.upload(media.file, media.kind.contentType, media.kind.snapUploadPurpose)
+                snaps.sendGroupSnap(target.group.id, uploadId, media.kind.messageContentType)
             }
             SendTarget.ToStory -> {
                 val uploadId = uploader.upload(media.file, media.kind.contentType, media.kind.storyUploadPurpose)

@@ -15,6 +15,8 @@
  * - Chaque compte de démo reçoit un avatar dessiné (ADR-028) ; un avatar déjà présent est conservé.
  * - Snap Map (ADR-031) : les amis qui partagent leur position reçoivent une position en direct, à
  *   relancer pour la rafraîchir (elle expire au bout de 8 h, comme celle envoyée par l'app).
+ * - Groupes (ADR-032) : « Soirée samedi » et un groupe sans nom avec nathan, créés par les vrais cas
+ *   d'usage ; un groupe déjà présent (même nom, mêmes membres) est laissé tel quel.
  */
 import "reflect-metadata";
 import { Logger, type INestApplication } from "@nestjs/common";
@@ -51,6 +53,16 @@ import { RegisterUser } from "../src/modules/identity/application/use-cases/regi
 import { UserAvatarUseCases } from "../src/modules/identity/application/use-cases/user-avatar";
 import type { UserAccount } from "../src/modules/identity/domain/user";
 import { FIREBASE_APP } from "../src/modules/identity/infrastructure/firebase-app.provider";
+import { GroupMessagingUseCases } from "../src/modules/groups/application/group-messaging-use-cases";
+import { GroupSnapPurge } from "../src/modules/groups/application/group-snap-purge";
+import { GroupUseCases } from "../src/modules/groups/application/group-use-cases";
+import {
+  GROUP_MESSAGE_PURGE_SCHEDULER,
+  GROUP_NOTIFIER,
+  GROUP_REPOSITORY,
+  type GroupNotifier,
+  type GroupRepository,
+} from "../src/modules/groups/application/ports";
 import { OBJECT_STORAGE, type ObjectStorage } from "../src/modules/media/application/ports/object-storage.port";
 import { RequestUpload } from "../src/modules/media/application/request-upload";
 import { UploadPromoter } from "../src/modules/media/application/upload-promoter";
@@ -385,6 +397,52 @@ const CONVERSATIONS: Conversation[] = [
   },
 ];
 
+// Groupes de discussion (ADR-032), avec nathan. Le créateur doit être ami de tous les autres membres.
+interface GroupLine {
+  when: When;
+  by: DemoKey | Owner;
+  text: string;
+}
+
+interface DemoGroup {
+  name: string | null;
+  creator: DemoKey | Owner;
+  /** Membres invités par le créateur (lui non compris). */
+  members: (DemoKey | Owner)[];
+  /** Antidaté, sans notification, lu par tous les membres. */
+  history: GroupLine[];
+  /** Envois récents notifiés (non lus). */
+  recent: GroupLine[];
+}
+
+const say = (by: DemoKey | Owner, when: When, text: string): GroupLine => ({ by, when, text });
+
+const GROUPS: DemoGroup[] = [
+  {
+    name: "Soirée samedi",
+    creator: "ines",
+    members: ["nathan", "rober", "lea", "chloe"],
+    history: [
+      say("ines", d(3, "18:02"), "Samedi soir chez moi, vous êtes chauds ?"),
+      say("lea", d(3, "18:05"), "Grave !! Je ramène un gâteau"),
+      say("nathan", d(3, "18:10"), "Je m'occupe des boissons"),
+      say("chloe", d(3, "18:31"), "Je finis tard mais je passe vers 22h"),
+      say("rober", d(2, "09:15"), "Blind test comme la dernière fois ?"),
+      say("ines", d(2, "09:20"), "Évidemment, préparez vos playlists"),
+      say("nathan", d(1, "21:40"), "On arrive vers 20h avec Rober"),
+    ],
+    recent: [say("lea", ago(20), "Quelqu'un peut passer me chercher samedi ?")],
+  },
+  {
+    // Sans nom : l'app affiche les prénoms des autres membres.
+    name: null,
+    creator: "hugo",
+    members: ["nathan", "lucas"],
+    history: [],
+    recent: [say("hugo", ago(180), "Five demain 18h, vous êtes dispo ?")],
+  },
+];
+
 // Stories publiées il y a N minutes (24h de vie chacune, ADR-013).
 // Snap Map (ADR-031) : ces comptes partagent leur position avec tous leurs amis (les autres restent en
 // mode fantôme, la valeur par défaut). Leurs stories marquées d'un lieu apparaissent sur la carte ; la
@@ -556,6 +614,12 @@ const silentMessages: MessageNotifier = {
   snapExpired: async () => undefined,
   typing: async () => undefined,
 };
+const silentGroups: GroupNotifier = {
+  messageReceived: async () => undefined,
+  updated: async () => undefined,
+  typing: async () => undefined,
+  messageSeen: async () => undefined,
+};
 const silentFriendships: FriendshipNotifier = {
   friendRequestReceived: async () => undefined,
   friendRequestAccepted: async () => undefined,
@@ -616,6 +680,7 @@ class DemoSeeder {
     await this.ensureLivePositions();
     await this.ensureStories();
     for (const conversation of CONVERSATIONS) await this.ensureConversation(conversation);
+    for (const group of GROUPS) await this.ensureGroup(group);
     await this.report();
   }
 
@@ -842,6 +907,49 @@ class DemoSeeder {
     if (line.opened) await this.messaging(addMinutes(at, 4), notify).requestSnapView(recipient, snap.id);
   }
 
+  // --- Groupes (ADR-032) ---
+
+  private async ensureGroup(demo: DemoGroup): Promise<void> {
+    const creator = this.user(demo.creator);
+    const members = demo.members.map((key) => this.user(key));
+    const label = demo.name ?? `sans nom (${[demo.creator, ...demo.members].join(", ")})`;
+    if (await this.hasGroup(demo.name, [creator, ...members])) {
+      this.logger.log(`Groupe ${label} déjà présent : ignoré`);
+      return;
+    }
+
+    const lines = [...demo.history, ...demo.recent];
+    const createdAt = addMinutes(dateOf(lines[0].when, this.now), -10);
+    const group = await this.groups(createdAt).create(creator, { name: demo.name, memberIds: members.map((m) => m.id) });
+
+    let last = createdAt;
+    for (const line of demo.history) {
+      last = dateOf(line.when, this.now);
+      await this.groupMessaging(last, false).sendText(this.user(line.by), group.id, line.text);
+    }
+    // Historique lu par tous les membres (seenBy complet), sans notification.
+    if (demo.history.length > 0) {
+      for (const member of [creator, ...members]) {
+        await this.groupMessaging(addMinutes(last, 5), false).markRead(member, group.id);
+      }
+    }
+    for (const line of demo.recent) {
+      await this.groupMessaging(dateOf(line.when, this.now), true).sendText(this.user(line.by), group.id, line.text);
+      if (line.by !== "nathan") this.stats.pushes++;
+    }
+    this.logger.log(`Groupe ${label} créé`);
+  }
+
+  // Même nom et exactement les mêmes membres : groupe créé par un lancement précédent.
+  private async hasGroup(name: string | null, members: UserAccount[]): Promise<boolean> {
+    const expected = members.map((m) => m.id).sort().join(",");
+    const candidates = await this.prisma.group.findMany({
+      where: { name, members: { some: { userId: members[0].id } } },
+      include: { members: { select: { userId: true } } },
+    });
+    return candidates.some((g) => g.members.map((m) => m.userId).sort().join(",") === expected);
+  }
+
   // --- Upload réel (ADR-016) : URL pré-signée, PUT vers R2, puis promotion par le cas d'usage ---
 
   private async upload(user: UserAccount, purpose: MediaPurpose, file: MediaFile): Promise<string> {
@@ -885,6 +993,46 @@ class DemoSeeder {
     return new FriendshipUseCases(this.friendshipRepository, this.userRepository, notifier, fixedClock(at), noAnalytics);
   }
 
+  // Création antidatée : jamais notifiée (historique).
+  private groups(at: Date): GroupUseCases {
+    const get = <T>(token: unknown): T => this.app.get(token as string, { strict: false });
+    return new GroupUseCases(
+      get<GroupRepository>(GROUP_REPOSITORY),
+      this.friendshipRepository,
+      this.storage,
+      this.groupPurge(at),
+      silentGroups,
+      fixedClock(at),
+      this.logger,
+      noAnalytics,
+    );
+  }
+
+  private groupMessaging(at: Date, notify: boolean): GroupMessagingUseCases {
+    const get = <T>(token: unknown): T => this.app.get(token as string, { strict: false });
+    return new GroupMessagingUseCases(
+      get<GroupRepository>(GROUP_REPOSITORY),
+      this.promoter,
+      this.storage,
+      this.groupPurge(at),
+      notify ? get<GroupNotifier>(GROUP_NOTIFIER) : silentGroups,
+      fixedClock(at),
+      this.logger,
+      noAnalytics,
+    );
+  }
+
+  private groupPurge(at: Date): GroupSnapPurge {
+    const get = <T>(token: unknown): T => this.app.get(token as string, { strict: false });
+    return new GroupSnapPurge(
+      get<GroupRepository>(GROUP_REPOSITORY),
+      this.storage,
+      get<SnapPurgeScheduler>(GROUP_MESSAGE_PURGE_SCHEDULER),
+      fixedClock(at),
+      this.logger,
+    );
+  }
+
   private stories(at: Date): StoryUseCases {
     const get = <T>(token: unknown): T => this.app.get(token as string, { strict: false });
     return new StoryUseCases(
@@ -925,9 +1073,11 @@ class DemoSeeder {
         where: { recipientId: me.id, contentType: { not: "TEXT" }, openedAt: null, mediaKey: { not: null } },
       });
       const unreadTexts = await this.prisma.message.count({ where: { recipientId: me.id, contentType: "TEXT", openedAt: null } });
+      const groups = await this.groups(new Date()).list(me);
       console.log(
         `${owner} : ${feed.length} stories d'amis (${feed.filter((entry) => entry.thumbnailUrl).length} avec vignette), ` +
-          `${unopenedSnaps} snaps non ouverts, ${unreadTexts} chats non lus`,
+          `${unopenedSnaps} snaps non ouverts, ${unreadTexts} chats non lus, ` +
+          `${groups.length} groupes (${groups.filter((group) => group.unread).length} non lus)`,
       );
     }
   }

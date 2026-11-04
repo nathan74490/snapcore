@@ -31,6 +31,22 @@ data class OutgoingSnap(
     val error: String? = null,
 ) {
     val friendId get() = (target as? SendTarget.ToFriend)?.friend?.id
+    val groupId get() = (target as? SendTarget.ToGroup)?.group?.id
+
+    /** Ligne de la conversation de groupe affichée en attendant le vrai message du backend (ADR-032). */
+    fun asGroupMessage(myId: String) = GroupMessage(
+        id = OUTBOX_PREFIX + id,
+        groupId = groupId.orEmpty(),
+        senderId = myId,
+        type = if (media.kind == MediaKind.VIDEO) ChatContentType.SNAP_PHOTO_VIDEO else ChatContentType.SNAP_PHOTO,
+        content = null,
+        createdAt = createdAt,
+        mediaPurged = false,
+        openedByMe = false,
+        seenBy = emptyList(),
+        pending = status == OutgoingStatus.SENDING,
+        failed = status == OutgoingStatus.FAILED,
+    )
 
     /** Ligne de chat affichée en attendant le vrai message du backend. */
     fun asMessage(myId: String) = ChatMessage(
@@ -87,7 +103,8 @@ class SnapOutbox(
         analytics.capture(AnalyticsEvents.SNAP_SEND_STARTED, mapOf(
             "media" to media.kind.analyticsName,
             "friends" to targets.count { it is SendTarget.ToFriend },
-            "story" to targets.any { it !is SendTarget.ToFriend },
+            "groups" to targets.count { it is SendTarget.ToGroup },
+            "story" to targets.any { it is SendTarget.ToStory },
         ))
         entries.forEach(::launch)
     }
@@ -138,7 +155,11 @@ class SnapOutbox(
     }
 
     private fun OutgoingSnap.analyticsProperties(): Map<String, Any> =
-        mapOf("media" to media.kind.analyticsName, "target" to if (target is SendTarget.ToFriend) "friend" else "story")
+        mapOf("media" to media.kind.analyticsName, "target" to when (target) {
+            is SendTarget.ToFriend -> "friend"
+            is SendTarget.ToGroup -> "group"
+            SendTarget.ToStory -> "story"
+        })
 
     private fun replace(entry: OutgoingSnap) = _items.update { list -> list.map { if (it.id == entry.id) entry else it } }
 

@@ -38,6 +38,7 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 | BUG-019 | Moyenne | Mobile / amis, modération | Retirer un ami, bloquer et signaler sont impossibles depuis l'app, alors que le backend les propose | Corrigé (branche fix/campagne-2026-11-04-2) |
 | BUG-020 | Faible | Mobile / stories | Un élément de « Ma story » se supprime d'un seul appui, sans confirmation | Corrigé (branche fix/campagne-2026-11-04-2) |
 | BUG-021 | Faible | Mobile / textes | Trois textes vouvoient l'utilisateur alors que l'app le tutoie partout ailleurs | Corrigé (branche fix/campagne-2026-11-04-2) |
+| BUG-022 | Faible | Backend / tests | Le test de BUG-014 échoue environ une fois sur deux (deux chats à la même heure figée) | Ouvert |
 
 ### BUG-001 : Une vidéo de 60 s sans filtre dépasse la limite de 60 Mo
 - **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/camera/CameraScreen.kt` (`videoCaptureQualitySelector = QualitySelector.from(Quality.HD)`), limite dans `apps/backend/src/modules/media/domain/media-purpose.ts` (`SNAP_VIDEO`/`STORY_VIDEO` : 60 Mo).
@@ -215,6 +216,15 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - **Impact** : ton incohérent.
 - **Correction** : « Vérifie ta connexion. », « Renseigne ton email et ton mot de passe », « Pour toi ».
 
+### BUG-022 : Test instable sur le snap non ouvert (BUG-014)
+- **Où** : `apps/backend/src/modules/messages/application/messaging-use-cases.spec.ts`, test « un snap non ouvert reste signalé même si des chats plus récents le suivent (BUG-014) ».
+- **Constat** (relevé pendant les groupes, ADR-032) :
+  - Les deux chats `"tu as vu ?"` et `"pas encore"` sont envoyés sans avancer l'horloge figée du test, donc à la même date.
+  - Le dépôt en mémoire les départage par leur identifiant, un UUID aléatoire : le « dernier message » attendu (`"pas encore"`) n'est pas toujours celui retenu.
+  - Résultat : le test échoue environ une fois sur deux, sans rapport avec le code testé.
+- **Impact** : une suite de tests qui échoue par hasard fait douter des vraies régressions.
+- **Piste** : `advance(MINUTE)` entre les deux chats.
+
 ## Alternatives
 - **Corriger chaque anomalie dès qu'elle est trouvée** : rien n'est oublié, mais la fonctionnalité en cours se retrouve mêlée à des changements sans rapport, plus difficiles à relire et à annuler. Écarté.
 - **Un outil de suivi externe (issues GitHub, Notion)** : plus adapté à une équipe nombreuse, mais sépare le registre du code alors que tout le reste des décisions vit dans `docs/adr`. Écarté pour l'instant ; le registre pourra y être migré si le projet grandit.
@@ -231,6 +241,7 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - Cet ADR n'est pas une décision d'architecture au sens strict, mais un outil de suivi ; il est rangé avec les ADR pour rester à côté des décisions qu'il référence.
 
 ## Historique
+- Révision 13 : BUG-022 relevé pendant le développement des groupes (ADR-032).
 - Révision 12 : BUG-019 à BUG-021 corrigés (branche `fix/campagne-2026-11-04-2`).
 - Révision 11 : BUG-019 à BUG-021 relevés pendant la seconde campagne de test du 2026-11-04, voir `docs/tests/campagne-2026-11-04-2.md`.
 - Révision 10 : BUG-014 à BUG-018 corrigés (branche `fix/campagne-2026-11-04`).
