@@ -145,7 +145,26 @@ interface SnapCoreApi {
 
     @POST("friendships/requests/{id}/decline")
     suspend fun declineFriendRequest(@Path("id") friendshipId: String)
+
+    // --- Sécurité : retirer, bloquer (ADR-012) et signaler (ADR-021) ---
+    @DELETE("friendships/{userId}")
+    suspend fun removeFriend(@Path("userId") userId: String)
+
+    @POST("blocks/{userId}")
+    suspend fun block(@Path("userId") userId: String)
+
+    @DELETE("blocks/{userId}")
+    suspend fun unblock(@Path("userId") userId: String)
+
+    @GET("friendships/blocked")
+    suspend fun blocked(): List<FriendshipItemDto>
+
+    @POST("reports")
+    suspend fun report(@Body body: ReportRequest)
 }
+
+@Serializable
+data class ReportRequest(val targetType: String, val targetId: String, val reason: String)
 
 // Miroir de `User` dans packages/types (le compte vu par lui-même).
 @Serializable

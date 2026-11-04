@@ -1,5 +1,13 @@
 package com.snapcore.app.ui.stories
 
+import android.widget.Toast
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.snapcore.app.domain.ReportTarget
+import com.snapcore.app.ui.safety.ReportDialog
+import com.snapcore.app.ui.safety.SafetyViewModel
+import com.snapcore.app.ui.safety.message
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -64,6 +72,19 @@ fun StoryPlayerScreen(title: String, authorId: String?, startItemId: String?, on
     val state by vm.state.collectAsStateWithLifecycle()
     StatusBarIcons(dark = false)
     LaunchedEffect(state) { if (state is PlayerState.Finished) onClose() }
+    // Signaler l'élément affiché d'une story d'ami (ADR-021 ; BUG-019 d'ADR-023). La photo est en pause
+    // tant que le motif n'est pas choisi.
+    val safetyVm = containerViewModel { SafetyViewModel(it.safety) }
+    val safety by safetyVm.state.collectAsStateWithLifecycle()
+    var reporting by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    LaunchedEffect(safety.outcome, safety.error) {
+        safety.outcome?.let { Toast.makeText(context, it.message(title), Toast.LENGTH_SHORT).show(); safetyVm.consume() }
+        safety.error?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); safetyVm.consume() }
+    }
+    reporting?.let { itemId ->
+        ReportDialog(subject = "cette story", onReport = { safetyVm.report(ReportTarget.StoryItem(itemId), it) }, onDismiss = { reporting = null })
+    }
 
     Box(
         Modifier
@@ -83,8 +104,12 @@ fun StoryPlayerScreen(title: String, authorId: String?, startItemId: String?, on
                     s.current.kind == MediaKind.PHOTO -> {
                         StoryPhoto(s.url)
                         val animated = remember(s.index) { Animatable(0f) }
-                        LaunchedEffect(s.index) {
-                            animated.animateTo(1f, tween(PHOTO_DURATION_MS, easing = LinearEasing)) { progress = value }
+                        val paused = reporting != null
+                        LaunchedEffect(s.index, paused) {
+                            if (paused) return@LaunchedEffect
+                            // Reprend là où la pause l'avait arrêtée.
+                            val remaining = ((1f - animated.value) * PHOTO_DURATION_MS).toInt()
+                            animated.animateTo(1f, tween(remaining, easing = LinearEasing)) { progress = value }
                             vm.next()
                         }
                     }
@@ -109,6 +134,9 @@ fun StoryPlayerScreen(title: String, authorId: String?, startItemId: String?, on
                         Text(title, color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp))
                         Text("  ${relativeTime(s.current.createdAt)}", color = Color.White.copy(alpha = 0.8f))
                         Box(Modifier.weight(1f))
+                        if (authorId != null) {
+                            IconButton(onClick = { reporting = s.current.id }) { Icon(Icons.Outlined.Flag, "Signaler cette story", tint = Color.White) }
+                        }
                         IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Fermer", tint = Color.White) }
                     }
                 }

@@ -20,6 +20,21 @@ import androidx.compose.ui.text.font.FontWeight
 import com.snapcore.app.ui.components.FigmaAsset
 import com.snapcore.app.ui.components.StatusBarIcons
 import androidx.activity.compose.BackHandler
+import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import com.snapcore.app.domain.ReportTarget
+import com.snapcore.app.ui.safety.ConfirmActionDialog
+import com.snapcore.app.ui.safety.ReportDialog
+import com.snapcore.app.ui.safety.SafetyOutcome
+import com.snapcore.app.ui.safety.SafetyViewModel
+import com.snapcore.app.ui.safety.message
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +85,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,6 +109,40 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    // Retirer, bloquer, signaler (ADR-012, ADR-021 ; BUG-019 d'ADR-023).
+    val safetyVm = containerViewModel { SafetyViewModel(it.safety) }
+    val safety by safetyVm.state.collectAsStateWithLifecycle()
+    var menuOpen by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf<SafetyOutcome?>(null) }
+    var reporting by remember { mutableStateOf<ReportTarget?>(null) }
+    val context = LocalContext.current
+    LaunchedEffect(safety.outcome, safety.error) {
+        safety.outcome?.let { outcome ->
+            Toast.makeText(context, outcome.message(friend.displayName), Toast.LENGTH_SHORT).show()
+            safetyVm.consume()
+            // Plus amis : la conversation n'est plus accessible (ADR-012), on revient à la liste.
+            if (outcome != SafetyOutcome.REPORTED) onBack()
+        }
+        safety.error?.let { snackbar.showSnackbar(it); safetyVm.consume() }
+    }
+    confirm?.let { action ->
+        if (action == SafetyOutcome.BLOCKED) ConfirmActionDialog(
+            title = "Bloquer ${friend.displayName} ?",
+            text = "${friend.displayName} ne pourra plus t'envoyer de messages ni voir ton profil. Tu pourras débloquer depuis les paramètres, mais vous ne serez plus amis.",
+            confirm = "Bloquer", onConfirm = { safetyVm.block(friend.id) }, onDismiss = { confirm = null },
+        ) else ConfirmActionDialog(
+            title = "Retirer ${friend.displayName} de tes amis ?",
+            text = "Vous ne pourrez plus vous écrire. Votre historique est conservé et réapparaîtra si vous redevenez amis.",
+            confirm = "Retirer", onConfirm = { safetyVm.removeFriend(friend.id) }, onDismiss = { confirm = null },
+        )
+    }
+    reporting?.let { target ->
+        ReportDialog(
+            subject = if (target is ReportTarget.User) friend.displayName else "ce message",
+            onReport = { reason -> safetyVm.report(target, reason) },
+            onDismiss = { reporting = null },
+        )
+    }
     val composerFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -151,6 +202,19 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                         Column(Modifier.padding(start = 10.dp).weight(1f)) {
                             Text(friend.displayName, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
                             if (friend.firstName != null) Text("@${friend.username}", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }, enabled = !safety.busy) {
+                                Icon(Icons.Filled.MoreVert, "Plus d'options", tint = SnapColors.Ink)
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, containerColor = Color.White) {
+                                DropdownMenuItem(text = { Text("Signaler ${friend.displayName}") },
+                                    onClick = { menuOpen = false; reporting = ReportTarget.User(friend.id) })
+                                DropdownMenuItem(text = { Text("Retirer de mes amis") },
+                                    onClick = { menuOpen = false; confirm = SafetyOutcome.REMOVED })
+                                DropdownMenuItem(text = { Text("Bloquer", color = SnapColors.SnapRed) },
+                                    onClick = { menuOpen = false; confirm = SafetyOutcome.BLOCKED })
+                            }
                         }
                     }
                     HorizontalDivider(color = SnapColors.Border, thickness = .5.dp)
@@ -219,6 +283,9 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                             dayHeader = if (newDay) dayLabel(day, today) else null,
                             // Le nom n'apparaît qu'au début d'une suite de messages du même expéditeur.
                             showName = newDay || previous?.senderId != message.senderId,
+                            // Appui long sur un message de l'ami : le signaler (ADR-021).
+                            onReport = if (message.isFrom(myId) || message.pending || message.failed) null
+                                else ({ reporting = ReportTarget.Message(message.id) }),
                         ) { vm.open(message) }
                     }
                 }
@@ -238,7 +305,8 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
 // Comme dans Snapchat : pas de bulles, tout est aligné à gauche avec une barre de couleur (rouge pour
 // moi, bleu pour l'ami) ; le nom de l'expéditeur ouvre chaque suite de messages.
 @Composable
-private fun MessageRow(message: ChatMessage, myId: String, friendName: String, dayHeader: String?, showName: Boolean, onOpenSnap: () -> Unit) {
+private fun MessageRow(message: ChatMessage, myId: String, friendName: String, dayHeader: String?, showName: Boolean,
+    onReport: (() -> Unit)? = null, onOpenSnap: () -> Unit) {
     val mine = message.isFrom(myId)
     val status = statusOf(message, myId)
     val color = if (mine) SnapColors.SnapRed else SnapColors.ChatBlue
@@ -260,7 +328,8 @@ private fun MessageRow(message: ChatMessage, myId: String, friendName: String, d
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.weight(1f)
-                        .then(if (openable) Modifier.clickable(onClick = onOpenSnap) else Modifier)
+                        .then(if (openable || onReport != null) Modifier.combinedClickable(
+                            onClick = { if (openable) onOpenSnap() }, onLongClick = onReport) else Modifier)
                         .padding(start = 10.dp, top = 6.dp, bottom = 6.dp),
                 ) {
                     StatusIcon(status, size = 18.dp)
@@ -281,7 +350,9 @@ private fun MessageRow(message: ChatMessage, myId: String, friendName: String, d
                     message.content.orEmpty(),
                     style = MaterialTheme.typography.bodyLarge,
                     color = SnapColors.Ink,
-                    modifier = Modifier.weight(1f).alpha(if (message.pending) .6f else 1f).padding(start = 10.dp, top = 3.dp, bottom = 3.dp),
+                    modifier = Modifier.weight(1f).alpha(if (message.pending) .6f else 1f)
+                        .then(if (onReport != null) Modifier.pointerInput(message.id) { detectTapGestures(onLongPress = { onReport() }) } else Modifier)
+                        .padding(start = 10.dp, top = 3.dp, bottom = 3.dp),
                 )
             }
         }

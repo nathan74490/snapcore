@@ -76,7 +76,7 @@ class LoginViewModel(
     fun submit() {
         val current = _state.value
         if (current.email.isBlank() || current.password.isBlank()) {
-            _state.update { it.copy(error = "Renseignez votre email et votre mot de passe") }
+            _state.update { it.copy(error = "Renseigne ton email et ton mot de passe") }
             return
         }
         _state.update { it.copy(loading = true, error = null) }

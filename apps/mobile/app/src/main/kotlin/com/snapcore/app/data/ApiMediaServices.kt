@@ -6,12 +6,16 @@ import com.snapcore.app.data.api.FriendRequestBody
 import com.snapcore.app.data.api.FriendshipItemDto
 import com.snapcore.app.data.api.PublicProfileDto
 import com.snapcore.app.data.api.PublishStoryRequest
+import com.snapcore.app.data.api.ReportRequest
 import com.snapcore.app.data.api.SendSnapRequest
 import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.data.api.UploadRequest
 import com.snapcore.app.data.api.apiCall
 import com.snapcore.app.domain.ContactMatch
 import com.snapcore.app.domain.Friend
+import com.snapcore.app.domain.ReportReason
+import com.snapcore.app.domain.ReportTarget
+import com.snapcore.app.domain.SafetyService
 import com.snapcore.app.domain.GeoPoint
 import com.snapcore.app.domain.FriendRequest
 import com.snapcore.app.domain.FriendsService
@@ -94,6 +98,22 @@ class ApiFriendsService(private val api: SnapCoreApi) : FriendsService {
         }
 
     private fun toRequest(item: FriendshipItemDto) = FriendRequest(item.friendshipId, item.user.toFriend())
+}
+
+class ApiSafetyService(private val api: SnapCoreApi) : SafetyService {
+    override suspend fun removeFriend(userId: String) = apiCall { api.removeFriend(userId) }
+    override suspend fun block(userId: String) = apiCall { api.block(userId) }
+    override suspend fun unblock(userId: String) = apiCall { api.unblock(userId) }
+    override suspend fun blocked() = apiCall { api.blocked() }.map { it.user.toFriend() }
+
+    override suspend fun report(target: ReportTarget, reason: ReportReason) {
+        val type = when (target) {
+            is ReportTarget.User -> "USER"
+            is ReportTarget.Message -> "MESSAGE"
+            is ReportTarget.StoryItem -> "STORY_ITEM"
+        }
+        apiCall { api.report(ReportRequest(type, target.id, reason.label)) }
+    }
 }
 
 internal fun PublicProfileDto.toFriend() = Friend(id, username, profilePhotoUrl, firstName, avatar?.let(::avatarImageUrl))
