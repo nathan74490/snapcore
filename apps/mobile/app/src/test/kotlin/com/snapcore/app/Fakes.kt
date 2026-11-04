@@ -28,7 +28,10 @@ class FakeAuth : AuthService {
         signedIn = true
     }
 
+    var failSignInWith: Exception? = null
+
     override suspend fun signIn(email: String, password: String) {
+        failSignInWith?.let { throw it }
         signedIn = true
     }
 
@@ -126,5 +129,18 @@ class FakePhotoPreparer : ProfilePhotoPreparer {
     override suspend fun prepare(source: String): File {
         if (fail) error("image illisible")
         return File.createTempFile("profile", ".jpg").apply { writeText("jpeg") }.also { prepared += it }
+    }
+}
+
+/** Analytics qui garde les événements capturés (ADR-008), dans l'ordre. */
+class RecordingAnalytics : com.snapcore.app.domain.Analytics {
+    val events = mutableListOf<Pair<String, Map<String, Any>>>()
+    val names get() = events.map { it.first }
+    fun propertiesOf(event: String) = events.last { it.first == event }.second
+    override fun identify(userId: String) = Unit
+    override fun reset() = Unit
+    override fun screen(name: String) = Unit
+    override fun capture(event: String, properties: Map<String, Any>) {
+        events += event to properties
     }
 }

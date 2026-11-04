@@ -3,6 +3,10 @@ package com.snapcore.app.ui.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snapcore.app.data.api.ApiException
+import com.snapcore.app.data.api.analyticsReason
+import com.snapcore.app.domain.Analytics
+import com.snapcore.app.domain.AnalyticsEvents
+import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.AccountRules
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AuthService
@@ -32,6 +36,16 @@ object SignUpStep {
     const val USERNAME = 3
     const val PASSWORD = 4
     const val EMAIL = 5
+
+    /** Nom de l'étape dans l'analytics (ADR-008). */
+    fun analyticsName(step: Int) = when (step) {
+        NAME -> "name"
+        BIRTHDAY -> "birthday"
+        USERNAME -> "username"
+        PASSWORD -> "password"
+        EMAIL -> "email"
+        else -> "unknown"
+    }
 }
 
 sealed interface UsernameStatus {
@@ -98,20 +112,42 @@ class SignUpViewModel(
     private val today: () -> LocalDate = LocalDate::now,
     private val random: Random = Random.Default,
     private val checkDelayMs: Long = 400,
+    private val analytics: Analytics = NoAnalytics,
 ) : ViewModel() {
     private val _state = MutableStateFlow(SignUpState(resuming = resuming, firebaseAccountCreated = resuming))
     val state: StateFlow<SignUpState> = _state.asStateFlow()
+
+    // Toute modification passe par ici : un changement d'étape est capturé au moment même où il a lieu,
+    // y compris deux étapes enchaînées sans pause (un observateur du StateFlow ne verrait que la dernière).
+    private fun update(transform: (SignUpState) -> SignUpState) {
+        val before = _state.value.step
+        _state.update(transform)
+        val after = _state.value.step
+        if (after != before) captureStep(after)
+    }
+
+
+    init {
+        captureStep(_state.value.step)
+    }
+
+    /** Entonnoir de l'inscription (ADR-008) : chaque étape affichée, y compris après un retour en arrière. */
+    private fun captureStep(step: Int) =
+        analytics.capture(AnalyticsEvents.SIGNUP_STEP_VIEWED, mapOf("step" to SignUpStep.analyticsName(step)))
+
+    private fun captureFailure(e: Throwable) = analytics.capture(AnalyticsEvents.SIGNUP_FAILED,
+        mapOf("step" to SignUpStep.analyticsName(_state.value.step), "reason" to e.analyticsReason()))
 
     private var usernameCheck: Job? = null
 
     /** Adresse du compte Firebase, en reprise d'inscription. */
     val email get() = auth.currentEmail
 
-    fun onFirstName(value: String) = _state.update { it.copy(firstName = value, firstNameError = null, error = null) }
-    fun onLastName(value: String) = _state.update { it.copy(lastName = value, lastNameError = null, error = null) }
-    fun onBirthday(value: LocalDate) = _state.update { it.copy(birthday = value, birthdayError = null, error = null) }
-    fun onPassword(value: String) = _state.update { it.copy(password = value, error = null) }
-    fun onEmail(value: String) = _state.update { it.copy(email = value.trim(), emailError = null, error = null) }
+    fun onFirstName(value: String) = update { it.copy(firstName = value, firstNameError = null, error = null) }
+    fun onLastName(value: String) = update { it.copy(lastName = value, lastNameError = null, error = null) }
+    fun onBirthday(value: LocalDate) = update { it.copy(birthday = value, birthdayError = null, error = null) }
+    fun onPassword(value: String) = update { it.copy(password = value, error = null) }
+    fun onEmail(value: String) = update { it.copy(email = value.trim(), emailError = null, error = null) }
 
     /** Raccourci de domaine : remplace ce qui suit le « @ » déjà tapé. */
     fun completeEmail(domain: String) = onEmail(_state.value.email.substringBefore('@') + domain)
@@ -119,11 +155,11 @@ class SignUpViewModel(
     // En minuscules dès la saisie : c'est ainsi que le backend l'enregistre (ADR-014).
     fun onUsername(raw: String) {
         val value = raw.lowercase().filterNot(Char::isWhitespace)
-        _state.update { it.copy(username = value, error = null) }
+        update { it.copy(username = value, error = null) }
         checkUsername(value, delayMs = checkDelayMs)
     }
 
-    fun editUsername() = _state.update { it.copy(editingUsername = true) }
+    fun editUsername() = update { it.copy(editingUsername = true) }
 
     /** Bouton « actualiser » du champ : un autre pseudo proposé d'office. */
     fun suggestAnother() = proposeUsername()
@@ -133,11 +169,11 @@ class SignUpViewModel(
         if (_state.value.step == SignUpStep.NAME) {
             if (_state.value.resuming) {
                 auth.signOut()
-                _state.update { it.copy(session = Session.SignedOut) }
+                update { it.copy(session = Session.SignedOut) }
             }
             return false
         }
-        _state.update { it.copy(step = it.step - 1, error = null) }
+        update { it.copy(step = it.step - 1, error = null) }
         return true
     }
 
@@ -149,26 +185,26 @@ class SignUpViewModel(
                 val firstNameError = AccountRules.firstNameError(s.firstName)
                 val lastNameError = AccountRules.lastNameError(s.lastName)
                 if (firstNameError != null || lastNameError != null) {
-                    _state.update { it.copy(firstNameError = firstNameError, lastNameError = lastNameError) }
+                    update { it.copy(firstNameError = firstNameError, lastNameError = lastNameError) }
                 } else {
-                    _state.update { it.copy(step = SignUpStep.BIRTHDAY) }
+                    update { it.copy(step = SignUpStep.BIRTHDAY) }
                 }
             }
             SignUpStep.BIRTHDAY -> {
                 val error = AccountRules.birthdayError(s.birthday, today())
                 if (error != null) {
-                    _state.update { it.copy(birthdayError = error) }
+                    update { it.copy(birthdayError = error) }
                 } else {
-                    _state.update { it.copy(step = SignUpStep.USERNAME) }
+                    update { it.copy(step = SignUpStep.USERNAME) }
                     // Comme Snapchat : un pseudo est proposé d'office, à partir du nom.
                     if (s.username.isEmpty()) proposeUsername()
                 }
             }
-            SignUpStep.USERNAME -> if (s.isLastStep) submit() else _state.update { it.copy(step = SignUpStep.PASSWORD) }
-            SignUpStep.PASSWORD -> _state.update { it.copy(step = SignUpStep.EMAIL) }
+            SignUpStep.USERNAME -> if (s.isLastStep) submit() else update { it.copy(step = SignUpStep.PASSWORD) }
+            SignUpStep.PASSWORD -> update { it.copy(step = SignUpStep.EMAIL) }
             else -> {
                 val emailError = AccountRules.emailError(s.email)
-                if (emailError != null) _state.update { it.copy(emailError = emailError) } else submit()
+                if (emailError != null) update { it.copy(emailError = emailError) } else submit()
             }
         }
     }
@@ -180,12 +216,12 @@ class SignUpViewModel(
         usernameCheck = viewModelScope.launch {
             repeat(5) {
                 val candidate = suggestUsername(s.firstName, s.lastName, random)
-                _state.update { it.copy(username = candidate, usernameStatus = UsernameStatus.Checking) }
+                update { it.copy(username = candidate, usernameStatus = UsernameStatus.Checking) }
                 val status = verify(candidate)
-                _state.update { it.copy(usernameStatus = status) }
+                update { it.copy(usernameStatus = status) }
                 if (status !is UsernameStatus.Unavailable) return@launch
             }
-            _state.update { it.copy(editingUsername = true) }
+            update { it.copy(editingUsername = true) }
         }
     }
 
@@ -193,14 +229,14 @@ class SignUpViewModel(
         usernameCheck?.cancel()
         // La forme se vérifie sur place, sans appel : seul un pseudo bien formé interroge le backend.
         AccountRules.usernameError(value)?.let { error ->
-            _state.update { it.copy(usernameStatus = UsernameStatus.Unavailable(error)) }
+            update { it.copy(usernameStatus = UsernameStatus.Unavailable(error)) }
             return
         }
-        _state.update { it.copy(usernameStatus = UsernameStatus.Checking) }
+        update { it.copy(usernameStatus = UsernameStatus.Checking) }
         usernameCheck = viewModelScope.launch {
             delay(delayMs) // on attend que la saisie se pose
             val status = verify(value)
-            _state.update { if (it.username == value) it.copy(usernameStatus = status) else it }
+            update { if (it.username == value) it.copy(usernameStatus = status) else it }
         }
     }
 
@@ -215,15 +251,16 @@ class SignUpViewModel(
 
     private fun submit() {
         val s = _state.value
-        _state.update { it.copy(loading = true, error = null) }
+        update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             // 1. Compte Firebase (une seule fois, même si l'appel au backend doit être rejoué).
             if (!s.firebaseAccountCreated) {
                 try {
                     auth.signUp(s.email, s.password)
-                    _state.update { it.copy(firebaseAccountCreated = true) }
+                    update { it.copy(firebaseAccountCreated = true) }
                 } catch (e: Throwable) {
-                    _state.update { it.copy(loading = false, step = SignUpStep.EMAIL, emailError = e.userMessage()) }
+                    captureFailure(e)
+                    update { it.copy(loading = false, step = SignUpStep.EMAIL, emailError = e.userMessage()) }
                     return@launch
                 }
             }
@@ -239,11 +276,13 @@ class SignUpViewModel(
             try {
                 val account = accounts.register(registration)
                 pending.clear()
-                _state.update { it.copy(loading = false, session = Session.Ready(account)) }
+                update { it.copy(loading = false, session = Session.Ready(account)) }
             } catch (e: ApiException) {
-                _state.update { routeRegistrationError(it.copy(loading = false), e) }
+                captureFailure(e)
+                update { routeRegistrationError(it.copy(loading = false), e) }
             } catch (e: Throwable) {
-                _state.update { it.copy(loading = false, error = e.userMessage()) }
+                captureFailure(e)
+                update { it.copy(loading = false, error = e.userMessage()) }
             }
         }
     }

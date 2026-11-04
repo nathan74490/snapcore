@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { noAnalytics, type Analytics } from "../../../../shared/domain/analytics";
 import { ConflictError } from "../../../../shared/domain/errors";
 import type { AppLogger } from "../../../../shared/domain/logger";
 import type { ObjectStorage } from "../../../media/application/ports/object-storage.port";
@@ -18,6 +19,7 @@ export class ProfilePhotoUseCases {
     private readonly storage: ObjectStorage,
     private readonly urls: PublicMediaUrls,
     private readonly logger: AppLogger,
+    private readonly analytics: Analytics = noAnalytics,
   ) {}
 
   async change(user: UserAccount, uploadId: string): Promise<UserAccount> {
@@ -38,6 +40,7 @@ export class ProfilePhotoUseCases {
     });
 
     await this.deletePrevious(previousUrl);
+    this.analytics.capture(user.id, "profile_photo_changed");
     return updated;
   }
 
@@ -46,6 +49,7 @@ export class ProfilePhotoUseCases {
     const updated = await this.users.replaceProfilePhoto(user.id, user.profilePhotoUrl, null);
     if (!updated) throw new ConflictError(PHOTO_CHANGED);
     await this.deletePrevious(user.profilePhotoUrl);
+    this.analytics.capture(user.id, "profile_photo_removed");
     return updated;
   }
 

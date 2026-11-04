@@ -1,5 +1,5 @@
 import { ConflictError, ValidationError } from "../../../../shared/domain/errors";
-import { FakeIdentityProvider } from "../../../../test/fakes";
+import { FakeIdentityProvider, RecordingAnalytics } from "../../../../test/fakes";
 import { InMemoryUserRepository } from "../../../../test/in-memory-user.repository";
 import { SyncEmailFromIdentityProvider } from "./sync-email";
 import { UpdateProfile } from "./update-profile";
@@ -90,5 +90,39 @@ describe("SyncEmailFromIdentityProvider", () => {
     const updated = await new SyncEmailFromIdentityProvider(users, identity).execute(user);
 
     expect(updated.email).toBe("new@example.com");
+  });
+});
+
+describe("UpdateProfile : analytics (ADR-008)", () => {
+  let users: InMemoryUserRepository;
+  let analytics: RecordingAnalytics;
+  let updateProfile: UpdateProfile;
+
+  beforeEach(() => {
+    users = new InMemoryUserRepository();
+    analytics = new RecordingAnalytics();
+    updateProfile = new UpdateProfile(users, analytics);
+  });
+
+  it("profile_updated porte les noms des champs réellement modifiés, jamais leurs valeurs", async () => {
+    const user = await users.seed("nathan");
+
+    await updateProfile.execute(user, { username: "nathan", firstName: "Marie", lastName: "Martin", phoneNumber: "+33612345678" });
+
+    expect(analytics.events).toEqual([
+      { userId: user.id, event: "profile_updated", properties: { fields: "firstName,lastName,phoneNumber" } },
+    ]);
+  });
+
+  it("aucun événement si rien ne change, sur une erreur de validation ou un pseudo déjà pris", async () => {
+    await users.seed("alice");
+    const user = await users.seed("nathan");
+
+    await updateProfile.execute(user, {});
+    await updateProfile.execute(user, { username: "Nathan" });
+    await expect(updateProfile.execute(user, { firstName: "<script>" })).rejects.toThrow(ValidationError);
+    await expect(updateProfile.execute(user, { username: "alice" })).rejects.toThrow(ConflictError);
+
+    expect(analytics.events).toEqual([]);
   });
 });

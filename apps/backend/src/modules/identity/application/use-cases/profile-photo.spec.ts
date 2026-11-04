@@ -1,5 +1,5 @@
 import { ConflictError } from "../../../../shared/domain/errors";
-import { FixedClock } from "../../../../test/fakes";
+import { FixedClock, RecordingAnalytics } from "../../../../test/fakes";
 import { InMemoryObjectStorage, InMemoryUploadTicketStore, silentLogger } from "../../../../test/in-memory-media";
 import { InMemoryUserRepository } from "../../../../test/in-memory-user.repository";
 import { RequestUpload } from "../../../media/application/request-upload";
@@ -15,13 +15,15 @@ describe("ProfilePhotoUseCases", () => {
   let requestUpload: RequestUpload;
   let profilePhoto: ProfilePhotoUseCases;
   let alice: UserAccount;
+  let analytics: RecordingAnalytics;
 
   beforeEach(async () => {
     users = new InMemoryUserRepository();
     storage = new InMemoryObjectStorage();
     const tickets = new InMemoryUploadTicketStore();
     requestUpload = new RequestUpload(storage, tickets, new FixedClock());
-    profilePhoto = new ProfilePhotoUseCases(users, new UploadPromoter(storage, tickets, silentLogger), storage, urls, silentLogger);
+    analytics = new RecordingAnalytics();
+    profilePhoto = new ProfilePhotoUseCases(users, new UploadPromoter(storage, tickets, silentLogger), storage, urls, silentLogger, analytics);
     alice = await users.seed("alice");
   });
 
@@ -66,5 +68,17 @@ describe("ProfilePhotoUseCases", () => {
 
     expect(updated.profilePhotoUrl).toBeNull();
     expect(storage.has({ area: "public", key: publicKeyOf(withPhoto) })).toBe(false);
+  });
+
+  it("analytics (ADR-008) : profile_photo_changed puis profile_photo_removed, rien sur un conflit ni sans photo", async () => {
+    await profilePhoto.remove(alice); // sans photo : sans effet
+    const withPhoto = await profilePhoto.change(alice, await uploadPhoto());
+    await expect(profilePhoto.change(alice, await uploadPhoto())).rejects.toThrow(ConflictError);
+    await profilePhoto.remove(withPhoto);
+
+    expect(analytics.events).toEqual([
+      { userId: alice.id, event: "profile_photo_changed" },
+      { userId: alice.id, event: "profile_photo_removed" },
+    ]);
   });
 });

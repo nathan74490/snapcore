@@ -105,7 +105,7 @@ fun ProfileScreen(
     onAvatarChangeApplied: () -> Unit = {},
 ) {
     val vm = containerViewModel {
-        ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer, initialAccount)
+        ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer, initialAccount, analytics = it.analytics, experiments = it.experiments)
     }
     LaunchedEffect(avatarChange) {
         avatarChange?.let {
@@ -147,7 +147,7 @@ fun ProfileScreen(
             Column(Modifier.fillMaxSize().padding(padding).navigationBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 Row(Modifier.fillMaxWidth().height(60.dp).clip(RoundedCornerShape(12.dp))
                     .background(Brush.horizontalGradient(listOf(Color(0xFFF7E7A6), Color(0xFFEFC46E))))
-                    .clickable(onClick = onOpenPlus).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                    .clickable { vm.onPlusOpened("settings"); onOpenPlus() }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     FigmaAsset("17-1408_imgIconGhost", tint = SnapColors.Ink)
                     Text("Gérer SnapCore+", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
@@ -172,7 +172,7 @@ fun ProfileScreen(
                     HorizontalDivider(color = SnapColors.Border)
                     ProfileRow("Téléphone", account.phoneNumber ?: "Non renseigné", onEdit = { vm.startEditing(EditableField.PHONE) })
                     HorizontalDivider(color = SnapColors.Border)
-                    ProfileRow("SnapCore+", if(account.isPremium) "Abonnement actif" else SnapCorePlus.PRICE_LABEL, onEdit = onOpenPlus)
+                    ProfileRow("SnapCore+", if(account.isPremium) "Abonnement actif" else SnapCorePlus.PRICE_LABEL, onEdit = { vm.onPlusOpened("settings"); onOpenPlus() })
                     HorizontalDivider(color = SnapColors.Border)
                     // La permission n'est demandée qu'une fois (BUG-007) : on la réactive ici, dans Android.
                     val context = LocalContext.current
@@ -221,7 +221,8 @@ fun ProfileScreen(
                             .background(Color.White).border(1.dp, Color(0xFFE3E5E8), RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 5.dp),
                             color = if(account.isPremium) SnapColors.SnapPurple else SnapColors.Ink)
                     }
-                    PlusCard(account, onOpenPlus)
+                    if (!account.isPremium) LaunchedEffect(Unit) { vm.onPlusCardShown() }
+                    PlusCard(account, state.plusCard) { vm.onPlusOpened("profile_card"); onOpenPlus() }
                     Text("Mon avatar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
                     ProfileAction("13-250_imgIconEmoji", if (account.avatar == null) "Créer mon avatar" else "Modifier mon avatar", onOpenAvatar)
                     // Comme Snapchat : « + Nouvelle Story » à côté du titre ouvre la caméra.
@@ -339,7 +340,7 @@ private fun EditableAvatar(
 
 // Accès au paywall SnapCore+ : l'offre pour un compte gratuit, la date de fin pour un abonné (ADR-025).
 @Composable
-private fun PlusCard(account: com.snapcore.app.domain.Account, onOpen: () -> Unit) {
+private fun PlusCard(account: com.snapcore.app.domain.Account, offer: com.snapcore.app.domain.ProfilePlusCard, onOpen: () -> Unit) {
     val until = account.premiumUntil?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRENCH))
 
     Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
@@ -353,7 +354,7 @@ private fun PlusCard(account: com.snapcore.app.domain.Account, onOpen: () -> Uni
             Text(when {
                 account.isPremium && until != null -> "Actif jusqu'au $until"
                 account.isPremium -> "Abonnement actif"
-                else -> "Des relectures illimitées et des snaps conservés."
+                else -> offer.subtitle
             }, color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
         }
         FigmaAsset("17-1301_imgIconChevronRight")

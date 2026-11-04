@@ -70,6 +70,7 @@ class SnapOutbox(
     private val dir: File,
     private val clock: () -> Instant = Instant::now,
     private val sentRetentionMs: Long = 30_000,
+    private val analytics: Analytics = NoAnalytics,
 ) : SnapSender {
     private val _items = MutableStateFlow<List<OutgoingSnap>>(emptyList())
     /** Du plus récent au plus ancien. */
@@ -83,12 +84,18 @@ class SnapOutbox(
         val createdAt = clock()
         val entries = targets.map { OutgoingSnap(UUID.randomUUID().toString(), owned, it, createdAt) }
         _items.update { entries + it }
+        analytics.capture(AnalyticsEvents.SNAP_SEND_STARTED, mapOf(
+            "media" to media.kind.analyticsName,
+            "friends" to targets.count { it is SendTarget.ToFriend },
+            "story" to targets.any { it !is SendTarget.ToFriend },
+        ))
         entries.forEach(::launch)
     }
 
     fun retry(id: String) {
         val entry = _items.value.firstOrNull { it.id == id && it.status == OutgoingStatus.FAILED } ?: return
         val again = entry.copy(status = OutgoingStatus.SENDING, error = null)
+        analytics.capture(AnalyticsEvents.SNAP_SEND_RETRIED, entry.analyticsProperties())
         replace(again)
         launch(again)
     }
@@ -97,6 +104,7 @@ class SnapOutbox(
     fun discard(id: String) {
         val entry = _items.value.firstOrNull { it.id == id && it.status == OutgoingStatus.FAILED } ?: return
         _items.update { list -> list.filter { it.id != id } }
+        analytics.capture(AnalyticsEvents.SNAP_SEND_ABANDONED, entry.analyticsProperties())
         deleteIfUnused(entry.media)
     }
 
@@ -124,9 +132,13 @@ class SnapOutbox(
                 _items.update { list -> list.filter { it.id != entry.id } }
             } else {
                 replace(entry.copy(status = OutgoingStatus.FAILED, error = error))
+                analytics.capture(AnalyticsEvents.SNAP_SEND_FAILED, entry.analyticsProperties())
             }
         }
     }
+
+    private fun OutgoingSnap.analyticsProperties(): Map<String, Any> =
+        mapOf("media" to media.kind.analyticsName, "target" to if (target is SendTarget.ToFriend) "friend" else "story")
 
     private fun replace(entry: OutgoingSnap) = _items.update { list -> list.map { if (it.id == entry.id) entry else it } }
 

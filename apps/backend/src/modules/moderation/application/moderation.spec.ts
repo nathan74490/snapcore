@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../../shared/domain/errors";
-import { FixedClock, RecordingFriendshipNotifier } from "../../../test/fakes";
+import { FixedClock, RecordingAnalytics, RecordingFriendshipNotifier } from "../../../test/fakes";
 import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
 import { InMemoryLocationStore } from "../../../test/in-memory-location";
 import { InMemoryObjectStorage, silentLogger } from "../../../test/in-memory-media";
@@ -41,6 +41,7 @@ describe("Modération (ADR-021)", () => {
   let repo: InMemoryModerationRepository;
   let moderation: ModerationUseCases;
   let reports: ReportUseCases;
+  let analytics: RecordingAnalytics;
   let alice: UserAccount;
   let bob: UserAccount;
 
@@ -60,8 +61,9 @@ describe("Modération (ADR-021)", () => {
     presence = new InMemoryPresence();
     repo = new InMemoryModerationRepository(users);
     const events = new UserEventPublisher(presence, realtime, new RecordingPush(), new InMemoryDeviceTokens(), silentLogger);
-    moderation = new ModerationUseCases(repo, messages, stories, views, storage, snapPurge, storyPurge, realtime, events, clock, silentLogger, locations);
-    reports = new ReportUseCases(repo, users, messages, stories, friendshipRepo, clock);
+    analytics = new RecordingAnalytics();
+    moderation = new ModerationUseCases(repo, messages, stories, views, storage, snapPurge, storyPurge, realtime, events, clock, silentLogger, locations, analytics);
+    reports = new ReportUseCases(repo, users, messages, stories, friendshipRepo, clock, analytics);
     alice = await users.seed("alice");
     bob = await users.seed("bob");
     const { friendshipId } = await friendships.sendRequest(alice, "bob");
@@ -200,6 +202,48 @@ describe("Modération (ADR-021)", () => {
       await expect(reports.report(bob, { type: "STORY_ITEM", storyItemId: aliceStory }, "x")).resolves.toBeDefined();
       await expect(reports.report(alice, { type: "MESSAGE", messageId: privateMessage }, "x")).rejects.toThrow(ValidationError);
       await expect(reports.report(alice, { type: "USER", userId: alice.id }, "x")).rejects.toThrow(ValidationError);
+    });
+  });
+
+  describe("analytics (ADR-008)", () => {
+    it("content_reported : type de cible seulement, jamais le motif ; rien si le signalement est refusé", async () => {
+      const id = await message(alice, bob, "TEXT");
+      const aliceStory = await story(alice);
+      await expect(reports.report(alice, { type: "USER", userId: alice.id }, "x")).rejects.toThrow(ValidationError);
+
+      await reports.report(bob, { type: "MESSAGE", messageId: id }, "Il m'insulte");
+      await reports.report(bob, { type: "STORY_ITEM", storyItemId: aliceStory }, "Violence");
+      await reports.report(bob, { type: "USER", userId: alice.id }, "Faux profil");
+
+      expect(analytics.events).toEqual([
+        { userId: bob.id, event: "content_reported", properties: { target: "message" } },
+        { userId: bob.id, event: "content_reported", properties: { target: "story" } },
+        { userId: bob.id, event: "content_reported", properties: { target: "user" } },
+      ]);
+    });
+
+    it("actions du modérateur : capturées sous son id avec by_moderator, rien si l'action est refusée", async () => {
+      const messageId = await message(alice, bob, "TEXT");
+      const storyId = await story(alice);
+      const report = await reports.report(bob, { type: "USER", userId: alice.id }, "x");
+      await expect(moderation.suspendUser(alice.id, "inconnu", "x")).rejects.toThrow(ValidationError);
+      await expect(moderation.reactivateUser(alice.id, MOD)).rejects.toThrow(ConflictError);
+      analytics.events.length = 0;
+
+      await moderation.suspendUser(alice.id, MOD, "Harcèlement");
+      await moderation.reactivateUser(alice.id, MOD);
+      await moderation.redactMessage(messageId, MOD, "Insulte");
+      await expect(moderation.redactMessage(messageId, MOD, "Insulte")).rejects.toThrow(ConflictError);
+      await moderation.deleteStoryItem(storyId, MOD, "Violence");
+      await moderation.closeReport(report.id, "DISMISSED", MOD);
+
+      expect(analytics.events).toEqual([
+        { userId: MOD, event: "user_suspended", properties: { by_moderator: true } },
+        { userId: MOD, event: "user_reactivated", properties: { by_moderator: true } },
+        { userId: MOD, event: "message_redacted", properties: { by_moderator: true } },
+        { userId: MOD, event: "story_item_deleted", properties: { by_moderator: true } },
+        { userId: MOD, event: "report_closed", properties: { status: "DISMISSED", by_moderator: true } },
+      ]);
     });
   });
 });

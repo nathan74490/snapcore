@@ -1,8 +1,12 @@
 package com.snapcore.app
 
+import com.snapcore.app.data.api.ApiException
 import com.snapcore.app.domain.AccountRules
+import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.Session
+import com.snapcore.app.domain.SessionResolver
 import com.snapcore.app.domain.suggestUsername
+import com.snapcore.app.ui.auth.LoginViewModel
 import com.snapcore.app.ui.auth.PasswordHint
 import com.snapcore.app.ui.auth.SignUpStep
 import com.snapcore.app.ui.auth.SignUpViewModel
@@ -277,5 +281,49 @@ class SignUpViewModelTest {
         assertTrue(accounts.deleted)
         assertTrue(profile.state.value.signedOut)
         assertEquals(false, auth.signedIn)
+    }
+
+    @Test
+    fun `analytics, chaque etape affichee, et l'echec avec son etape et son type d'erreur`() = runTest(dispatcher) {
+        val analytics = RecordingAnalytics()
+        vm = SignUpViewModel(auth, accounts, pending, today = { today }, random = Random(7), checkDelayMs = 10, analytics = analytics)
+        advanceUntilIdle()
+        reachUsername()
+        vm.back()
+        advanceUntilIdle()
+        vm.next()
+        advanceUntilIdle()
+
+        assertEquals(listOf("name", "birthday", "username", "birthday", "username"),
+            analytics.events.filter { it.first == AnalyticsEvents.SIGNUP_STEP_VIEWED }.map { it.second["step"] })
+
+        auth.failSignUpWith = "Adresse déjà utilisée"
+        vm.next()
+        vm.onPassword("MotDePasse123")
+        vm.next()
+        vm.onEmail("nathan@snapcore.test")
+        vm.next()
+        advanceUntilIdle()
+        val failure = analytics.propertiesOf(AnalyticsEvents.SIGNUP_FAILED)
+        assertEquals("email", failure["step"])
+        assertEquals("UserFacingException", failure["reason"])
+        assertFalse("jamais le message, qui peut contenir l'email", failure.values.any { "@" in it.toString() })
+    }
+
+    @Test
+    fun `analytics, connexion refusee avec le code HTTP puis reussie`() = runTest(dispatcher) {
+        val analytics = RecordingAnalytics()
+        val login = LoginViewModel(auth, SessionResolver(auth, accounts, pending), analytics)
+        login.onEmail("nathan@snapcore.test")
+        login.onPassword("secret")
+        auth.failSignInWith = ApiException(503, "Service indisponible")
+        login.submit()
+        advanceUntilIdle()
+        assertEquals(mapOf("reason" to "http_503"), analytics.propertiesOf(AnalyticsEvents.LOGIN_FAILED))
+
+        auth.failSignInWith = null
+        login.submit()
+        advanceUntilIdle()
+        assertEquals(AnalyticsEvents.LOGIN_COMPLETED, analytics.names.last())
     }
 }

@@ -1,4 +1,5 @@
 import { ValidationError } from "../../../../shared/domain/errors";
+import { RecordingAnalytics } from "../../../../test/fakes";
 import { InMemoryUserRepository } from "../../../../test/in-memory-user.repository";
 import { DEFAULT_AVATAR } from "../../../avatars/domain/avatar-catalog";
 import { toPublicProfile } from "../../domain/user";
@@ -8,10 +9,12 @@ import { UserAvatarUseCases } from "./user-avatar";
 describe("UserAvatarUseCases (ADR-028)", () => {
   let users: InMemoryUserRepository;
   let avatars: UserAvatarUseCases;
+  let analytics: RecordingAnalytics;
 
   beforeEach(() => {
     users = new InMemoryUserRepository();
-    avatars = new UserAvatarUseCases(users);
+    analytics = new RecordingAnalytics();
+    avatars = new UserAvatarUseCases(users, analytics);
   });
 
   it("enregistre des options valides et les remplace au changement suivant", async () => {
@@ -52,5 +55,18 @@ describe("UserAvatarUseCases (ADR-028)", () => {
     const bob = await avatars.set(await users.seed("bob"), { ...DEFAULT_AVATAR });
     expect(presentSelf(bob).avatar).toEqual(DEFAULT_AVATAR);
     expect(toPublicProfile(bob)).toEqual({ id: bob.id, username: "bob", firstName: "Bob", avatar: DEFAULT_AVATAR });
+  });
+
+  it("analytics (ADR-008) : avatar_saved puis avatar_removed, rien si les options sont refusées ou sans avatar", async () => {
+    const user = await users.seed("nathan");
+    await avatars.remove(user); // sans avatar : sans effet
+    await expect(avatars.set(user, { top: "shortFlat" })).rejects.toThrow(ValidationError);
+    const withAvatar = await avatars.set(user, { ...DEFAULT_AVATAR });
+    await avatars.remove(withAvatar);
+
+    expect(analytics.events).toEqual([
+      { userId: user.id, event: "avatar_saved" },
+      { userId: user.id, event: "avatar_removed" },
+    ]);
   });
 });

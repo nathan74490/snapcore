@@ -1,3 +1,4 @@
+import { noAnalytics, type Analytics } from "../../../../shared/domain/analytics";
 import { UniqueViolationError } from "../../../../shared/domain/errors";
 import { parseFirstName } from "../../domain/first-name";
 import { parseLastName } from "../../domain/last-name";
@@ -18,7 +19,10 @@ export interface UpdateProfileInput {
 // il passe par Firebase (verifyBeforeUpdateEmail) puis par SyncEmailFromIdentityProvider.
 // La photo de profil passe par le pipeline média (ADR-016).
 export class UpdateProfile {
-  constructor(private readonly users: UserRepository) {}
+  constructor(
+    private readonly users: UserRepository,
+    private readonly analytics: Analytics = noAnalytics,
+  ) {}
 
   async execute(user: UserAccount, input: UpdateProfileInput): Promise<UserAccount> {
     const patch: ProfilePatch = {};
@@ -30,13 +34,19 @@ export class UpdateProfile {
     }
     if (Object.keys(patch).length === 0) return user;
 
+    let updated: UserAccount;
     try {
       // L'unicité est garantie par la contrainte @unique en base, pas par une lecture préalable
       // (qui laisserait une fenêtre de course) : un conflit renvoie 409 sans modifier la ligne.
-      return await this.users.updateProfile(user.id, patch);
+      updated = await this.users.updateProfile(user.id, patch);
     } catch (error) {
       if (error instanceof UniqueViolationError) throw toProfileConflict(error);
       throw error;
     }
+    // Analytics : les NOMS des champs réellement modifiés, jamais leurs valeurs ; rien si la
+    // requête renvoie les valeurs déjà en place.
+    const fields = (Object.keys(patch) as Array<keyof ProfilePatch>).filter((field) => patch[field] !== user[field]);
+    if (fields.length > 0) this.analytics.capture(user.id, "profile_updated", { fields: fields.join(",") });
+    return updated;
   }
 }

@@ -77,7 +77,7 @@ import kotlin.math.abs
  */
 @Composable
 fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit, resuming: Boolean = false) {
-    val vm = containerViewModel { SignUpViewModel(it.auth, it.accounts, it.pendingRegistration, resuming) }
+    val vm = containerViewModel { SignUpViewModel(it.auth, it.accounts, it.pendingRegistration, resuming, analytics = it.analytics) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.session) { state.session?.let(onSession) }
     val goBack = { if (!vm.back() && !resuming) onBack() }

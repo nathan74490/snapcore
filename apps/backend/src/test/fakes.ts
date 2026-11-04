@@ -1,3 +1,4 @@
+import type { Analytics } from "../shared/domain/analytics";
 import type { Clock } from "../shared/domain/clock";
 import { UnauthenticatedError } from "../shared/domain/errors";
 import type { FriendshipNotifier } from "../modules/friendships/application/ports/friendship-notifier.port";
@@ -55,5 +56,19 @@ export class RecordingFriendshipNotifier implements FriendshipNotifier {
 
   async friendRequestAccepted(requesterId: string, friendshipId: string): Promise<void> {
     this.events.push({ type: "accepted", to: requesterId, friendshipId });
+  }
+}
+
+// Analytics enregistrées en mémoire (ADR-008) : les tests vérifient l'événement, ses propriétés
+// et l'identifiant utilisé, ou qu'aucun événement n'est envoyé quand l'action échoue.
+export class RecordingAnalytics implements Analytics {
+  readonly events: Array<{ userId: string; event: string; properties?: Record<string, string | number | boolean> }> = [];
+
+  capture(userId: string, event: string, properties?: Record<string, string | number | boolean>): void {
+    this.events.push(properties === undefined ? { userId, event } : { userId, event, properties });
+  }
+
+  named(event: string): Array<{ userId: string; event: string; properties?: Record<string, string | number | boolean> }> {
+    return this.events.filter((e) => e.event === event);
   }
 }

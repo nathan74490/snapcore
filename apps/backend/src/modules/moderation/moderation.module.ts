@@ -1,4 +1,5 @@
 import { Logger, Module } from "@nestjs/common";
+import { ANALYTICS, type Analytics } from "../../shared/domain/analytics";
 import { CLOCK, type Clock } from "../../shared/domain/clock";
 import { FRIENDSHIP_REPOSITORY, type FriendshipRepository } from "../friendships/application/ports/friendship.repository";
 import { FriendshipsModule } from "../friendships/friendships.module";
@@ -60,6 +61,7 @@ import { AdminController, ReportsController } from "./interface/moderation.contr
         UserEventPublisher,
         CLOCK,
         LOCATION_STORE,
+        ANALYTICS,
       ],
       useFactory: (
         moderation: ModerationRepository,
@@ -73,6 +75,7 @@ import { AdminController, ReportsController } from "./interface/moderation.contr
         events: UserEventPublisher,
         clock: Clock,
         locations: LocationStore,
+        analytics: Analytics,
       ) =>
         new ModerationUseCases(
           moderation,
@@ -87,11 +90,12 @@ import { AdminController, ReportsController } from "./interface/moderation.contr
           clock,
           new Logger(ModerationUseCases.name),
           locations,
+          analytics,
         ),
     },
     {
       provide: ReportUseCases,
-      inject: [MODERATION_REPOSITORY, USER_REPOSITORY, MESSAGE_REPOSITORY, STORY_REPOSITORY, FRIENDSHIP_REPOSITORY, CLOCK],
+      inject: [MODERATION_REPOSITORY, USER_REPOSITORY, MESSAGE_REPOSITORY, STORY_REPOSITORY, FRIENDSHIP_REPOSITORY, CLOCK, ANALYTICS],
       useFactory: (
         moderation: ModerationRepository,
         users: UserRepository,
@@ -99,7 +103,8 @@ import { AdminController, ReportsController } from "./interface/moderation.contr
         stories: StoryRepository,
         friendships: FriendshipRepository,
         clock: Clock,
-      ) => new ReportUseCases(moderation, users, messages, stories, friendships, clock),
+        analytics: Analytics,
+      ) => new ReportUseCases(moderation, users, messages, stories, friendships, clock, analytics),
     },
   ],
 })

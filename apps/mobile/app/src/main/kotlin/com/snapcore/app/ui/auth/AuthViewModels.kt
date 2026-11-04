@@ -3,6 +3,10 @@ package com.snapcore.app.ui.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snapcore.app.data.api.ApiException
+import com.snapcore.app.data.api.analyticsReason
+import com.snapcore.app.domain.Analytics
+import com.snapcore.app.domain.AnalyticsEvents
+import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.AccountRules
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AuthService
@@ -58,7 +62,11 @@ data class LoginState(
     val session: Session? = null,
 )
 
-class LoginViewModel(private val auth: AuthService, private val resolver: SessionResolver) : ViewModel() {
+class LoginViewModel(
+    private val auth: AuthService,
+    private val resolver: SessionResolver,
+    private val analytics: Analytics = NoAnalytics,
+) : ViewModel() {
     private val _state = MutableStateFlow(LoginState())
     val state: StateFlow<LoginState> = _state.asStateFlow()
 
@@ -76,8 +84,14 @@ class LoginViewModel(private val auth: AuthService, private val resolver: Sessio
             runCatching {
                 auth.signIn(current.email, current.password)
                 resolver.resolve()
-            }.onSuccess { session -> _state.update { it.copy(loading = false, session = session) } }
-                .onFailure { e -> _state.update { it.copy(loading = false, error = e.userMessage()) } }
+            }.onSuccess { session ->
+                // Envoyé avant identify (fait par la navigation) : PostHog rattache alors l'id anonyme au compte.
+                analytics.capture(AnalyticsEvents.LOGIN_COMPLETED)
+                _state.update { it.copy(loading = false, session = session) }
+            }.onFailure { e ->
+                analytics.capture(AnalyticsEvents.LOGIN_FAILED, mapOf("reason" to e.analyticsReason()))
+                _state.update { it.copy(loading = false, error = e.userMessage()) }
+            }
         }
     }
 }

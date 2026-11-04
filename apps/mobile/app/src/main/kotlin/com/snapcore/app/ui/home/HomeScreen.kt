@@ -53,7 +53,7 @@ private val icons = listOf("Map", "Chat", "Camera", "Stories")
 @Composable
 fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
     onOpenProfile: () -> Unit, onOpenFriends: () -> Unit, onCaptured: (CapturedMedia) -> Unit,
-    onOpenConversation: (Friend, snapId: String?) -> Unit, onOpenMyStory: () -> Unit, onPlayStory: (FriendStory) -> Unit,
+    onOpenConversation: (Friend, snapId: String?) -> Unit, onOpenMyStory: () -> Unit, onPlayStory: (FriendStory, fromMap: Boolean) -> Unit,
     modifier: Modifier = Modifier, snapRecipient: Friend? = null, onSnapTo: (Friend) -> Unit = {}, onClearSnapRecipient: () -> Unit = {}) {
     // Demandes d'ami en attente : le bouton d'ajout passe en jaune avec un badge, comme dans Snapchat.
     val requestsVm = containerViewModel { FriendRequestsViewModel(it.friends, it.realtime.events) }
@@ -138,7 +138,7 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                 // La carte n'existe que près de son onglet (Map ou Chat) : inutile de la faire tourner derrière la caméra.
                 val nearMap = abs(pager.currentPage + pager.currentPageOffsetFraction - MAP_TAB) < 1.5f
                 if (nearMap) MapScreen(account, visible = pager.settledPage == MAP_TAB, onOpenProfile = onOpenProfile, onOpenFriends = onOpenFriends,
-                    onOpenConversation = { onOpenConversation(it, null) }, onPlayStory = onPlayStory)
+                    onOpenConversation = { onOpenConversation(it, null) }, onPlayStory = { onPlayStory(it, true) })
                 else Box(Modifier.fillMaxSize().background(Color.White))
             } else {
                 Column(Modifier.fillMaxSize().background(Color.White)) {
@@ -159,7 +159,7 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                         }
                     }
                     if (page == CHAT_TAB) ChatListScreen(account.id, onOpenConversation, onOpenFriends, onSnapTo, Modifier.weight(1f))
-                    else StoriesScreen(account, onOpenMyStory, onPlayStory, Modifier.weight(1f))
+                    else StoriesScreen(account, onOpenMyStory, { onPlayStory(it, false) }, Modifier.weight(1f))
                 }
             }
             }

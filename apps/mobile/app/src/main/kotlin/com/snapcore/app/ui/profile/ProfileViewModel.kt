@@ -4,6 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snapcore.app.data.api.ApiException
 import com.snapcore.app.data.avatarImageUrl
+import com.snapcore.app.domain.Analytics
+import com.snapcore.app.domain.AnalyticsEvents
+import com.snapcore.app.domain.Experiments
+import com.snapcore.app.domain.Exposure
+import com.snapcore.app.domain.NoExperiments
+import com.snapcore.app.domain.ProfilePlusCard
+import com.snapcore.app.domain.expose
+import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.AccountRules
 import com.snapcore.app.domain.AccountService
@@ -27,6 +35,8 @@ enum class EditableField(val title: String) {
 
 data class ProfileState(
     val account: Account? = null,
+    /** Sous-titre de la carte SnapCore+ d'un compte gratuit (expérience profile-plus-card, ADR-030). */
+    val plusCard: ProfilePlusCard = ProfilePlusCard.CONTROL,
     val emailVerified: Boolean? = null,
     val loading: Boolean = true,
     val editing: EditableField? = null,
@@ -49,6 +59,8 @@ class ProfileViewModel(
     /** Compte déjà connu de l'app : le profil s'affiche tout de suite, le rechargement le met à jour. */
     initial: Account? = null,
     private val avatarUrl: (Map<String, String>) -> String = ::avatarImageUrl,
+    private val analytics: Analytics = NoAnalytics,
+    private val experiments: Experiments = NoExperiments,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ProfileState(account = initial, loading = initial == null))
     val state: StateFlow<ProfileState> = _state.asStateFlow()
@@ -203,7 +215,7 @@ class ProfileViewModel(
     fun resendVerification() {
         viewModelScope.launch {
             val message = runCatching { auth.resendVerificationEmail() }
-                .fold({ "Email de confirmation renvoyé" }, { (it as? UserFacingException)?.message ?: "Envoi impossible" })
+                .fold({ analytics.capture(AnalyticsEvents.EMAIL_VERIFICATION_RESENT); "Email de confirmation renvoyé" }, { (it as? UserFacingException)?.message ?: "Envoi impossible" })
             _state.update { it.copy(message = message) }
         }
     }
@@ -213,6 +225,8 @@ class ProfileViewModel(
     // Retire d'abord le token FCM de l'appareil (tant que la session permet encore d'appeler l'API) :
     // un appareil déconnecté ne doit plus recevoir de push pour ce compte (ADR-018).
     fun signOut() {
+        // Avant la déconnexion : ensuite, l'analytics est remise à zéro et l'événement ne serait plus rattaché au compte.
+        analytics.capture(AnalyticsEvents.SIGNED_OUT)
         viewModelScope.launch {
             runCatching { devices.unregisterCurrentDevice() }
             auth.signOut()
@@ -220,8 +234,29 @@ class ProfileViewModel(
         }
     }
 
-    fun askDeletion() = _state.update { it.copy(confirmDeletion = true) }
-    fun cancelDeletion() = _state.update { it.copy(confirmDeletion = false) }
+    private var plusCardExposure: Exposure<ProfilePlusCard>? = null
+
+    /** Carte SnapCore+ affichée à un compte gratuit : exposition à l'expérience, une fois (ADR-030). */
+    fun onPlusCardShown() {
+        if (plusCardExposure != null) return
+        val exposure = experiments.expose(ProfilePlusCard.FLAG, ProfilePlusCard::of)
+        plusCardExposure = exposure
+        _state.update { it.copy(plusCard = exposure.value) }
+    }
+
+    /** Paywall ouvert depuis le profil : [source] « profile_card » (carte testée) ou « settings ». */
+    fun onPlusOpened(source: String) = analytics.capture(AnalyticsEvents.PAYWALL_OPENED,
+        mapOf("source" to source) + (if (source == "profile_card") plusCardExposure?.conversionProperties.orEmpty() else emptyMap()))
+
+    fun askDeletion() {
+        analytics.capture(AnalyticsEvents.ACCOUNT_DELETION_PROMPTED)
+        _state.update { it.copy(confirmDeletion = true) }
+    }
+
+    fun cancelDeletion() {
+        analytics.capture(AnalyticsEvents.ACCOUNT_DELETION_CANCELLED)
+        _state.update { it.copy(confirmDeletion = false) }
+    }
 
     // Le backend bloque le compte immédiatement ; l'app se déconnecte de Firebase dès la
     // confirmation, pour ne jamais rejouer l'ancien token (ADR-015, ADR-019).

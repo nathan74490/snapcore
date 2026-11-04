@@ -1,5 +1,6 @@
 package com.snapcore.app
 
+import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.FriendLocation
@@ -247,8 +248,28 @@ class MapViewModelTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(map: FakeMap, location: FixedLocation = FixedLocation()) =
-        MapViewModel("me", map, LocationReporter(map, location, clock::now), location, StaticFriends(emptyList()), now = clock::now)
+    private fun viewModel(map: FakeMap, location: FixedLocation = FixedLocation(), analytics: RecordingAnalytics = RecordingAnalytics()) =
+        MapViewModel("me", map, LocationReporter(map, location, clock::now), location, StaticFriends(emptyList()), analytics, now = clock::now)
+
+    @Test
+    fun `analytics de la carte, sans doublon du reglage deja capture par le backend`() = runTest(dispatcher) {
+        val analytics = RecordingAnalytics()
+        val map = FakeMap(LocationSharing.Ghost).apply { friends = listOf(FriendLocation(friend("rober"), paris, t0)) }
+        val vm = viewModel(map, analytics = analytics)
+        vm.onPermissionResult(true)
+        advanceUntilIdle()
+        vm.select(map.friends.single())
+        vm.select(null) // fermer la fiche n'est pas un événement
+        vm.onRecentered()
+        vm.updateSharing(LocationSharing(LocationSharingMode.ALL_FRIENDS))
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(AnalyticsEvents.LOCATION_PERMISSION_ANSWERED, AnalyticsEvents.MAP_FRIEND_SELECTED, AnalyticsEvents.MAP_RECENTERED),
+            analytics.names,
+        )
+        assertEquals(mapOf("granted" to true), analytics.propertiesOf(AnalyticsEvents.LOCATION_PERMISSION_ANSWERED))
+    }
 
     @Test
     fun `rechargement, amis, pins, reglage et ma position`() = runTest(dispatcher) {

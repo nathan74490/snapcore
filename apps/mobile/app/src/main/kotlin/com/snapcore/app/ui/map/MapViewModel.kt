@@ -3,6 +3,11 @@ package com.snapcore.app.ui.map
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snapcore.app.domain.Analytics
+import com.snapcore.app.domain.AnalyticsEvents
+import com.snapcore.app.domain.Experiments
+import com.snapcore.app.domain.MapGhostBanner
+import com.snapcore.app.domain.NoExperiments
+import com.snapcore.app.domain.expose
 import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.FriendLocation
 import com.snapcore.app.domain.FriendsService
@@ -37,6 +42,8 @@ data class MapUiState(
     val allFriends: List<Friend> = emptyList(),
     val error: String? = null,
     val now: Instant = Instant.now(),
+    /** Bouton du bandeau du mode fantôme (expérience map-ghost-banner, ADR-030). */
+    val ghostBanner: MapGhostBanner = MapGhostBanner.CONTROL,
 )
 
 /**
@@ -50,6 +57,7 @@ class MapViewModel(
     private val location: LocationProvider,
     private val friendsService: FriendsService,
     private val analytics: Analytics = NoAnalytics,
+    private val experiments: Experiments = NoExperiments,
     private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
     private val _state = MutableStateFlow(MapUiState(permission = location.hasPermission(), sharing = reporter.sharing.value, now = now()))
@@ -82,11 +90,30 @@ class MapViewModel(
 
     /** Réponse à la demande de permission de localisation. */
     fun onPermissionResult(granted: Boolean) {
+        analytics.capture(AnalyticsEvents.LOCATION_PERMISSION_ANSWERED, mapOf("granted" to granted))
         _state.update { it.copy(permission = granted) }
         if (granted) refresh()
     }
 
-    fun select(friend: FriendLocation?) = _state.update { it.copy(selected = friend) }
+    fun select(friend: FriendLocation?) {
+        if (friend != null) analytics.capture(AnalyticsEvents.MAP_FRIEND_SELECTED)
+        _state.update { it.copy(selected = friend) }
+    }
+
+    /** Bouton Chat de la fiche d'un ami. */
+    fun onChatOpened() = analytics.capture(AnalyticsEvents.MAP_CHAT_OPENED)
+
+    fun onRecentered() = analytics.capture(AnalyticsEvents.MAP_RECENTERED)
+
+    private var ghostBannerExposed = false
+
+    /** Bandeau du mode fantôme affiché : exposition à l'expérience, une fois par ouverture de la carte (ADR-030). */
+    fun onGhostBannerShown() {
+        if (ghostBannerExposed) return
+        ghostBannerExposed = true
+        val banner = experiments.expose(MapGhostBanner.FLAG, MapGhostBanner::of).value
+        _state.update { it.copy(ghostBanner = banner) }
+    }
 
     fun loadFriends() {
         viewModelScope.launch {
@@ -104,7 +131,6 @@ class MapViewModel(
             val result = completeEvenIfClosed { reporter.updateSharing(accountId, sharing) }
             savingSharing--
             result.onSuccess { saved ->
-                analytics.capture("location_sharing_changed", mapOf("mode" to saved.mode.name))
                 _state.update { it.copy(sharing = saved) }
                 if (!saved.ghost) refresh()
             }.onFailure {

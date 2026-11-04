@@ -1,4 +1,5 @@
 import type { ReportStatus } from "@snapcore/types";
+import { noAnalytics, type Analytics } from "../../../shared/domain/analytics";
 import type { Clock } from "../../../shared/domain/clock";
 import { ConflictError, NotFoundError, ValidationError } from "../../../shared/domain/errors";
 import type { AppLogger } from "../../../shared/domain/logger";
@@ -22,6 +23,8 @@ export function parseReason(raw: string): string {
 
 // Actions des modérateurs (ADR-021), appelées par le backoffice via l'API admin. Centralisées ici
 // pour que les effets de bord (R2, jobs BullMQ, temps réel) ne soient écrits qu'une seule fois.
+// Analytics (ADR-008) : capturées sous l'id du MODÉRATEUR (table Moderator, distincte des User de
+// l'app) avec by_moderator: true pour les séparer des personnes de l'app dans PostHog.
 export class ModerationUseCases {
   constructor(
     private readonly moderation: ModerationRepository,
@@ -36,6 +39,7 @@ export class ModerationUseCases {
     private readonly clock: Clock,
     private readonly logger: AppLogger,
     private readonly locations: LocationStore,
+    private readonly analytics: Analytics = noAnalytics,
   ) {}
 
   // Suspension réversible : le compte devient inexistant pour les autres et ne peut plus se
@@ -48,11 +52,13 @@ export class ModerationUseCases {
     await this.bestEffort(`déconnexion temps réel de ${userId}`, () => this.realtime.disconnectUser(userId));
     // Déjà invisible sur la Snap Map (compte inactif) ; la position est en plus effacée (ADR-031).
     await this.bestEffort(`effacement de la position de ${userId}`, () => this.locations.remove(userId));
+    this.captureModeration(moderatorId, "user_suspended");
   }
 
   async reactivateUser(userId: string, moderatorId: string): Promise<void> {
     await this.requireModerator(moderatorId);
     expectUpdated(await this.moderation.reactivateUser(userId), "Compte introuvable", "Ce compte n'est pas suspendu");
+    this.captureModeration(moderatorId, "user_reactivated");
   }
 
   // Rédaction d'un message : ligne conservée pour la conversation de l'autre participant (ADR-021).
@@ -74,6 +80,7 @@ export class ModerationUseCases {
     for (const participant of [message.senderId, message.recipientId]) {
       await this.events.publish(participant, { type: "message.moderated", messageId: message.id });
     }
+    this.captureModeration(moderatorId, "message_redacted");
   }
 
   // Un élément de story est supprimé (pas d'affichage "expiré" pour une story, ADR-013/ADR-021).
@@ -90,6 +97,7 @@ export class ModerationUseCases {
     await this.bestEffort(`retrait du job de purge ${item.id}`, () => this.storyPurge.cancel(item.id));
     // StoryItem ne porte pas de champ d'audit (ADR-021) : trace dans les logs du backend.
     this.logger.warn(`Story ${item.id} de ${item.authorId} supprimée par le modérateur ${moderatorId} : ${reason}`);
+    this.captureModeration(moderatorId, "story_item_deleted");
   }
 
   async closeReport(reportId: string, status: Exclude<ReportStatus, "PENDING">, moderatorId: string): Promise<void> {
@@ -99,12 +107,17 @@ export class ModerationUseCases {
       "Signalement introuvable",
       "Ce signalement a déjà été traité",
     );
+    this.captureModeration(moderatorId, "report_closed", { status });
   }
 
   // L'appelant (serveur du backoffice) est de confiance, mais un identifiant de modérateur
   // inexistant est une erreur de programmation à refuser plutôt qu'à enregistrer.
   private async requireModerator(moderatorId: string): Promise<void> {
     if (!(await this.moderation.moderatorExists(moderatorId))) throw new ValidationError("Modérateur inconnu");
+  }
+
+  private captureModeration(moderatorId: string, event: string, properties: Record<string, string> = {}): void {
+    this.analytics.capture(moderatorId, event, { ...properties, by_moderator: true });
   }
 
   private async bestEffort(what: string, action: () => Promise<void>): Promise<void> {
