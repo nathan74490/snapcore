@@ -3,11 +3,13 @@ package com.snapcore.app.ui.camera
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snapcore.app.domain.Analytics
+import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.CameraFilter
 import com.snapcore.app.domain.CameraFilters
 import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.FilterRenderer
 import com.snapcore.app.domain.NoAnalytics
+import com.snapcore.app.domain.analyticsName
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,7 +52,7 @@ class PreviewViewModel(
                 .onSuccess { result ->
                     val filter = _state.value.filter
                     if (filter != CameraFilters.NORMAL) {
-                        analytics.capture("filter_applied", mapOf("filter" to filter.id, "media" to media.kind.name.lowercase()))
+                        analytics.capture(AnalyticsEvents.FILTER_APPLIED, mapOf("filter" to filter.id, "media" to media.kind.analyticsName))
                     }
                     rendered = result
                     _state.update { it.copy(rendering = false, ready = result) }
@@ -58,6 +60,9 @@ class PreviewViewModel(
                 .onFailure { _state.update { it.copy(rendering = false, error = "Impossible d'appliquer le filtre") } }
         }
     }
+
+    /** Aperçu fermé sans envoyer. */
+    fun onDiscarded() = analytics.capture(AnalyticsEvents.SNAP_DISCARDED, mapOf("media" to media.kind.analyticsName))
 
     fun consumeReady() = _state.update { it.copy(ready = null) }
 

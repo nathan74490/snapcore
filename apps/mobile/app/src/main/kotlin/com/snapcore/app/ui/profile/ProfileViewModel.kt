@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snapcore.app.data.api.ApiException
 import com.snapcore.app.data.avatarImageUrl
+import com.snapcore.app.domain.Analytics
+import com.snapcore.app.domain.AnalyticsEvents
+import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.AccountRules
 import com.snapcore.app.domain.AccountService
@@ -49,6 +52,7 @@ class ProfileViewModel(
     /** Compte déjà connu de l'app : le profil s'affiche tout de suite, le rechargement le met à jour. */
     initial: Account? = null,
     private val avatarUrl: (Map<String, String>) -> String = ::avatarImageUrl,
+    private val analytics: Analytics = NoAnalytics,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ProfileState(account = initial, loading = initial == null))
     val state: StateFlow<ProfileState> = _state.asStateFlow()
@@ -203,7 +207,7 @@ class ProfileViewModel(
     fun resendVerification() {
         viewModelScope.launch {
             val message = runCatching { auth.resendVerificationEmail() }
-                .fold({ "Email de confirmation renvoyé" }, { (it as? UserFacingException)?.message ?: "Envoi impossible" })
+                .fold({ analytics.capture(AnalyticsEvents.EMAIL_VERIFICATION_RESENT); "Email de confirmation renvoyé" }, { (it as? UserFacingException)?.message ?: "Envoi impossible" })
             _state.update { it.copy(message = message) }
         }
     }
@@ -213,6 +217,8 @@ class ProfileViewModel(
     // Retire d'abord le token FCM de l'appareil (tant que la session permet encore d'appeler l'API) :
     // un appareil déconnecté ne doit plus recevoir de push pour ce compte (ADR-018).
     fun signOut() {
+        // Avant la déconnexion : ensuite, l'analytics est remise à zéro et l'événement ne serait plus rattaché au compte.
+        analytics.capture(AnalyticsEvents.SIGNED_OUT)
         viewModelScope.launch {
             runCatching { devices.unregisterCurrentDevice() }
             auth.signOut()
@@ -220,8 +226,15 @@ class ProfileViewModel(
         }
     }
 
-    fun askDeletion() = _state.update { it.copy(confirmDeletion = true) }
-    fun cancelDeletion() = _state.update { it.copy(confirmDeletion = false) }
+    fun askDeletion() {
+        analytics.capture(AnalyticsEvents.ACCOUNT_DELETION_PROMPTED)
+        _state.update { it.copy(confirmDeletion = true) }
+    }
+
+    fun cancelDeletion() {
+        analytics.capture(AnalyticsEvents.ACCOUNT_DELETION_CANCELLED)
+        _state.update { it.copy(confirmDeletion = false) }
+    }
 
     // Le backend bloque le compte immédiatement ; l'app se déconnecte de Firebase dès la
     // confirmation, pour ne jamais rejouer l'ancien token (ADR-015, ADR-019).

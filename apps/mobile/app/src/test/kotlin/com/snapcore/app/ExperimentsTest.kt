@@ -29,16 +29,6 @@ private class FixedExperiments(private val variants: Map<String, String>) : Expe
     }
 }
 
-private class RecordingAnalytics : Analytics {
-    val events = mutableListOf<Pair<String, Map<String, Any>>>()
-    override fun identify(userId: String) = Unit
-    override fun reset() = Unit
-    override fun screen(name: String) = Unit
-    override fun capture(event: String, properties: Map<String, Any>) {
-        events += event to properties
-    }
-}
-
 // Expérience A/B n° 1 : libellé du bouton du paywall SnapCore+ (ADR-030).
 @OptIn(ExperimentalCoroutinesApi::class)
 class PaywallExperimentTest {

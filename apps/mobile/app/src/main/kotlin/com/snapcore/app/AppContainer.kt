@@ -124,13 +124,13 @@ class AppContainer(context: Context) {
     /** Durée de vie de l'app : ce qui doit survivre à la fermeture d'un écran (envois en arrière-plan). */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    /** Snaps et stories en cours d'envoi : l'écran d'envoi se ferme tout de suite. */
-    val outbox = SnapOutbox(mediaPublisher, appScope, File(capturesDir, "outbox")).apply { clearLeftovers() }
-
     /** Analytics PostHog (ADR-008) ; sans clé dans local.properties, rien n'est envoyé. */
     val analytics: Analytics =
         if (BuildConfig.POSTHOG_API_KEY.isBlank()) NoAnalytics
         else PostHogAnalytics(context.applicationContext, BuildConfig.POSTHOG_API_KEY, BuildConfig.POSTHOG_HOST)
+
+    /** Snaps et stories en cours d'envoi : l'écran d'envoi se ferme tout de suite. */
+    val outbox = SnapOutbox(mediaPublisher, appScope, File(capturesDir, "outbox"), analytics = analytics).apply { clearLeftovers() }
 
     /** Expériences A/B (ADR-030) ; même condition que l'analytics : sans clé, tout le monde voit le témoin. */
     val experiments: Experiments = if (BuildConfig.POSTHOG_API_KEY.isBlank()) NoExperiments else PostHogExperiments

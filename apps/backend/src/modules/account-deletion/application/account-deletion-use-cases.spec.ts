@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { FakeIdentityProvider, FixedClock } from "../../../test/fakes";
+import { FakeIdentityProvider, FixedClock, RecordingAnalytics } from "../../../test/fakes";
 import { InMemoryAccountDeletionRepository, RecordingDeletionQueue } from "../../../test/in-memory-account-deletion";
 import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
 import { InMemoryLocationStore } from "../../../test/in-memory-location";
@@ -27,6 +27,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
   let realtime: RecordingRealtime;
   let locations: InMemoryLocationStore;
   let steps: string[];
+  let analytics: RecordingAnalytics;
   let useCases: AccountDeletionUseCases;
   let alice: UserAccount;
   let bob: UserAccount;
@@ -43,6 +44,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
     realtime = new RecordingRealtime();
     locations = new InMemoryLocationStore();
     steps = [];
+    analytics = new RecordingAnalytics();
     const subscriptions: SubscriptionCanceller = { cancelFor: async () => void steps.push("abonnement") };
     const deleteAccount = identity.deleteAccount.bind(identity);
     identity.deleteAccount = async (uid) => {
@@ -60,6 +62,7 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
       new FixedClock(),
       silentLogger,
       locations,
+      analytics,
     );
     alice = await users.seed("alice", { profilePhotoUrl: urls.urlFor("profiles/alice/photo") });
     bob = await users.seed("bob");
@@ -224,5 +227,28 @@ describe("AccountDeletionUseCases (ADR-019)", () => {
 
     await expect(useCases.sweepPending()).resolves.toEqual({ requeued: 1 });
     expect(queue.enqueued).toEqual([{ userId: bob.id, firebaseUid: bob.firebaseUid }]);
+  });
+
+  describe("analytics (ADR-008)", () => {
+    it("account_deletion_requested à la demande, account_deleted une seule fois quand le job aboutit", async () => {
+      await seedAliceData();
+      await useCases.request(alice);
+      const context = jobContext();
+      storage.failNextDelete = true;
+
+      await expect(useCases.runJob(context)).rejects.toThrow("R2 indisponible");
+      expect(analytics.events).toEqual([{ userId: alice.id, event: "account_deletion_requested" }]);
+
+      await useCases.runJob(context);
+      expect(analytics.events).toEqual([
+        { userId: alice.id, event: "account_deletion_requested" },
+        { userId: alice.id, event: "account_deleted" },
+      ]);
+    });
+
+    it("aucun account_deleted si le job est refusé (suppression non demandée)", async () => {
+      await useCases.runJob(jobContext());
+      expect(analytics.events).toEqual([]);
+    });
   });
 });

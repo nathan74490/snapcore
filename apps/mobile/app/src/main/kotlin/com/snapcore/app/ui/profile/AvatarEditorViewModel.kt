@@ -2,6 +2,9 @@ package com.snapcore.app.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.snapcore.app.domain.Analytics
+import com.snapcore.app.domain.AnalyticsEvents
+import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.AvatarCatalog
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +56,7 @@ class AvatarEditorViewModel(
     private val accounts: AccountService,
     private val initial: Map<String, String>?,
     private val random: Random = Random.Default,
+    private val analytics: Analytics = NoAnalytics,
 ) : ViewModel() {
     private val _state = MutableStateFlow(AvatarEditorState())
     val state: StateFlow<AvatarEditorState> = _state.asStateFlow()
@@ -85,6 +89,7 @@ class AvatarEditorViewModel(
             if ("none" in values && key != "top" && random.nextInt(3) != 0) "none" else pool[random.nextInt(pool.size)]
         }
         _state.update { it.copy(options = options) }
+        analytics.capture(AnalyticsEvents.AVATAR_RANDOMIZED)
     }
 
     // Pas d'attente du backend : le choix étant pris dans le catalogue, il n'a pas de raison d'être refusé.

@@ -1,3 +1,4 @@
+import { noAnalytics, type Analytics } from "../../../shared/domain/analytics";
 import type { Clock } from "../../../shared/domain/clock";
 import type { AppLogger } from "../../../shared/domain/logger";
 import type { IdentityProvider } from "../../identity/application/ports/identity-provider.port";
@@ -34,6 +35,7 @@ export class AccountDeletionUseCases {
     private readonly clock: Clock,
     private readonly logger: AppLogger,
     private readonly locations: LocationStore,
+    private readonly analytics: Analytics = noAnalytics,
   ) {}
 
   // Étape 1 : dès cet instant, le compte ne peut plus se connecter ni agir, et il est traité
@@ -48,6 +50,7 @@ export class AccountDeletionUseCases {
       this.logger.warn(`Connexions temps réel de ${me.id} non fermées : ${(error as Error).message}`);
     }
     await this.forgetLocation(me.id);
+    this.analytics.capture(me.id, "account_deletion_requested");
   }
 
   // Étape 2 : exécution du job. Toute erreur fait échouer la tentative, qui sera rejouée.
@@ -76,6 +79,9 @@ export class AccountDeletionUseCases {
     for (const object of objects) await this.storage.delete(object);
     // Rejouée ici au cas où l'effacement de la demande aurait échoué.
     await this.forgetLocation(userId);
+    // Dernier événement de ce compte (ADR-008) : envoyé seulement quand toutes les étapes ont
+    // réussi, donc une seule fois même si des tentatives précédentes ont échoué.
+    this.analytics.capture(userId, "account_deleted");
     return { kind: "deleted", removedObjects: objects.length };
   }
 

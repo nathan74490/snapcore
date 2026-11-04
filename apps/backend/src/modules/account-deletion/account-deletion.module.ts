@@ -1,6 +1,7 @@
 import { Logger, Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
+import { ANALYTICS, type Analytics } from "../../shared/domain/analytics";
 import { CLOCK, type Clock } from "../../shared/domain/clock";
 import { workersEnabled } from "../../shared/infrastructure/workers";
 import { IDENTITY_PROVIDER, type IdentityProvider } from "../identity/application/ports/identity-provider.port";
@@ -72,6 +73,7 @@ import { AccountDeletionController } from "./interface/account-deletion.controll
         REALTIME_CHANNEL,
         CLOCK,
         LOCATION_STORE,
+        ANALYTICS,
       ],
       useFactory: (
         accounts: AccountDeletionRepository,
@@ -83,6 +85,7 @@ import { AccountDeletionController } from "./interface/account-deletion.controll
         realtime: RealtimeChannel,
         clock: Clock,
         locations: LocationStore,
+        analytics: Analytics,
       ) =>
         new AccountDeletionUseCases(
           accounts,
@@ -95,6 +98,7 @@ import { AccountDeletionController } from "./interface/account-deletion.controll
           clock,
           new Logger(AccountDeletionUseCases.name),
           locations,
+          analytics,
         ),
     },
     {

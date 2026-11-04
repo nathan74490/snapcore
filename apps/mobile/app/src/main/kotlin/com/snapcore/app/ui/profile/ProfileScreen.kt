@@ -105,7 +105,7 @@ fun ProfileScreen(
     onAvatarChangeApplied: () -> Unit = {},
 ) {
     val vm = containerViewModel {
-        ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer, initialAccount)
+        ProfileViewModel(it.auth, it.accounts, it.pendingRegistration, it.devices, it.mediaUploader, it.profilePhotoPreparer, initialAccount, analytics = it.analytics)
     }
     LaunchedEffect(avatarChange) {
         avatarChange?.let {

@@ -1,6 +1,7 @@
 package com.snapcore.app
 
 import com.snapcore.app.data.api.ApiException
+import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.Account
 import com.snapcore.app.domain.ContactMatch
 import com.snapcore.app.domain.ContactsReader
@@ -184,5 +185,35 @@ class OnboardingViewModelTest {
         val vm = vm(notify = false)
         vm.skipAvatar()
         assertEquals(OnboardingStep.DONE, vm.state.value.step)
+    }
+
+    @Test
+    fun `analytics, etapes affichees, etapes passees, contacts et fin des premiers pas`() = runTest(dispatcher) {
+        val analytics = RecordingAnalytics()
+        val vm = OnboardingViewModel(accounts, friends, contacts, "FR", analytics) { false }
+        advanceUntilIdle()
+        vm.skipPhone()
+        advanceUntilIdle()
+        vm.onContactsPermission(false)
+        advanceUntilIdle()
+        vm.skipAddFriends()
+        advanceUntilIdle()
+        vm.skipAvatar()
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "phone"),
+                AnalyticsEvents.ONBOARDING_STEP_SKIPPED to mapOf("step" to "phone"),
+                AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "find_friends"),
+                AnalyticsEvents.CONTACTS_PERMISSION_ANSWERED to mapOf("granted" to false),
+                AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "add_friends"),
+                AnalyticsEvents.ONBOARDING_STEP_SKIPPED to mapOf("step" to "add_friends"),
+                AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "avatar"),
+                AnalyticsEvents.ONBOARDING_STEP_SKIPPED to mapOf("step" to "avatar"),
+                AnalyticsEvents.ONBOARDING_COMPLETED to emptyMap<String, Any>(),
+            ),
+            analytics.events,
+        )
     }
 }

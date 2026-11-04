@@ -81,10 +81,10 @@ fun OnboardingScreen(
     val context = LocalContext.current
     val vm = containerViewModel {
         val sim = context.getSystemService(TelephonyManager::class.java)?.simCountryIso?.takeIf { code -> code.isNotBlank() }
-        OnboardingViewModel(it.accounts, it.friends, it.contacts, sim ?: java.util.Locale.getDefault().country) {
+        OnboardingViewModel(it.accounts, it.friends, it.contacts, sim ?: java.util.Locale.getDefault().country, needsNotificationPrompt = {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifications.canNotify(context) &&
                 Notifications.claimFirstPermissionRequest(context)
-        }
+        }, analytics = it.analytics)
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }

@@ -205,6 +205,7 @@ export class StoryUseCases {
     const item = await this.stories.findById(storyId);
     if (!item || item.authorId !== me.id) throw new NotFoundError(STORY_NOT_FOUND);
     await this.deleteItem(item);
+    this.analytics.capture(me.id, "story_item_deleted_by_author", { content_type: item.contentType });
   }
 
   // Exécution d'un job purge-story-<id> : média R2 ET ligne supprimés, contrairement à un Snap

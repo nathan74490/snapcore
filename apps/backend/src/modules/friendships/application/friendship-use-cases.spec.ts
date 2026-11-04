@@ -1,5 +1,5 @@
 import { ConflictError, NotFoundError, UniqueViolationError, ValidationError } from "../../../shared/domain/errors";
-import { FixedClock, RecordingFriendshipNotifier } from "../../../test/fakes";
+import { FixedClock, RecordingAnalytics, RecordingFriendshipNotifier } from "../../../test/fakes";
 import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
 import { InMemoryUserRepository } from "../../../test/in-memory-user.repository";
 import type { UserAccount } from "../../identity/domain/user";
@@ -9,6 +9,7 @@ describe("FriendshipUseCases", () => {
   let users: InMemoryUserRepository;
   let friendships: InMemoryFriendshipRepository;
   let notifier: RecordingFriendshipNotifier;
+  let analytics: RecordingAnalytics;
   let useCases: FriendshipUseCases;
   let alice: UserAccount;
   let bob: UserAccount;
@@ -17,7 +18,8 @@ describe("FriendshipUseCases", () => {
     users = new InMemoryUserRepository();
     friendships = new InMemoryFriendshipRepository(users);
     notifier = new RecordingFriendshipNotifier();
-    useCases = new FriendshipUseCases(friendships, users, notifier, new FixedClock());
+    analytics = new RecordingAnalytics();
+    useCases = new FriendshipUseCases(friendships, users, notifier, new FixedClock(), analytics);
     alice = await users.seed("alice");
     bob = await users.seed("bob");
   });
@@ -297,6 +299,94 @@ describe("FriendshipUseCases", () => {
 
       expect(match.user).not.toHaveProperty("lastName");
       expect(match.user).not.toHaveProperty("birthday");
+    });
+  });
+  describe("analytics (ADR-008)", () => {
+    it("demande envoyée (création ou relance après refus) : friend_request_sent par le demandeur", async () => {
+      const { friendshipId } = await useCases.sendRequest(alice, "bob");
+      await useCases.decline(bob, friendshipId);
+      await useCases.sendRequest(bob, "alice");
+
+      expect(analytics.named("friend_request_sent")).toEqual([
+        { userId: alice.id, event: "friend_request_sent", properties: { source: "username" } },
+        { userId: bob.id, event: "friend_request_sent", properties: { source: "username" } },
+      ]);
+      expect(analytics.named("friend_request_declined")).toEqual([{ userId: bob.id, event: "friend_request_declined" }]);
+    });
+
+    it("demande croisée : comptée comme une acceptation, pas comme une demande envoyée", async () => {
+      await useCases.sendRequest(alice, "bob");
+      analytics.events.length = 0;
+
+      await useCases.sendRequest(bob, "alice");
+
+      expect(analytics.events).toEqual([{ userId: bob.id, event: "friend_request_accepted" }]);
+    });
+
+    it("aucun événement pour une redemande idempotente ni pour une demande refusée", async () => {
+      await useCases.sendRequest(alice, "bob");
+      analytics.events.length = 0;
+
+      await useCases.sendRequest(alice, "bob");
+      await expect(useCases.sendRequest(alice, "alice")).rejects.toThrow(ValidationError);
+      await expect(useCases.sendRequest(alice, "inconnu")).rejects.toThrow(NotFoundError);
+
+      expect(analytics.events).toEqual([]);
+    });
+
+    it("refus, retrait d'ami : événement seulement si l'action aboutit", async () => {
+      const { friendshipId } = await useCases.sendRequest(alice, "bob");
+      await expect(useCases.decline(alice, friendshipId)).rejects.toThrow(NotFoundError);
+      await expect(useCases.removeFriend(alice, bob.id)).rejects.toThrow(NotFoundError);
+      expect(analytics.named("friend_request_declined")).toEqual([]);
+      expect(analytics.named("friend_removed")).toEqual([]);
+
+      await useCases.accept(bob, friendshipId);
+      await useCases.removeFriend(bob, alice.id);
+
+      expect(analytics.named("friend_removed")).toEqual([{ userId: bob.id, event: "friend_removed" }]);
+    });
+
+    it("blocage et déblocage : user_blocked seulement si un blocage est posé, pas sur le no-op", async () => {
+      await useCases.block(alice, bob.id);
+      await useCases.block(bob, alice.id); // déjà bloquée par Alice : no-op apparent
+      await expect(useCases.unblock(bob, alice.id)).rejects.toThrow(NotFoundError);
+      await useCases.unblock(alice, bob.id);
+
+      const { friendshipId } = await useCases.sendRequest(alice, "bob");
+      await useCases.accept(bob, friendshipId);
+      await useCases.block(bob, alice.id); // blocage d'un ami : ligne existante
+
+      expect(analytics.named("user_blocked")).toEqual([
+        { userId: alice.id, event: "user_blocked" },
+        { userId: bob.id, event: "user_blocked" },
+      ]);
+      expect(analytics.named("user_unblocked")).toEqual([{ userId: alice.id, event: "user_unblocked" }]);
+    });
+
+    it("recherche : found true/false, une paire BLOCKED compte comme introuvable", async () => {
+      await useCases.searchByUsername(alice, "bob");
+      await expect(useCases.searchByUsername(alice, "inconnu")).rejects.toThrow(NotFoundError);
+      await useCases.block(bob, alice.id);
+      await expect(useCases.searchByUsername(alice, "bob")).rejects.toThrow(NotFoundError);
+
+      expect(analytics.named("friend_search")).toEqual([
+        { userId: alice.id, event: "friend_search", properties: { found: true } },
+        { userId: alice.id, event: "friend_search", properties: { found: false } },
+        { userId: alice.id, event: "friend_search", properties: { found: false } },
+      ]);
+    });
+
+    it("contacts : nombre de numéros envoyés et de comptes distincts retrouvés, jamais de numéro", async () => {
+      await users.updateProfile(bob.id, { phoneNumber: "+33612345678" });
+
+      await useCases.matchContacts(alice, ["06 12 34 56 78", "+33 6 12 34 56 78", "12345678"]);
+      await useCases.matchContacts(alice, ["abc"]);
+
+      expect(analytics.named("contacts_matched")).toEqual([
+        { userId: alice.id, event: "contacts_matched", properties: { contacts: 3, matches: 1 } },
+        { userId: alice.id, event: "contacts_matched", properties: { contacts: 1, matches: 0 } },
+      ]);
     });
   });
 });

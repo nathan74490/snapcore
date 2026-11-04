@@ -58,7 +58,7 @@ import com.snapcore.app.ui.theme.SnapColors
 // de vignettes rendues par le backend avec ce choix appliqué (ou des pastilles pour les couleurs).
 @Composable
 fun AvatarEditorScreen(account: Account, onBack: () -> Unit, onSaved: (AvatarChange) -> Unit) {
-    val vm = containerViewModel { AvatarEditorViewModel(it.accounts, account.avatar) }
+    val vm = containerViewModel { AvatarEditorViewModel(it.accounts, account.avatar, analytics = it.analytics) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.result) { state.result?.let(onSaved) }

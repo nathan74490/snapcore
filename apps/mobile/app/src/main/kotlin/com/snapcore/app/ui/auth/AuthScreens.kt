@@ -102,7 +102,7 @@ fun WelcomeScreen(onLogin: () -> Unit, onSignUp: () -> Unit) {
 
 @Composable
 fun LoginScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
-    val vm = containerViewModel { LoginViewModel(it.auth, it.sessionResolver) }
+    val vm = containerViewModel { LoginViewModel(it.auth, it.sessionResolver, it.analytics) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.session) { state.session?.let(onSession) }
 

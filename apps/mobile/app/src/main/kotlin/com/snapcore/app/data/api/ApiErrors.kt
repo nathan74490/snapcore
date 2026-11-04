@@ -24,3 +24,10 @@ suspend fun <T> apiCall(block: suspend () -> T): T =
     } catch (e: IOException) {
         throw ApiException(0, "Impossible de joindre le serveur. Vérifiez votre connexion.")
     }
+
+/**
+ * Cause d'un échec pour l'analytics (ADR-008) : le code HTTP d'une erreur du backend, sinon le type de
+ * l'exception (ex. « FirebaseAuthInvalidCredentialsException »). Jamais le message, qui peut contenir
+ * un email ou un pseudo.
+ */
+fun Throwable.analyticsReason(): String = if (this is ApiException) "http_$status" else this::class.simpleName ?: "unknown"

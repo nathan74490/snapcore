@@ -154,6 +154,7 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 FloatingRound("Me recentrer", Icons.Filled.MyLocation) {
                     val me = state.me
+                    vm.onRecentered()
                     if (me != null) viewport.flyToPoint(me, CityZoom)
                     else if (!state.permission) permissions.launch(LocationPermissions)
                     else vm.refresh()
@@ -161,7 +162,7 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
             }
             val selected = state.selected
             when {
-                selected != null -> FriendCard(selected, state.now, onChat = { onOpenConversation(selected.friend) },
+                selected != null -> FriendCard(selected, state.now, onChat = { vm.onChatOpened(); onOpenConversation(selected.friend) },
                     onLocate = { viewport.flyToPoint(selected.position, 15.0) }, onClose = { vm.select(null) })
                 !state.permission -> MapBanner("Active ta localisation",
                     "Pour te situer sur la carte, et la partager avec tes amis si tu le souhaites. Seulement quand SnapCore est ouvert.",

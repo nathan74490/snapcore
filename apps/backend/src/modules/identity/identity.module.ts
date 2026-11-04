@@ -32,9 +32,14 @@ import { UsersController } from "./interface/http/users.controller";
   providers: [
     {
       provide: ProfilePhotoUseCases,
-      inject: [USER_REPOSITORY, UploadPromoter, OBJECT_STORAGE, PublicMediaUrls],
-      useFactory: (users: UserRepository, promoter: UploadPromoter, storage: ObjectStorage, urls: PublicMediaUrls) =>
-        new ProfilePhotoUseCases(users, promoter, storage, urls, new Logger(ProfilePhotoUseCases.name)),
+      inject: [USER_REPOSITORY, UploadPromoter, OBJECT_STORAGE, PublicMediaUrls, ANALYTICS],
+      useFactory: (
+        users: UserRepository,
+        promoter: UploadPromoter,
+        storage: ObjectStorage,
+        urls: PublicMediaUrls,
+        analytics: Analytics,
+      ) => new ProfilePhotoUseCases(users, promoter, storage, urls, new Logger(ProfilePhotoUseCases.name), analytics),
     },
     firebaseAppProvider,
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
@@ -56,13 +61,13 @@ import { UsersController } from "./interface/http/users.controller";
     },
     {
       provide: UpdateProfile,
-      inject: [USER_REPOSITORY],
-      useFactory: (users: UserRepository) => new UpdateProfile(users),
+      inject: [USER_REPOSITORY, ANALYTICS],
+      useFactory: (users: UserRepository, analytics: Analytics) => new UpdateProfile(users, analytics),
     },
     {
       provide: UserAvatarUseCases,
-      inject: [USER_REPOSITORY],
-      useFactory: (users: UserRepository) => new UserAvatarUseCases(users),
+      inject: [USER_REPOSITORY, ANALYTICS],
+      useFactory: (users: UserRepository, analytics: Analytics) => new UserAvatarUseCases(users, analytics),
     },
     {
       provide: SyncEmailFromIdentityProvider,

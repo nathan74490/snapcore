@@ -72,6 +72,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
 import com.snap.camerakit.UnauthorizedApplicationException
 import com.snap.camerakit.lenses.LensesComponent
+import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.MediaKind
 import com.snapcore.app.ui.appContainer
@@ -182,7 +183,7 @@ private fun CameraContent(
             .collect { index ->
                 val lens = lenses.getOrNull(index - 1)
                 selectedLens = lens
-                lens?.let { analytics.capture("lens_selected", mapOf("lens" to it.name.orEmpty())) }
+                lens?.let { analytics.capture(AnalyticsEvents.LENS_SELECTED, mapOf("lens" to it.name.orEmpty())) }
                 // Une Lens visage se joue sur la caméra frontale.
                 if (lens?.facingPreference == LensesComponent.Lens.Facing.FRONT) front = true
                 onLensModeChange(index > 0)
@@ -207,7 +208,7 @@ private fun CameraContent(
                 bitmap.recycle()
                 busy = false
                 if (saved) {
-                    analytics.capture("snap_captured", mapOf("media" to "photo", "lens" to (selectedLens != null)))
+                    analytics.capture(AnalyticsEvents.SNAP_CAPTURED, mapOf("media" to "photo", "lens" to (selectedLens != null)))
                     onCaptured(CapturedMedia(file, MediaKind.PHOTO))
                 } else {
                     file.delete()
@@ -224,7 +225,7 @@ private fun CameraContent(
             handsFree = false
             camera.setZoom(1f)
             if (file.length() > 0) {
-                analytics.capture("snap_captured", mapOf("media" to "video", "lens" to (selectedLens != null)))
+                analytics.capture(AnalyticsEvents.SNAP_CAPTURED, mapOf("media" to "video", "lens" to (selectedLens != null)))
                 onCaptured(CapturedMedia(file, MediaKind.VIDEO))
             } else {
                 file.delete()
@@ -268,10 +269,16 @@ private fun CameraContent(
 
     Box(Modifier.fillMaxSize().statusBarsPadding()) {
         if (recording == null) Column(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            IconButton(onClick = { front = !front }) {
+            IconButton(onClick = {
+                front = !front
+                analytics.capture(AnalyticsEvents.CAMERA_FLIPPED, mapOf("facing" to if (front) "front" else "back"))
+            }) {
                 FigmaAsset("14-588_imgIconFlip", "Changer de caméra", tint = Color.White)
             }
-            IconButton(onClick = { flash = !flash }) {
+            IconButton(onClick = {
+                flash = !flash
+                analytics.capture(AnalyticsEvents.FLASH_TOGGLED, mapOf("on" to flash))
+            }) {
                 // Mêmes icônes Figma de 30 que la recherche et l'ajout d'amis : la taille ne change pas au clic.
                 if(flash) FigmaAsset("14-588_imgIconFlashOn", "Désactiver le flash", tint = Color.White)
                 else FigmaAsset("14-588_imgIconFlashOff", "Activer le flash", tint = Color.White)

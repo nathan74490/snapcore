@@ -1,6 +1,5 @@
 import { NotFoundError, ValidationError } from "../../../shared/domain/errors";
-import { FixedClock, RecordingFriendshipNotifier } from "../../../test/fakes";
-import { noAnalytics } from "../../../shared/domain/analytics";
+import { FixedClock, RecordingAnalytics, RecordingFriendshipNotifier } from "../../../test/fakes";
 import { InMemoryFriendshipRepository } from "../../../test/in-memory-friendship.repository";
 import { InMemoryLocationSharingRepository } from "../../../test/in-memory-location";
 import { InMemoryObjectStorage, InMemoryUploadTicketStore, silentLogger } from "../../../test/in-memory-media";
@@ -17,6 +16,7 @@ const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 
 describe("StoryUseCases (ADR-013)", () => {
+  let analytics: RecordingAnalytics;
   let clock: FixedClock;
   let users: InMemoryUserRepository;
   let friendships: FriendshipUseCases;
@@ -43,6 +43,7 @@ describe("StoryUseCases (ADR-013)", () => {
     requestUpload = new RequestUpload(storage, tickets, clock);
     scheduler = new RecordingStoryPurgeScheduler();
     sharing = new InMemoryLocationSharingRepository(users);
+    analytics = new RecordingAnalytics();
     useCases = new StoryUseCases(
       stories,
       views,
@@ -53,7 +54,7 @@ describe("StoryUseCases (ADR-013)", () => {
       scheduler,
       clock,
       silentLogger,
-      noAnalytics,
+      analytics,
       new LocationVisibility(sharing),
     );
     alice = await users.seed("alice");
@@ -197,6 +198,20 @@ describe("StoryUseCases (ADR-013)", () => {
     expect(storage.has({ area: "private", key: `stories/${item.id}` })).toBe(false);
     expect(views.sets.has(item.id)).toBe(false);
     await expect(useCases.remove(bob, item.id)).rejects.toThrow(NotFoundError);
+    // Analytics (ADR-008) : le retrait par l'auteur seulement, pas la tentative refusée de Bob.
+    expect(analytics.named("story_item_deleted_by_author")).toEqual([
+      { userId: alice.id, event: "story_item_deleted_by_author", properties: { content_type: "PHOTO" } },
+    ]);
+  });
+
+  it("la purge à expiration n'est pas comptée comme un retrait par l'auteur", async () => {
+    const item = await publish();
+    advance(24 * HOUR);
+
+    await useCases.runPurgeJob(item.id);
+
+    expect(stories.rows.has(item.id)).toBe(false);
+    expect(analytics.named("story_item_deleted_by_author")).toEqual([]);
   });
 
   describe("vignettes (ADR-026)", () => {

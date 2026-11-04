@@ -45,6 +45,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.snapcore.app.domain.Account
+import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.LaunchTarget
@@ -179,6 +180,10 @@ fun SnapCoreNavHost(
     // Notification touchée : ouvre l'écran concerné une fois la session prête.
     LaunchedEffect(launchTarget, account) {
         if (launchTarget == null || account == null) return@LaunchedEffect
+        // Le retour du paiement (SNAPCORE_PLUS) n'est pas une notification : il est mesuré par le paywall.
+        if (launchTarget != LaunchTarget.SNAPCORE_PLUS) {
+            analytics.capture(AnalyticsEvents.NOTIFICATION_OPENED, mapOf("target" to launchTarget.name.lowercase()))
+        }
         when (launchTarget) {
             LaunchTarget.CHAT -> {
                 homeTab = CHAT_TAB
@@ -296,7 +301,8 @@ fun SnapCoreNavHost(
                     },
                     onOpenMyStory = { navController.navigate(MyStoryRoute) },
                     // Depuis la carte, la story passée ne contient que les éléments d'un pin : la lecture part du premier non vu.
-                    onPlayStory = { story ->
+                    onPlayStory = { story, fromMap ->
+                        analytics.capture(AnalyticsEvents.STORY_PLAYER_OPENED, mapOf("source" to if (fromMap) "map" else "stories"))
                         val start = story.items.getOrNull(firstUnviewedIndex(story.items))?.id
                         navController.navigate(StoryPlayerRoute(story.author.displayName, story.author.id, start))
                     },
@@ -353,7 +359,10 @@ fun SnapCoreNavHost(
         composable<MyStoryRoute> {
             MyStoryScreen(
                 onBack = navController::popBackStack,
-                onPlay = { item -> navController.navigate(StoryPlayerRoute("Ma story", authorId = null, startItemId = item.id)) },
+                onPlay = { item ->
+                    analytics.capture(AnalyticsEvents.STORY_PLAYER_OPENED, mapOf("source" to "my_story"))
+                    navController.navigate(StoryPlayerRoute("Ma story", authorId = null, startItemId = item.id))
+                },
             )
         }
         composable<StoryPlayerRoute> { entry ->

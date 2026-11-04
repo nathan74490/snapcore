@@ -32,6 +32,22 @@ Utiliser PostHog en version cloud (offre gratuite) comme outil d'analytics, inst
   - **backend (SDK Node)** : `user_registered`, `friend_request_accepted`, `chat_sent`, `snap_sent`, `snap_opened`, `snap_replayed` (revoir un snap déjà vu, avantage SnapCore+), `story_published`, `story_viewed`, et le cycle de vie de SnapCore+ reçu par webhook (`snapcoreplus_started`, `_renewed`, `_cancelled`, `_expired`, ADR-025) ;
   - configuration : `POSTHOG_API_KEY` / `POSTHOG_HOST` (backend), `posthogApiKey` / `posthogHost` dans `local.properties` (app), cloud UE par défaut. Les envois partent par lots en arrière-plan : une panne de PostHog ne bloque aucune requête.
   - Le « Spotlight publié après modération » cité dans la Décision n'existe pas en V1 (fonctionnalité repoussée), il n'est donc pas mesuré.
+- Révision 2 (couverture complète) : toute l'app est instrumentée, d'après un plan de marquage unique, `docs/analytics/plan-de-marquage.md`.
+  - **App** : noms centralisés dans `AnalyticsEvents`. Nouveaux événements :
+    - entonnoirs de l'inscription et des premiers pas : étape affichée, étape passée, échec avec son type d'erreur ;
+    - connexion et déconnexion ;
+    - caméra : changement de caméra, flash, snap jeté ;
+    - file d'envoi : lancement, échec, réessai, abandon ;
+    - source d'ouverture des stories, gestes de la Snap Map, notifications touchées, retour du paiement.
+  - **Backend** :
+    - amis : recherche, contacts, demande envoyée, refusée, ami retiré, blocage ;
+    - profil, photo et avatar ;
+    - suppression de compte : demande et fin ;
+    - signalements ;
+    - actions des modérateurs (`by_moderator`) ;
+    - suppression d'un élément de story par son auteur.
+  - **Un fait n'est envoyé que d'un côté** : `location_sharing_changed` n'est plus envoyé par l'app, seulement par le backend après enregistrement.
+  - **Erreurs** : décrites par leur type (`http_409`, nom de l'exception), jamais par leur message, qui peut contenir un email ou un pseudo.
 
 ## Liens
 - ADR liés : aucun

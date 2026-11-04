@@ -1,5 +1,6 @@
 package com.snapcore.app
 
+import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.CapturedMedia
 import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.FriendRequest
@@ -203,5 +204,28 @@ class MediaPublisherTest {
 
         assertEquals(listOf("VIDEO"), snaps.stories)
         assertEquals(listOf<String?>(null), snaps.thumbnails)
+    }
+
+    @Test
+    fun `analytics de la file d'envoi, lancement, echec, reessai et abandon`() = runTest(dispatcher) {
+        val analytics = RecordingAnalytics()
+        snaps.failingFriends += "b"
+        val outbox = SnapOutbox(MediaPublisher(uploader, snaps), backgroundScope, outboxDir, analytics = analytics)
+        outbox.send(CapturedMedia(file, MediaKind.PHOTO), setOf(SendTarget.ToFriend(alice), SendTarget.ToFriend(bob), SendTarget.ToStory))
+        runCurrent()
+
+        assertEquals(mapOf("media" to "photo", "friends" to 2, "story" to true), analytics.propertiesOf(AnalyticsEvents.SNAP_SEND_STARTED))
+        assertEquals(mapOf("media" to "photo", "target" to "friend"), analytics.propertiesOf(AnalyticsEvents.SNAP_SEND_FAILED))
+
+        val failed = outbox.items.value.single { it.status == OutgoingStatus.FAILED }
+        outbox.retry(failed.id)
+        runCurrent()
+        outbox.discard(outbox.items.value.single { it.status == OutgoingStatus.FAILED }.id)
+
+        assertEquals(
+            listOf(AnalyticsEvents.SNAP_SEND_STARTED, AnalyticsEvents.SNAP_SEND_FAILED, AnalyticsEvents.SNAP_SEND_RETRIED,
+                AnalyticsEvents.SNAP_SEND_FAILED, AnalyticsEvents.SNAP_SEND_ABANDONED),
+            analytics.names,
+        )
     }
 }

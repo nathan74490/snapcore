@@ -3,6 +3,7 @@ package com.snapcore.app.ui.plus
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.snapcore.app.domain.Account
+import com.snapcore.app.domain.AnalyticsEvents
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.Analytics
 import com.snapcore.app.domain.Experiments
@@ -82,7 +83,7 @@ class PaywallViewModel(
             runCatching { subscriptions.checkoutUrl() }
                 .onSuccess { url ->
                     // La variante vue accompagne la conversion, pour que PostHog l'attribue à la bonne branche.
-                    analytics.capture("checkout_started", exposedVariant?.let { mapOf(experimentProperty(PaywallCta.FLAG) to it) }.orEmpty())
+                    analytics.capture(AnalyticsEvents.CHECKOUT_STARTED, exposedVariant?.let { mapOf(experimentProperty(PaywallCta.FLAG) to it) }.orEmpty())
                     _state.update { it.copy(opening = false, checkoutUrl = url, awaitingActivation = true) }
                 }
                 .onFailure { e -> _state.update { it.copy(opening = false, error = e.message) } }
@@ -102,11 +103,13 @@ class PaywallViewModel(
                 val account = runCatching { accounts.me() }.getOrNull()
                 if (account != null) _state.update { it.copy(account = account) }
                 if (account?.isPremium == true) {
+                    analytics.capture(AnalyticsEvents.CHECKOUT_RETURNED, mapOf("activated" to true))
                     _state.update { it.copy(awaitingActivation = false) }
                     return@launch
                 }
                 if (attempt < pollAttempts - 1) delay(pollDelayMs)
             }
+            analytics.capture(AnalyticsEvents.CHECKOUT_RETURNED, mapOf("activated" to false))
             _state.update {
                 it.copy(
                     awaitingActivation = false,

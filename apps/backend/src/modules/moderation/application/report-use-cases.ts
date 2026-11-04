@@ -1,3 +1,4 @@
+import { noAnalytics, type Analytics } from "../../../shared/domain/analytics";
 import type { Clock } from "../../../shared/domain/clock";
 import { NotFoundError, ValidationError } from "../../../shared/domain/errors";
 import type { FriendshipRepository } from "../../friendships/application/ports/friendship.repository";
@@ -14,6 +15,8 @@ import type { ModerationRepository, ReportTarget, StoredReport } from "./ports";
 // l'utilisateur ne peut pas déjà voir (ADR-012).
 const TARGET_NOT_FOUND = "Contenu introuvable";
 
+const ANALYTICS_TARGET: Record<ReportTarget["type"], string> = { USER: "user", MESSAGE: "message", STORY_ITEM: "story" };
+
 // Signalement depuis l'app (ADR-021) : un utilisateur ne peut signaler que ce qu'il voit.
 export class ReportUseCases {
   constructor(
@@ -23,12 +26,16 @@ export class ReportUseCases {
     private readonly stories: StoryRepository,
     private readonly friendships: FriendshipRepository,
     private readonly clock: Clock,
+    private readonly analytics: Analytics = noAnalytics,
   ) {}
 
   async report(me: UserAccount, target: ReportTarget, rawReason: string): Promise<StoredReport> {
     const reason = parseReason(rawReason);
     await this.assertReportable(me, target);
-    return this.moderation.createReport({ reporterId: me.id, target, reason });
+    const report = await this.moderation.createReport({ reporterId: me.id, target, reason });
+    // Analytics : le type de cible seulement. Le motif est un texte libre : jamais envoyé.
+    this.analytics.capture(me.id, "content_reported", { target: ANALYTICS_TARGET[target.type] });
+    return report;
   }
 
   private async assertReportable(me: UserAccount, target: ReportTarget): Promise<void> {

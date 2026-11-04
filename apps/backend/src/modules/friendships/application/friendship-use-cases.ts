@@ -33,11 +33,16 @@ export class FriendshipUseCases {
     private readonly analytics: Analytics = noAnalytics,
   ) {}
 
+  // Analytics : une recherche sans résultat est une recherche aboutie (found: false), y compris
+  // sur une paire BLOCKED, qui se présente à l'utilisateur comme un pseudo introuvable (ADR-012).
   async searchByUsername(me: UserAccount, rawUsername: string): Promise<UserSearchResult> {
     const target = await this.users.findActiveByUsername(normalizeUsername(rawUsername));
-    if (!target) throw new NotFoundError(USER_NOT_FOUND);
-    const friendship = target.id === me.id ? null : await this.friendships.findByPair(me.id, target.id);
-    if (friendship?.status === "BLOCKED") throw new NotFoundError(USER_NOT_FOUND);
+    const friendship = !target || target.id === me.id ? null : await this.friendships.findByPair(me.id, target.id);
+    if (!target || friendship?.status === "BLOCKED") {
+      this.analytics.capture(me.id, "friend_search", { found: false });
+      throw new NotFoundError(USER_NOT_FOUND);
+    }
+    this.analytics.capture(me.id, "friend_search", { found: true });
     return { ...toPublicProfile(target), relation: relationFor(friendship, me.id) };
   }
 
@@ -46,6 +51,16 @@ export class FriendshipUseCases {
   // et toute paire BLOCKED, dans un sens comme dans l'autre (ADR-012). Le numéro stocké de l'autre
   // n'est jamais renvoyé : seulement la chaîne envoyée par l'app et le profil public.
   async matchContacts(me: UserAccount, phoneNumbers: string[]): Promise<ContactMatch[]> {
+    const matches = await this.findContactMatches(me, phoneNumbers);
+    // Analytics : des comptes, jamais de numéros. `matches` = comptes distincts retrouvés.
+    this.analytics.capture(me.id, "contacts_matched", {
+      contacts: phoneNumbers.length,
+      matches: new Set(matches.map((match) => match.user.id)).size,
+    });
+    return matches;
+  }
+
+  private async findContactMatches(me: UserAccount, phoneNumbers: string[]): Promise<ContactMatch[]> {
     const keyByPhoneNumber = new Map<string, string>();
     for (const phoneNumber of phoneNumbers) {
       const key = contactMatchKey(phoneNumber);
@@ -99,6 +114,7 @@ export class FriendshipUseCases {
               respondedAt: null,
             });
             await this.notifier.friendRequestReceived(target.id, created.id);
+            this.analytics.capture(me.id, "friend_request_sent", { source: "username" });
             return present(created, target);
           } catch (error) {
             // L'autre utilisateur a créé la paire en même temps : on relit et on réapplique les règles.
@@ -117,6 +133,7 @@ export class FriendshipUseCases {
           });
           if (!reopened) continue;
           await this.notifier.friendRequestReceived(target.id, reopened.id);
+          this.analytics.capture(me.id, "friend_request_sent", { source: "username" });
           return present(reopened, target);
         }
         case "accept-incoming": {
@@ -126,9 +143,13 @@ export class FriendshipUseCases {
           });
           if (!accepted) continue;
           await this.notifier.friendRequestAccepted(target.id, accepted.id);
+          // Demande croisée : l'utilisateur accepte en fait la demande reçue. Compté comme une
+          // acceptation (même événement que accept()), pas comme une nouvelle demande envoyée.
+          this.analytics.capture(me.id, "friend_request_accepted");
           return present(accepted, target);
         }
         case "already-pending":
+          // Redemande idempotente : rien de nouveau, aucun événement.
           return present(existing!, target);
         case "already-friends":
           throw new ConflictError("Vous êtes déjà amis");
@@ -158,6 +179,7 @@ export class FriendshipUseCases {
       respondedAt: this.clock.now(),
     });
     if (!declined) throw new NotFoundError(REQUEST_NOT_FOUND);
+    this.analytics.capture(me.id, "friend_request_declined");
   }
 
   // Retirer un ami supprime la ligne, comme un déblocage : les deux redeviennent inconnus
@@ -165,10 +187,12 @@ export class FriendshipUseCases {
   async removeFriend(me: UserAccount, friendId: string): Promise<void> {
     const removed = await this.friendships.deleteForPair(me.id, friendId, { status: "ACCEPTED" });
     if (!removed) throw new NotFoundError("Ami introuvable");
+    this.analytics.capture(me.id, "friend_removed");
   }
 
   // Ne renvoie rien : la réponse est identique que la paire soit déjà bloquée par l'autre
-  // (blocage mutuel = no-op apparent) ou non (ADR-012).
+  // (blocage mutuel = no-op apparent) ou non (ADR-012). Analytics : user_blocked seulement quand
+  // un blocage est réellement posé, pas sur le no-op (paire déjà BLOCKED).
   async block(me: UserAccount, targetId: string): Promise<void> {
     if (targetId === me.id) throw new ValidationError("Impossible de se bloquer soi-même");
     const target = await this.users.findActiveById(targetId);
@@ -192,6 +216,7 @@ export class FriendshipUseCases {
               requestedAt: now,
               respondedAt: now,
             });
+            this.analytics.capture(me.id, "user_blocked");
             return;
           } catch (error) {
             if (error instanceof UniqueViolationError) continue;
@@ -203,8 +228,9 @@ export class FriendshipUseCases {
             blockedBy: me.id,
             respondedAt: now,
           });
-          if (blocked) return;
-          continue;
+          if (!blocked) continue;
+          this.analytics.capture(me.id, "user_blocked");
+          return;
         }
       }
     }
@@ -216,6 +242,7 @@ export class FriendshipUseCases {
   async unblock(me: UserAccount, targetId: string): Promise<void> {
     const unblocked = await this.friendships.deleteForPair(me.id, targetId, { status: "BLOCKED", blockedBy: me.id });
     if (!unblocked) throw new NotFoundError(USER_NOT_FOUND);
+    this.analytics.capture(me.id, "user_unblocked");
   }
 
   async listFriends(me: UserAccount): Promise<FriendshipListItem[]> {

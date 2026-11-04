@@ -82,6 +82,7 @@ fun PreviewScreen(media: CapturedMedia, onDiscard: () -> Unit, onSendTo: (Captur
     }
 
     val discard = {
+        vm.onDiscarded()
         media.file.delete()
         onDiscard()
     }
