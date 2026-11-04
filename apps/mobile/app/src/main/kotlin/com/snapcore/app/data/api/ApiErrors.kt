@@ -22,7 +22,7 @@ suspend fun <T> apiCall(block: suspend () -> T): T =
         val parsed = body?.let { runCatching { errorJson.decodeFromString<ApiErrorBody>(it) }.getOrNull() }
         throw ApiException(e.code(), parsed?.message ?: "Erreur du serveur (${e.code()})")
     } catch (e: IOException) {
-        throw ApiException(0, "Impossible de joindre le serveur. Vérifiez votre connexion.")
+        throw ApiException(0, "Impossible de joindre le serveur. Vérifie ta connexion.")
     }
 
 /**

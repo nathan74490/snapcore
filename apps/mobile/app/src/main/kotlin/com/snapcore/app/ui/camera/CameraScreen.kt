@@ -137,7 +137,7 @@ fun CameraScreen(
 // photo ou la vidéo capturée (ADR-024). Les filtres couleur se choisissent ensuite sur l'aperçu (ADR-022).
 @Composable
 // `lensMode` : une Lens est active ; l'accueil remplace alors sa barre de navigation par la barre
-// « ✕ | Pour vous », dont le ✕ remet `lensMode` à false (ADR-024).
+// « ✕ | Pour toi », dont le ✕ remet `lensMode` à false (ADR-024).
 private fun CameraContent(
     onCaptured: (CapturedMedia) -> Unit,
     lensMode: Boolean,

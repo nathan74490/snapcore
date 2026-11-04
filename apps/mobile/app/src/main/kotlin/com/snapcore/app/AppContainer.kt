@@ -6,6 +6,7 @@ import com.snapcore.app.data.AndroidContactsReader
 import com.snapcore.app.data.ApiAccountService
 import com.snapcore.app.data.ApiChatService
 import com.snapcore.app.data.ApiFriendsService
+import com.snapcore.app.data.ApiSafetyService
 import com.snapcore.app.data.ApiMapService
 import com.snapcore.app.data.ApiSnapService
 import com.snapcore.app.data.ApiStoryService
@@ -25,6 +26,7 @@ import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.domain.AccountService
 import com.snapcore.app.domain.Analytics
 import com.snapcore.app.domain.AuthService
+import com.snapcore.app.domain.SafetyService
 import com.snapcore.app.domain.ChatService
 import com.snapcore.app.domain.ContactsReader
 import com.snapcore.app.domain.Experiments
@@ -92,6 +94,7 @@ class AppContainer(context: Context) {
         .build()
 
     val friends: FriendsService = ApiFriendsService(api)
+    val safety: SafetyService = ApiSafetyService(api)
     val contacts: ContactsReader = AndroidContactsReader(context.applicationContext)
     val mediaUploader: MediaUploader = R2MediaUploader(api, storageClient)
 

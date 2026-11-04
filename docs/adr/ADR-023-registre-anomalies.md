@@ -35,6 +35,9 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 | BUG-016 | Faible | Mobile / amis | Nom et pseudo coupés sans points de suspension dans les demandes d'ami reçues | Corrigé (branche fix/campagne-2026-11-04) |
 | BUG-017 | Faible | Mobile / notifications | Les notifications affichent le pseudo de l'expéditeur au lieu de son prénom | Corrigé (branche fix/campagne-2026-11-04) |
 | BUG-018 | Faible | Mobile / stories | La barre de progression du lecteur de stories semble compter un segment de trop | Corrigé (branche fix/campagne-2026-11-04) |
+| BUG-019 | Moyenne | Mobile / amis, modération | Retirer un ami, bloquer et signaler sont impossibles depuis l'app, alors que le backend les propose | Corrigé (branche fix/campagne-2026-11-04-2) |
+| BUG-020 | Faible | Mobile / stories | Un élément de « Ma story » se supprime d'un seul appui, sans confirmation | Corrigé (branche fix/campagne-2026-11-04-2) |
+| BUG-021 | Faible | Mobile / textes | Trois textes vouvoient l'utilisateur alors que l'app le tutoie partout ailleurs | Corrigé (branche fix/campagne-2026-11-04-2) |
 
 ### BUG-001 : Une vidéo de 60 s sans filtre dépasse la limite de 60 Mo
 - **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/camera/CameraScreen.kt` (`videoCaptureQualitySelector = QualitySelector.from(Quality.HD)`), limite dans `apps/backend/src/modules/media/domain/media-purpose.ts` (`SNAP_VIDEO`/`STORY_VIDEO` : 60 Mo).
@@ -175,6 +178,43 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - **Impact** : l'utilisateur croit qu'il reste un élément de plus à voir.
 - **Correction** : `gapSize = 0.dp` sur chaque indicateur. Vérifié sur Galaxy A54 : une story d'un seul élément affiche une seule barre continue.
 
+### BUG-019 : Retirer un ami, bloquer et signaler sont impossibles depuis l'app
+- **Où** : `apps/mobile` : aucun écran n'appelle `DELETE /friendships/:userId`, `POST /blocks/:userId`, `DELETE /blocks/:userId` ni `POST /reports`. `FriendsService` (`domain/Media.kt`) n'expose pas ces actions, et les lignes « Mes amis » de `FriendsScreen.kt` n'ont aucune action.
+- **Constat** (seconde campagne de test du 2026-11-04, vérifié dans le code et sur Galaxy A54) :
+  - ADR-012 prévoit de retirer un ami, de bloquer et de débloquer (avec la liste « mes utilisateurs bloqués »).
+  - ADR-021 prévoit les signalements d'un utilisateur, d'un message ou d'une story, traités dans le backoffice.
+  - Le backend implémente tout cela et le teste, mais rien ne permet de le faire depuis le téléphone.
+- **Impact** :
+  - Un utilisateur ne peut ni se protéger d'un ami indésirable ni signaler un contenu.
+  - La modération du backoffice ne reçoit donc jamais de signalement venu de l'app.
+  - C'est une exigence habituelle des stores pour une app de messagerie.
+- **Correction** :
+  - Nouveau `SafetyService` côté app, sur les routes existantes : `DELETE /friendships/:id`, `POST` et `DELETE /blocks/:id`, `GET /friendships/blocked`, `POST /reports`.
+  - **Conversation** : menu « ⋮ » avec « Signaler », « Retirer de mes amis » et « Bloquer », chacun confirmé. Un appui long sur un message reçu le signale.
+  - **Lecteur de stories** : un drapeau signale l'élément affiché, et la photo est en pause pendant le choix du motif.
+  - **Paramètres** : « Utilisateurs bloqués », pour débloquer après confirmation, de façon optimiste.
+  - **Motif** : choisi dans une liste (harcèlement, contenu inapproprié, spam, usurpation, autre), envoyé comme texte au backend.
+- **Vérifié sur Galaxy A54** :
+  - signalement de Tom, enregistré en `PENDING` avec « Spam ou arnaque » ;
+  - blocage : retour à la liste, Tom disparaît, `BLOCKED` par nathan ;
+  - déblocage depuis les paramètres : la ligne est supprimée, comme le prévoit ADR-012 ;
+  - signalement d'une story, avec la pause puis la reprise.
+
+### BUG-020 : Suppression d'un élément de story sans confirmation
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/stories/MyStoryScreen.kt`, ligne 108 : `IconButton(onClick = { vm.delete(item) })`.
+- **Constat** (seconde campagne de test du 2026-11-04, Galaxy A54) : un appui sur la corbeille supprime l'élément tout de suite et pour de bon. La corbeille est juste à côté du compteur de vues, qui ouvre la liste des spectateurs.
+- **Impact** : une story publiée peut être perdue par un appui de travers, sans retour possible.
+- **Correction** : fenêtre « Supprimer ce snap de ta story ? » avant la suppression. Vérifié sur Galaxy A54 : « Annuler » laisse l'élément en place.
+
+### BUG-021 : Textes au vouvoiement
+- **Où** :
+  - `apps/mobile/app/src/main/kotlin/com/snapcore/app/data/api/ApiErrors.kt` ligne 25 : « Impossible de joindre le serveur. Vérifiez votre connexion. » ;
+  - `ui/auth/AuthViewModels.kt` ligne 79 : « Renseignez votre email et votre mot de passe » ;
+  - `ui/camera/LensCarousel.kt` ligne 144 : « Pour vous ».
+- **Constat** (seconde campagne de test du 2026-11-04, Galaxy A54 sans réseau) : le message d'erreur réseau s'affiche dans « Envoyer à » au vouvoiement, alors que le reste de l'app tutoie (« Vérifie ta connexion et réessaie », « Tes amis… »).
+- **Impact** : ton incohérent.
+- **Correction** : « Vérifie ta connexion. », « Renseigne ton email et ton mot de passe », « Pour toi ».
+
 ## Alternatives
 - **Corriger chaque anomalie dès qu'elle est trouvée** : rien n'est oublié, mais la fonctionnalité en cours se retrouve mêlée à des changements sans rapport, plus difficiles à relire et à annuler. Écarté.
 - **Un outil de suivi externe (issues GitHub, Notion)** : plus adapté à une équipe nombreuse, mais sépare le registre du code alors que tout le reste des décisions vit dans `docs/adr`. Écarté pour l'instant ; le registre pourra y être migré si le projet grandit.
@@ -191,6 +231,8 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - Cet ADR n'est pas une décision d'architecture au sens strict, mais un outil de suivi ; il est rangé avec les ADR pour rester à côté des décisions qu'il référence.
 
 ## Historique
+- Révision 12 : BUG-019 à BUG-021 corrigés (branche `fix/campagne-2026-11-04-2`).
+- Révision 11 : BUG-019 à BUG-021 relevés pendant la seconde campagne de test du 2026-11-04, voir `docs/tests/campagne-2026-11-04-2.md`.
 - Révision 10 : BUG-014 à BUG-018 corrigés (branche `fix/campagne-2026-11-04`).
 - Révision 9 : BUG-014 à BUG-018 relevés pendant la campagne de test du 2026-11-04 (Galaxy A54), voir `docs/tests/campagne-2026-11-04.md`.
 - Révision 8 : BUG-012 étendu aux conversations, BUG-013 relevé et corrigé.

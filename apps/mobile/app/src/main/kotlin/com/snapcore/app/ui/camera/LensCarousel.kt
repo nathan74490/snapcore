@@ -141,7 +141,7 @@ fun LensModeBar(onClose: () -> Unit, modifier: Modifier = Modifier) {
         IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Retirer la Lens", tint = Color.White) }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Icon(Icons.Filled.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(20.dp))
-            Text("Pour vous", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("Pour toi", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
         // Équilibre visuel avec le bouton ✕ : le libellé reste centré.
         Box(Modifier.size(48.dp))

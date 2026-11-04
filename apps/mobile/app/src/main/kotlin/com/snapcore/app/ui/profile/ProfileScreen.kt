@@ -98,6 +98,7 @@ fun ProfileScreen(
     onOpenFriends: () -> Unit,
     onNewStory: () -> Unit = {},
     onOpenAvatar: () -> Unit = {},
+    onOpenBlocked: () -> Unit = {},
     /** Compte déjà connu de l'app, affiché sans attendre le rechargement. */
     initialAccount: com.snapcore.app.domain.Account? = null,
     /** Avatar choisi dans l'éditeur, à afficher puis enregistrer (interface optimiste). */
@@ -183,6 +184,9 @@ fun ProfileScreen(
                         if (notificationsOn) "Activées" else "Désactivées",
                         onTap = { context.startActivity(Notifications.settingsIntent(context)) },
                     ) { SnapToggle(notificationsOn) }
+                    HorizontalDivider(color = SnapColors.Border)
+                    // Seul endroit d'où retrouver quelqu'un qu'on a bloqué (ADR-012, BUG-019 d'ADR-023).
+                    ProfileRow("Utilisateurs bloqués", "Gérer les personnes bloquées", onTap = onOpenBlocked)
                 }
                 Spacer(Modifier.height(32.dp))
                 PrimaryButton("Se déconnecter", vm::signOut, container = Color.White, content = SnapColors.Ink)

@@ -38,7 +38,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.snapcore.app.ui.safety.ConfirmActionDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -58,6 +61,7 @@ import java.time.Instant
 fun MyStoryScreen(onBack: () -> Unit, onPlay: (StoryItem) -> Unit) {
     val vm = containerViewModel { MyStoryViewModel(it.stories) }
     val state by vm.state.collectAsStateWithLifecycle()
+    var deleting by remember { mutableStateOf<StoryItem?>(null) }
     val snackbar = remember { SnackbarHostState() }
     LifecycleResumeEffect(Unit) {
         vm.refresh()
@@ -105,11 +109,20 @@ fun MyStoryScreen(onBack: () -> Unit, onPlay: (StoryItem) -> Unit) {
                         Icon(Icons.Filled.Visibility, null)
                         Text(" ${item.viewCount}")
                     }
-                    IconButton(onClick = { vm.delete(item) }) { Icon(Icons.Filled.Delete, "Retirer", tint = MaterialTheme.colorScheme.error) }
+                    // Confirmation d'abord : la suppression est définitive (BUG-020 d'ADR-023).
+                    IconButton(onClick = { deleting = item }) { Icon(Icons.Filled.Delete, "Retirer", tint = MaterialTheme.colorScheme.error) }
                 }
                 HorizontalDivider()
             }
         }
+    }
+
+    deleting?.let { item ->
+        ConfirmActionDialog(
+            title = "Supprimer ce snap de ta story ?",
+            text = "Tes amis ne pourront plus le voir. Cette action est définitive.",
+            confirm = "Supprimer", onConfirm = { vm.delete(item) }, onDismiss = { deleting = null },
+        )
     }
 
     state.viewersOf?.let {
