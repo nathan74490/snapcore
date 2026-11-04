@@ -102,6 +102,11 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
     val density = LocalDensity.current
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var turnOffGhost by remember { mutableStateOf(false) }
+    // Liste d'amis (« sauf… », « seulement… ») chargée à chaque ouverture des réglages, quel que soit le
+    // chemin : roue crantée, mon marqueur « Moi » ou le bandeau du mode fantôme.
+    LaunchedEffect(settingsOpen || turnOffGhost) {
+        if (settingsOpen || turnOffGhost) vm.loadFriends()
+    }
 
     Box(modifier.fillMaxSize().background(Color(0xFFE8ECEF))) {
         if (BuildConfig.MAPBOX_CONFIGURED) {
@@ -142,7 +147,7 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
                 Modifier.align(Alignment.Center).padding(32.dp), textAlign = TextAlign.Center, color = SnapColors.Grey)
         }
 
-        MapHeader(account, state.sharing, onOpenProfile, onOpenFriends) { settingsOpen = true; vm.loadFriends() }
+        MapHeader(account, state.sharing, onOpenProfile, onOpenFriends) { settingsOpen = true }
 
         // Marge du bas : le logo et l'attribution Mapbox doivent rester visibles (conditions d'utilisation).
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 36.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -162,7 +167,7 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
                     "Pour te situer sur la carte, et la partager avec tes amis si tu le souhaites. Seulement quand SnapCore est ouvert.",
                     "Activer") { permissions.launch(LocationPermissions) }
                 state.sharing?.ghost == true -> MapBanner("$Ghost Tu es en mode fantôme",
-                    "Tes amis ne voient pas ta position.", "Partager ma position") { turnOffGhost = true; vm.loadFriends() }
+                    "Tes amis ne voient pas ta position.", "Partager ma position") { turnOffGhost = true }
                 state.friends.isEmpty() && state.pins.isEmpty() && state.sharing != null -> MapBanner("Aucun ami sur la carte",
                     "Tes amis apparaissent ici quand ils partagent leur position avec toi.", null) {}
             }

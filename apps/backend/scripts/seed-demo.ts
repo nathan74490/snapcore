@@ -13,6 +13,8 @@
  *   d'ami en attente) partent en temps réel / push FCM vers nathan et rober.
  * - Médias générés localement avec ffmpeg (FFMPEG_PATH, sinon "ffmpeg" du PATH) : aucune photo réelle.
  * - Chaque compte de démo reçoit un avatar dessiné (ADR-028) ; un avatar déjà présent est conservé.
+ * - Snap Map (ADR-031) : les amis qui partagent leur position reçoivent une position en direct, à
+ *   relancer pour la rafraîchir (elle expire au bout de 8 h, comme celle envoyée par l'app).
  */
 import "reflect-metadata";
 import { Logger, type INestApplication } from "@nestjs/common";
@@ -53,7 +55,14 @@ import { OBJECT_STORAGE, type ObjectStorage } from "../src/modules/media/applica
 import { RequestUpload } from "../src/modules/media/application/request-upload";
 import { UploadPromoter } from "../src/modules/media/application/upload-promoter";
 import type { MediaPurpose } from "../src/modules/media/domain/media-purpose";
+import { LocationUseCases } from "../src/modules/location/application/location-use-cases";
 import { LocationVisibility } from "../src/modules/location/application/location-visibility";
+import {
+  LOCATION_SHARING_REPOSITORY,
+  LOCATION_STORE,
+  type LocationSharingRepository,
+  type LocationStore,
+} from "../src/modules/location/application/ports";
 import { MessagingUseCases } from "../src/modules/messages/application/messaging-use-cases";
 import { MESSAGE_NOTIFIER, type MessageNotifier } from "../src/modules/messages/application/ports/message-notifier.port";
 import { MESSAGE_REPOSITORY, type MessageRepository } from "../src/modules/messages/application/ports/message.repository";
@@ -84,7 +93,9 @@ type Owner = keyof typeof OWNERS;
 // Données de démo
 // ---------------------------------------------------------------------------------------------
 
-type DemoKey = "lea" | "hugo" | "ines" | "lucas" | "chloe" | "yanis" | "sarah" | "tom";
+type DemoKey =
+  | "lea" | "hugo" | "ines" | "lucas" | "chloe" | "yanis" | "sarah" | "tom"
+  | "manon" | "theo" | "camille" | "maxime" | "julie" | "noah";
 
 interface DemoUser {
   firstName: string;
@@ -131,10 +142,35 @@ const DEMO_USERS: Record<DemoKey, DemoUser> = {
     firstName: "Tom", birthday: "2006-04-26", username: "tom_grd", email: "tom.grd@snapcore.test",
     avatar: { top: "shaggy", hairColor: "724133", skinColor: "ffdbb4", eyes: "side", eyebrows: "upDownNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "shirtCrewNeck", clothesColor: "ff5c5c", backgroundColor: "ffffff" },
   },
+  // Amis dispersés en France et en Suisse, pour la Snap Map (ADR-031).
+  manon: {
+    firstName: "Manon", birthday: "2004-03-15", username: "manon.prs", email: "manon.prs@snapcore.test",
+    avatar: { top: "bigHair", hairColor: "2c1b18", skinColor: "edb98a", eyes: "happy", eyebrows: "defaultNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "shirtVNeck", clothesColor: "929598", backgroundColor: "ffd5dc" },
+  },
+  theo: {
+    firstName: "Théo", birthday: "2003-09-08", username: "theo.lyn", email: "theo.lyn@snapcore.test",
+    avatar: { top: "shortFlat", hairColor: "a55728", skinColor: "ffdbb4", eyes: "default", eyebrows: "defaultNatural", mouth: "twinkle", facialHair: "none", accessories: "none", clothing: "hoodie", clothesColor: "65c9ff", backgroundColor: "b6e3f4" },
+  },
+  camille: {
+    firstName: "Camille", birthday: "2005-07-22", username: "camille.gva", email: "camille.gva@snapcore.test",
+    avatar: { top: "straight02", hairColor: "d6b370", skinColor: "ffdbb4", eyes: "wink", eyebrows: "raisedExcitedNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "collarAndSweater", clothesColor: "ffafb9", backgroundColor: "c0aede" },
+  },
+  maxime: {
+    firstName: "Maxime", birthday: "2004-12-01", username: "maxime_mrs", email: "maxime.mrs@snapcore.test",
+    avatar: { top: "shortRound", hairColor: "2c1b18", skinColor: "d08b5b", eyes: "squint", eyebrows: "defaultNatural", mouth: "default", facialHair: "beardLight", accessories: "none", clothing: "graphicShirt", clothesColor: "ff5c5c", backgroundColor: "ffdfbf" },
+  },
+  julie: {
+    firstName: "Julie", birthday: "2006-02-11", username: "julie.chx", email: "julie.chx@snapcore.test",
+    avatar: { top: "winterHat1", hairColor: "724133", skinColor: "ffdbb4", eyes: "happy", eyebrows: "defaultNatural", mouth: "smile", facialHair: "none", accessories: "none", clothing: "blazerAndSweater", clothesColor: "3c4f5c", backgroundColor: "a7ffc4" },
+  },
+  noah: {
+    firstName: "Noah", birthday: "2005-05-30", username: "noah.gre", email: "noah.gre@snapcore.test",
+    avatar: { top: "dreads01", hairColor: "2c1b18", skinColor: "614335", eyes: "default", eyebrows: "upDownNatural", mouth: "twinkle", facialHair: "none", accessories: "none", clothing: "shirtCrewNeck", clothesColor: "ffffb1", backgroundColor: "fffaa1" },
+  },
 };
 
 // Amis de nathan ET de rober ; Sarah et Tom restent en demande d'ami en attente vers nathan.
-const FRIENDS_OF_OWNERS: DemoKey[] = ["lea", "hugo", "ines", "lucas", "chloe", "yanis"];
+const FRIENDS_OF_OWNERS: DemoKey[] = ["lea", "hugo", "ines", "lucas", "chloe", "yanis", "manon", "theo", "camille", "maxime", "julie", "noah"];
 const FRIENDSHIPS_BETWEEN_DEMO: [DemoKey, DemoKey][] = [
   ["lea", "ines"],
   ["lea", "chloe"],
@@ -352,8 +388,8 @@ const CONVERSATIONS: Conversation[] = [
 // Stories publiées il y a N minutes (24h de vie chacune, ADR-013).
 // Snap Map (ADR-031) : ces comptes partagent leur position avec tous leurs amis (les autres restent en
 // mode fantôme, la valeur par défaut). Leurs stories marquées d'un lieu apparaissent sur la carte ; la
-// position en direct (Redis, 8 h) n'est pas seedée : elle vient de l'app.
-const SHARING_LOCATION: DemoKey[] = ["lea", "hugo", "ines", "chloe"];
+// position en direct (Redis, 8 h) est posée par LIVE_POSITIONS, à relancer quand elle a expiré.
+const SHARING_LOCATION: DemoKey[] = ["lea", "hugo", "ines", "chloe", "manon", "theo", "camille", "maxime", "julie", "noah"];
 
 type Place = { latitude: number; longitude: number };
 const PLACES = {
@@ -362,6 +398,20 @@ const PLACES = {
   parcSport: { latitude: 45.9126, longitude: 6.1338 },
   campus: { latitude: 45.9187, longitude: 6.1475 },
 } satisfies Record<string, Place>;
+
+// Dernière position connue de chaque ami qui partage, envoyée il y a N minutes (fiche « Il y a N min »).
+const LIVE_POSITIONS: { who: DemoKey; place: Place; minutesAgo: number }[] = [
+  { who: "lea", place: { latitude: 45.9005, longitude: 6.1305 }, minutesAgo: 2 }, // bord du lac d'Annecy
+  { who: "hugo", place: { latitude: 45.9121, longitude: 6.1329 }, minutesAgo: 25 }, // stade d'Annecy
+  { who: "ines", place: { latitude: 45.8978, longitude: 6.1248 }, minutesAgo: 70 }, // vieille ville
+  { who: "chloe", place: { latitude: 45.8653, longitude: 6.1712 }, minutesAgo: 8 }, // Sévrier
+  { who: "manon", place: { latitude: 48.8606, longitude: 2.3376 }, minutesAgo: 12 }, // Paris, Louvre
+  { who: "theo", place: { latitude: 45.7578, longitude: 4.832 }, minutesAgo: 40 }, // Lyon, Bellecour
+  { who: "camille", place: { latitude: 46.2044, longitude: 6.1432 }, minutesAgo: 5 }, // Genève
+  { who: "maxime", place: { latitude: 43.2951, longitude: 5.3744 }, minutesAgo: 180 }, // Marseille, Vieux-Port
+  { who: "julie", place: { latitude: 45.9237, longitude: 6.8694 }, minutesAgo: 95 }, // Chamonix
+  { who: "noah", place: { latitude: 45.1885, longitude: 5.7245 }, minutesAgo: 300 }, // Grenoble
+];
 
 const STORIES: { author: DemoKey | "rober"; media: string; minutesAgo: number; place?: Place }[] = [
   { author: "ines", media: "story-ines-soiree", minutesAgo: 300, place: PLACES.vieilleVille },
@@ -563,6 +613,7 @@ class DemoSeeder {
     for (const key of Object.keys(DEMO_USERS) as DemoKey[]) await this.ensureUser(key);
     await this.ensureFriendships();
     await this.ensureLocationSharing();
+    await this.ensureLivePositions();
     await this.ensureStories();
     for (const conversation of CONVERSATIONS) await this.ensureConversation(conversation);
     await this.report();
@@ -700,6 +751,21 @@ class DemoSeeder {
         where: { id: this.user(key).id, locationSharing: "GHOST" },
         data: { locationSharing: "ALL_FRIENDS" },
       });
+    }
+  }
+
+  // Position en direct : écrasée à chaque lancement, par le vrai cas d'usage (ignorée en mode fantôme).
+  private async ensureLivePositions(): Promise<void> {
+    const get = <T>(token: unknown): T => this.app.get(token as string, { strict: false });
+    for (const { who, place, minutesAgo } of LIVE_POSITIONS) {
+      const locations = new LocationUseCases(
+        get<LocationSharingRepository>(LOCATION_SHARING_REPOSITORY),
+        get<LocationStore>(LOCATION_STORE),
+        this.friendshipRepository,
+        get<LocationVisibility>(LocationVisibility),
+        fixedClock(addMinutes(this.now, -minutesAgo)),
+      );
+      await locations.updateLocation(this.user(who), place);
     }
   }
 
