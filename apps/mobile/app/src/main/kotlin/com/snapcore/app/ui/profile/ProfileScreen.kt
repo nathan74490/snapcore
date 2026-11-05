@@ -1,5 +1,6 @@
 package com.snapcore.app.ui.profile
 
+import com.snapcore.app.ui.components.screenReaderFocusOnAppear
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -62,6 +63,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -140,7 +151,7 @@ fun ProfileScreen(
         val account = state.account
         if(account == null) {
             Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                if(state.loading) CircularProgressIndicator() else TextButton(onClick = vm::refresh) { Text("Réessayer") }
+                if(state.loading) CircularProgressIndicator(modifier = Modifier.semantics { contentDescription = "Chargement du profil" }) else TextButton(onClick = vm::refresh) { Text("Réessayer") }
             }
             return@Scaffold
         }
@@ -148,13 +159,15 @@ fun ProfileScreen(
             Column(Modifier.fillMaxSize().padding(padding).navigationBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 Row(Modifier.fillMaxWidth().height(60.dp).clip(RoundedCornerShape(12.dp))
                     .background(Brush.horizontalGradient(listOf(Color(0xFFF7E7A6), Color(0xFFEFC46E))))
-                    .clickable { vm.onPlusOpened("settings"); onOpenPlus() }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                    .clickable(role = Role.Button, onClickLabel = "voir l'offre SnapCore+") { vm.onPlusOpened("settings"); onOpenPlus() }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     FigmaAsset("17-1408_imgIconGhost", tint = SnapColors.Ink)
                     Text("Gérer SnapCore+", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                     FigmaAsset("17-1408_imgIconChevronRight", tint = SnapColors.Ink)
                 }
-                Text("MON COMPTE", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 16.dp))
+                // TalkBack : titre de section, lu « Mon compte » (et non lettre par lettre).
+                Text("MON COMPTE", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 16.dp)
+                    .semantics { heading(); contentDescription = "Mon compte" })
                 Column(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White)) {
                     ProfileRow("Prénom", account.firstName ?: "Non renseigné", onEdit = { vm.startEditing(EditableField.FIRST_NAME) })
                     HorizontalDivider(color = SnapColors.Border)
@@ -162,18 +175,28 @@ fun ProfileScreen(
                     HorizontalDivider(color = SnapColors.Border)
                     ProfileRow("Pseudo", account.username, onEdit = { vm.startEditing(EditableField.USERNAME) })
                     HorizontalDivider(color = SnapColors.Border)
-                    // Email non vérifié : la ligne entière passe en rouge (maquette 17:1408), un appui renvoie le lien.
-                    if (state.emailVerified == false) {
-                        ProfileRow("Email", account.email ?: "Non renseigné", onEdit = vm::resendVerification, alert = true)
-                    } else {
-                        ProfileRow("Email", account.email ?: "Non renseigné") {
-                            if (state.emailVerified == true) Icon(Icons.Filled.Verified, "Email vérifié", tint = SnapColors.ChatBlue)
+                    // Compte créé par code SMS (ADR-034) : pas d'email, et le numéro vérifié sert à se connecter, il ne se
+                    // modifie donc pas ici. Comptes créés avec un email : comme avant.
+                    val phoneAccount = account.email == null
+                    if (!phoneAccount) {
+                        // Email non vérifié : la ligne entière passe en rouge (maquette 17:1408), un appui renvoie le lien.
+                        if (state.emailVerified == false) {
+                            ProfileRow("Email", account.email ?: "Non renseigné", onEdit = vm::resendVerification, alert = true,
+                                spoken = "non vérifié", actionLabel = "renvoyer le lien de vérification")
+                        } else {
+                            ProfileRow("Email", account.email ?: "Non renseigné", spoken = if (state.emailVerified == true) "vérifié" else null) {
+                                if (state.emailVerified == true) Icon(Icons.Filled.Verified, "Email vérifié", tint = SnapColors.ChatBlue)
+                            }
                         }
+                        HorizontalDivider(color = SnapColors.Border)
                     }
+                    if (phoneAccount) ProfileRow("Téléphone", account.phoneNumber ?: "Non renseigné", spoken = "vérifié, sert à te connecter") {
+                        Icon(Icons.Filled.Verified, "Numéro vérifié", tint = SnapColors.ChatBlue)
+                    }
+                    else ProfileRow("Téléphone", account.phoneNumber ?: "Non renseigné", onEdit = { vm.startEditing(EditableField.PHONE) })
                     HorizontalDivider(color = SnapColors.Border)
-                    ProfileRow("Téléphone", account.phoneNumber ?: "Non renseigné", onEdit = { vm.startEditing(EditableField.PHONE) })
-                    HorizontalDivider(color = SnapColors.Border)
-                    ProfileRow("SnapCore+", if(account.isPremium) "Abonnement actif" else SnapCorePlus.PRICE_LABEL, onEdit = { vm.onPlusOpened("settings"); onOpenPlus() })
+                    ProfileRow("SnapCore+", if(account.isPremium) "Abonnement actif" else SnapCorePlus.PRICE_LABEL, onEdit = { vm.onPlusOpened("settings"); onOpenPlus() },
+                        actionLabel = if (account.isPremium) "gérer l'abonnement" else "voir l'offre")
                     HorizontalDivider(color = SnapColors.Border)
                     // La permission n'est demandée qu'une fois (BUG-007) : on la réactive ici, dans Android.
                     val context = LocalContext.current
@@ -183,10 +206,11 @@ fun ProfileScreen(
                         "Notifications",
                         if (notificationsOn) "Activées" else "Désactivées",
                         onTap = { context.startActivity(Notifications.settingsIntent(context)) },
+                        actionLabel = "ouvrir les réglages de notifications d'Android",
                     ) { SnapToggle(notificationsOn) }
                     HorizontalDivider(color = SnapColors.Border)
                     // Seul endroit d'où retrouver quelqu'un qu'on a bloqué (ADR-012, BUG-019 d'ADR-023).
-                    ProfileRow("Utilisateurs bloqués", "Gérer les personnes bloquées", onTap = onOpenBlocked)
+                    ProfileRow("Utilisateurs bloqués", "Gérer les personnes bloquées", onTap = onOpenBlocked, actionLabel = "ouvrir la liste")
                 }
                 Spacer(Modifier.height(32.dp))
                 PrimaryButton("Se déconnecter", vm::signOut, container = Color.White, content = SnapColors.Ink)
@@ -215,27 +239,36 @@ fun ProfileScreen(
                     Row(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Avatar(account.displayName, account.pictureUrl, 75.dp)
-                        Column {
+                        // TalkBack : nom et pseudo lus ensemble, comme titre de l'écran.
+                        Column(Modifier.semantics(mergeDescendants = true) { heading() }.screenReaderFocusOnAppear()) {
                             Text(account.displayName, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                             Text("@${account.username}", color = SnapColors.Grey, fontSize = 16.sp)
                         }
                     }
                     Row(Modifier.padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(if(account.isPremium) "✦ SnapCore+" else "SnapCore", modifier = Modifier.clip(RoundedCornerShape(16.dp))
+                        // Badge : équivalent texte, sans le symbole « ✦ ».
+                        Text(if(account.isPremium) "✦ SnapCore+" else "SnapCore", modifier = Modifier
+                            .clearAndSetSemantics { contentDescription = if (account.isPremium) "Badge SnapCore+ : abonnement actif" else "Compte SnapCore gratuit" }
+                            .clip(RoundedCornerShape(16.dp))
                             .background(Color.White).border(1.dp, Color(0xFFE3E5E8), RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 5.dp),
                             color = if(account.isPremium) SnapColors.SnapPurple else SnapColors.Ink)
                     }
                     if (!account.isPremium) LaunchedEffect(Unit) { vm.onPlusCardShown() }
                     PlusCard(account, state.plusCard) { vm.onPlusOpened("profile_card"); onOpenPlus() }
-                    Text("Mon avatar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
+                    Text("Mon avatar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp).semantics { heading() })
                     ProfileAction("13-250_imgIconEmoji", if (account.avatar == null) "Créer mon avatar" else "Modifier mon avatar", onOpenAvatar)
                     // Comme Snapchat : « + Nouvelle Story » à côté du titre ouvre la caméra.
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Mes Stories", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        ChipButton("+ Nouvelle Story", onNewStory, style = ChipStyle.Gray)
+                        Text("Mes Stories", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).semantics { heading() })
+                        // TalkBack : « Nouvelle story », sans le « + » ; un seul bouton.
+                        Box(Modifier.semantics(mergeDescendants = true) {}.clearAndSetSemantics {
+                            contentDescription = "Nouvelle story"
+                            role = Role.Button
+                            onClick("ouvrir la caméra") { onNewStory(); true }
+                        }) { ChipButton("+ Nouvelle Story", onNewStory, style = ChipStyle.Gray) }
                     }
-                    ProfileAction("17-1301_imgIconCamera", "Ma story · Mes amis", onOpenMyStory)
-                    Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
+                    ProfileAction("17-1301_imgIconCamera", "Ma story · Mes amis", onOpenMyStory, spoken = "Ma story, visible par mes amis")
+                    Text("Amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp, bottom = 12.dp).semantics { heading() })
                     ProfileAction("17-1301_imgIconAddFriend", "Ajouter des amis", onOpenFriends)
                     Spacer(Modifier.height(12.dp))
                     ProfileAction("17-1301_imgIconSettings", "Paramètres du compte", { settings = true })
@@ -248,14 +281,25 @@ fun ProfileScreen(
     state.editing?.let { field ->
         AlertDialog(
             onDismissRequest = vm::cancelEditing,
-            title = { Text(field.title) },
+            title = { Text(field.title, Modifier.semantics { heading() }) },
             text = {
+                val draftError = state.draftError
                 OutlinedTextField(
                     value = state.draft,
                     onValueChange = vm::onDraft,
                     singleLine = true,
-                    isError = state.draftError != null,
-                    supportingText = state.draftError?.let { { Text(it) } },
+                    isError = draftError != null,
+                    // TalkBack : l'erreur est annoncée dès qu'elle apparaît, et lue avec le champ.
+                    supportingText = draftError?.let { { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }) } },
+                    modifier = Modifier.semantics {
+                        contentDescription = when (field) {
+                            EditableField.FIRST_NAME -> "Prénom"
+                            EditableField.LAST_NAME -> "Nom"
+                            EditableField.USERNAME -> "Pseudo"
+                            EditableField.PHONE -> "Téléphone"
+                        }
+                        if (draftError != null) error(draftError)
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = if (field == EditableField.PHONE) KeyboardType.Phone else KeyboardType.Text,
                         capitalization = if (field == EditableField.FIRST_NAME || field == EditableField.LAST_NAME) KeyboardCapitalization.Words else KeyboardCapitalization.None),
                 )
@@ -268,7 +312,7 @@ fun ProfileScreen(
     if (state.confirmDeletion) {
         AlertDialog(
             onDismissRequest = vm::cancelDeletion,
-            title = { Text("Supprimer ton compte ?") },
+            title = { Text("Supprimer ton compte ?", Modifier.semantics { heading() }) },
             text = { Text("Ton compte, tes messages, tes snaps et tes stories seront définitivement supprimés.") },
             confirmButton = { TextButton(onClick = vm::deleteAccount) { Text("Supprimer", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = vm::cancelDeletion) { Text("Annuler") } },
@@ -283,11 +327,22 @@ private fun ProfileRow(
     onEdit: (() -> Unit)? = null,
     alert: Boolean = false,
     onTap: (() -> Unit)? = onEdit,
+    /** Précision lue par TalkBack après la valeur (« vérifié »…), à la place des icônes. */
+    spoken: String? = null,
+    /** Action annoncée par TalkBack : « double appui pour <actionLabel> ». */
+    actionLabel: String = "modifier",
     trailing: @Composable () -> Unit = {},
 ) {
+    // TalkBack : la ligne entière est un seul élément, « Prénom : Nathan, double appui pour modifier ».
+    val description = "$label : $value" + (spoken?.let { ", $it" } ?: "")
+    val a11y = if (onTap != null) Modifier.clearAndSetSemantics {
+        contentDescription = description
+        role = Role.Button
+        onClick(actionLabel) { onTap(); true }
+    } else Modifier.clearAndSetSemantics { contentDescription = description }
     // Settings Row 11:304 : 57pt min, marges 24 / 16, titre et sous-titre espacés de 4.
     Row(
-        modifier = Modifier.fillMaxWidth().then(if (onTap != null) Modifier.clickable(onClick = onTap) else Modifier).heightIn(min = 57.dp).padding(start = 24.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+        modifier = Modifier.fillMaxWidth().then(if (onTap != null) Modifier.clickable(onClick = onTap) else Modifier).then(a11y).heightIn(min = 57.dp).padding(start = 24.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -314,13 +369,14 @@ private fun EditableAvatar(
         uri?.let { onPicked(it.toString()) }
     }
     Box {
-        Box(Modifier.clickable { menuOpen = true }, contentAlignment = Alignment.Center) {
+        Box(Modifier.clickable(role = Role.Button, onClickLabel = "choisir ou retirer une photo") { menuOpen = true }
+            .semantics { contentDescription = "Changer ta photo de profil" }, contentAlignment = Alignment.Center) {
             Avatar(username, photoUrl, size = 160.dp)
         }
         Box(
             Modifier.align(Alignment.BottomEnd).size(32.dp).background(SnapColors.Yellow, CircleShape),
             contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Filled.CameraAlt, contentDescription = "Changer la photo", tint = SnapColors.Black, modifier = Modifier.size(18.dp)) }
+        ) { Icon(Icons.Filled.CameraAlt, contentDescription = null, tint = SnapColors.Black, modifier = Modifier.size(18.dp)) }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             DropdownMenuItem(
                 text = { Text("Choisir une photo") },
@@ -347,8 +403,10 @@ private fun EditableAvatar(
 private fun PlusCard(account: com.snapcore.app.domain.Account, offer: com.snapcore.app.domain.ProfilePlusCard, onOpen: () -> Unit) {
     val until = account.premiumUntil?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRENCH))
 
+    // TalkBack : carte lue en une fois, « SnapCore+, <offre>, double appui pour voir l'offre ».
     Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
-        .border(1.dp, SnapColors.Gold, RoundedCornerShape(12.dp)).clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 10.dp),
+        .border(1.dp, SnapColors.Gold, RoundedCornerShape(12.dp))
+        .clickable(role = Role.Button, onClickLabel = if (account.isPremium) "gérer l'abonnement" else "voir l'offre", onClick = onOpen).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1A1710)), Alignment.Center) {
             FigmaAsset("14-704_imgImageGoldGhost", modifier = Modifier.size(48.dp, 49.dp))
@@ -366,9 +424,11 @@ private fun PlusCard(account: com.snapcore.app.domain.Account, offer: com.snapco
 }
 
 @Composable
-private fun ProfileAction(icon: String, title: String, click: () -> Unit) {
+private fun ProfileAction(icon: String, title: String, click: () -> Unit, spoken: String? = null) {
     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
-        .clickable(onClick = click).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+        .clickable(role = Role.Button, onClick = click)
+        .then(if (spoken != null) Modifier.clearAndSetSemantics { contentDescription = spoken; role = Role.Button; onClick { click(); true } } else Modifier)
+        .padding(16.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         FigmaAsset(icon, tint = SnapColors.ChatBlue)
         Text(title, modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 17.sp)

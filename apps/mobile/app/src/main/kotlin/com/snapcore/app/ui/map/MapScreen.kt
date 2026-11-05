@@ -1,5 +1,19 @@
 package com.snapcore.app.ui.map
 
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.stateDescription
+import com.snapcore.app.ui.components.profileButton
+import com.snapcore.app.ui.components.screenReaderFocusWhen
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,12 +52,12 @@ import com.mapbox.geojson.Point
 import com.mapbox.maps.Style
 import com.mapbox.maps.dsl.cameraOptions
 import com.mapbox.maps.extension.compose.MapboxMap
+import com.mapbox.maps.extension.compose.MapEffect
 import com.mapbox.maps.extension.compose.animation.viewport.MapViewportState
 import com.mapbox.maps.extension.compose.animation.viewport.rememberMapViewportState
 import com.mapbox.maps.extension.compose.annotation.ViewAnnotation
 import com.mapbox.maps.extension.compose.style.MapStyle
 import com.mapbox.maps.plugin.animation.MapAnimationOptions
-import androidx.compose.ui.platform.LocalDensity
 import com.mapbox.maps.ViewAnnotationAnchor
 import com.mapbox.maps.viewannotation.annotationAnchor
 import com.mapbox.maps.viewannotation.geometry
@@ -54,7 +68,10 @@ import com.snapcore.app.ui.components.Avatar
 import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 
 private val RefreshInterval = 30_000L
 private const val CityZoom = 13.0
@@ -91,15 +108,38 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
     LaunchedEffect(state.me, state.friends, state.pins) {
         val me = state.me
         if (me != null) {
-            if (!centeredOnMe) { viewport.flyToPoint(me, CityZoom); centeredOnMe = true; centeredOnFriends = true }
+            // Moi et mes amis proches dans le même cadre : centrer sur moi seul laissait hors de l'écran des
+            // amis à 2 km (BUG-026 d'ADR-023).
+            if (!centeredOnMe) {
+                val focus = focusAround(me, state.friends.map { it.position } + state.pins.map { it.position })
+                viewport.flyToPoint(focus.center, focus.zoom)
+                centeredOnMe = true
+                centeredOnFriends = true
+            }
         } else if (!centeredOnFriends) {
             val focus = focusOn(state.friends.map { it.position } + state.pins.map { it.position }) ?: return@LaunchedEffect
             viewport.flyToPoint(focus.center, focus.zoom)
             centeredOnFriends = true
         }
     }
-    val slots = remember(state.pins, state.friends) { pinSlots(state.pins, state.friends) }
-    val density = LocalDensity.current
+    // Moi d'abord : mon emplacement reste fixe, les amis et stories s'en écartent.
+    val markerPositions = listOfNotNull(state.me) + state.friends.map { it.position } + state.pins.map { it.position }
+    val markerKeys = listOfNotNull(state.me?.let { "me" }) + state.friends.map { "friend:${it.friend.id}" } +
+        state.pins.map { "pin:${it.author.id}:${it.position.latitude},${it.position.longitude}" }
+    val friendStart = if (state.me == null) 0 else 1
+    val pinStart = friendStart + state.friends.size
+    // Écartement des marqueurs qui se recouvrent : calculé seulement quand la carte s'immobilise, et
+    // indépendant du centre. Glisser la carte ne déplace donc aucun avatar ; après un zoom, ils glissent
+    // vers leur nouvelle place au lieu de sauter.
+    var layoutFrom by remember { mutableStateOf<Map<String, GeoPoint>>(emptyMap()) }
+    var layoutTo by remember { mutableStateOf<Map<String, GeoPoint>>(emptyMap()) }
+    val layoutProgress = remember { Animatable(1f) }
+    fun displayed(key: String, actual: GeoPoint): GeoPoint {
+        val to = layoutTo[key] ?: actual
+        val from = layoutFrom[key] ?: to
+        val t = layoutProgress.value.toDouble()
+        return GeoPoint(from.latitude + (to.latitude - from.latitude) * t, from.longitude + (to.longitude - from.longitude) * t)
+    }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var turnOffGhost by remember { mutableStateOf(false) }
     // Liste d'amis (« sauf… », « seulement… ») chargée à chaque ouverture des réglages, quel que soit le
@@ -111,34 +151,64 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
     Box(modifier.fillMaxSize().background(Color(0xFFE8ECEF))) {
         if (BuildConfig.MAPBOX_CONFIGURED) {
             MapboxMap(
-                Modifier.fillMaxSize(),
+                Modifier.fillMaxSize().semantics {
+                    contentDescription = mapSummary(state.friends.size, state.pins.size, state.me != null)
+                }.screenReaderFocusWhen(visible),
                 mapViewportState = viewport,
                 style = { MapStyle(style = Style.STANDARD) },
                 scaleBar = {},
                 onMapClickListener = { vm.select(null); false },
             ) {
-                state.pins.forEachIndexed { index, pin ->
-                    val (dx, dy) = with(density) { pinOffset(slots[index]).let { (x, y) -> x.toPx() to y.toPx() } }
-                    ViewAnnotation(options = viewAnnotationOptions {
-                        geometry(pin.position.toPoint())
-                        allowOverlap(true)
-                        annotationAnchor { anchor(ViewAnnotationAnchor.CENTER); offsetX(dx.toDouble()); offsetY(dy.toDouble()) }
-                    }) { StoryPinMarker(pin) { onPlayStory(pin.asFriendStory()) } }
+                MapEffect(listOf(markerPositions, markerKeys, pinStart)) { mapView ->
+                    suspend fun layOut() {
+                        val target = markerLayout(mapView, markerPositions, markerKeys, pinStart)
+                        if (target == layoutTo) return
+                        // Chaque marqueur part de là où il est affiché, même au milieu d'une animation.
+                        layoutFrom = markerKeys.indices.associate { i -> markerKeys[i] to displayed(markerKeys[i], markerPositions[i]) }
+                        layoutTo = target
+                        layoutProgress.snapTo(0f)
+                        layoutProgress.animateTo(1f, tween(280))
+                    }
+                    layOut()
+                    val idle = Channel<Unit>(Channel.CONFLATED)
+                    val subscription = mapView.mapboxMap.subscribeMapIdle { idle.trySend(Unit) }
+                    try {
+                        for (event in idle) layOut()
+                    } finally {
+                        subscription.cancel()
+                    }
                 }
-                state.friends.forEach { friend ->
+                state.pins.forEachIndexed { index, pin ->
                     ViewAnnotation(options = viewAnnotationOptions {
-                        geometry(friend.position.toPoint())
+                        geometry(displayed(markerKeys[pinStart + index], pin.position).toPoint())
                         allowOverlap(true)
-                    }) { FriendMarker(friend.friend.displayName, friend.friend.pictureUrl, friend.friend.displayName, selected = state.selected?.friend?.id == friend.friend.id) { vm.select(friend) } }
+                        annotationAnchor { anchor(ViewAnnotationAnchor.CENTER) }
+                    }) { StoryPinMarker(pin, distance = state.me?.let { me -> distanceLabel(me.metersTo(pin.position)) }) { onPlayStory(pin.asFriendStory()) } }
+                }
+                state.friends.forEachIndexed { index, friend ->
+                    ViewAnnotation(options = viewAnnotationOptions {
+                        geometry(displayed(markerKeys[friendStart + index], friend.position).toPoint())
+                        allowOverlap(true)
+                        annotationAnchor { anchor(ViewAnnotationAnchor.CENTER) }
+                    }) {
+                        val details = listOfNotNull(state.me?.let { me -> distanceLabel(me.metersTo(friend.position)) },
+                            lastSeenLabel(friend.updatedAt, state.now).replaceFirstChar(Char::lowercase))
+                        FriendMarker(friend.friend.displayName, friend.friend.pictureUrl, friend.friend.displayName,
+                            selected = state.selected?.friend?.id == friend.friend.id,
+                            description = "${friend.friend.displayName}, ${details.joinToString(", ")}", actionLabel = "afficher sa fiche") { vm.select(friend) }
+                    }
                 }
                 state.me?.let { me ->
                     ViewAnnotation(options = viewAnnotationOptions {
                         geometry(me.toPoint())
                         allowOverlap(true)
+                        annotationAnchor { anchor(ViewAnnotationAnchor.CENTER) }
                     }) {
                         val ghost = state.sharing?.ghost != false
                         FriendMarker(account.displayName, account.pictureUrl, if (ghost) "$Ghost Moi" else "Moi", mine = true,
-                            modifier = Modifier.alpha(if (ghost) .75f else 1f)) { settingsOpen = true }
+                            modifier = Modifier.alpha(if (ghost) .75f else 1f),
+                            description = if (ghost) "Ma position, mode fantôme : mes amis ne la voient pas" else "Ma position, visible par ${state.sharing?.summary?.lowercase() ?: "mes amis"}",
+                            actionLabel = "ouvrir les paramètres de la carte") { settingsOpen = true }
                     }
                 }
             }
@@ -197,19 +267,15 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
 
 val LocationPermissions = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
 
-/**
- * Décalage d'un pin de story selon son rang ([pinSlots]) : 0 sur son point, puis en cercle autour, en
- * commençant en haut à droite (6 places par tour, un tour plus large ensuite). Mapbox compte offsetY vers le haut.
- */
-private fun pinOffset(slot: Int): Pair<androidx.compose.ui.unit.Dp, androidx.compose.ui.unit.Dp> {
-    if (slot <= 0) return 0.dp to 0.dp
-    val ring = (slot - 1) / 6 + 1
-    val angle = Math.toRadians(40.0 + ((slot - 1) % 6) * 60.0)
-    val radius = 58.0 * ring
-    return (radius * kotlin.math.cos(angle)).dp to (radius * kotlin.math.sin(angle)).dp
-}
-
 private fun GeoPoint.toPoint(): Point = Point.fromLngLat(longitude, latitude)
+
+/** Places écartées des marqueurs qui se recouvrent, au zoom et à l'orientation actuels ([mapMarkerLayout]). */
+private fun markerLayout(mapView: com.mapbox.maps.MapView, positions: List<GeoPoint>, keys: List<String>, pinStart: Int): Map<String, GeoPoint> {
+    val camera = mapView.mapboxMap.cameraState
+    val sizes = positions.indices.map { if (it < pinStart) FRIEND_MARKER_SIZE_DP else STORY_MARKER_SIZE_DP }
+    val placed = mapMarkerLayout(positions, sizes, camera.zoom, camera.bearing)
+    return buildMap { placed.forEachIndexed { i, point -> if (point != positions[i]) put(keys[i], point) } }
+}
 
 private fun MapViewportState.flyToPoint(point: GeoPoint, zoom: Double) = flyTo(
     cameraOptions { center(point.toPoint()); zoom(zoom) },
@@ -219,17 +285,24 @@ private fun MapViewportState.flyToPoint(point: GeoPoint, zoom: Double) = flyTo(
 @Composable
 private fun MapHeader(account: Account, sharing: LocationSharing?, onOpenProfile: () -> Unit, onOpenFriends: () -> Unit, onOpenSettings: () -> Unit) {
     Row(Modifier.statusBarsPadding().fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Avatar(account.displayName, account.pictureUrl, 40.dp, Modifier.shadow(4.dp, CircleShape).clickable(onClick = onOpenProfile))
+        Avatar(account.displayName, account.pictureUrl, 40.dp, Modifier.shadow(4.dp, CircleShape).profileButton(onOpenProfile))
         Spacer(Modifier.width(8.dp))
         FloatingRound("Rechercher des amis", Icons.Filled.Search, size = 40.dp, onClick = onOpenFriends)
         Spacer(Modifier.weight(1f))
         // Comme le lieu courant chez Snapchat : ici, l'état de mon partage, qui ouvre les réglages.
-        Surface(onClick = onOpenSettings, shape = RoundedCornerShape(20.dp), color = Color.White, shadowElevation = 4.dp) {
+        Surface(onClick = onOpenSettings, shape = RoundedCornerShape(20.dp), color = Color.White, shadowElevation = 4.dp,
+            modifier = Modifier.semantics {
+                contentDescription = when {
+                    sharing == null -> "Snap Map"
+                    sharing.ghost -> "Partage de ma position : mode fantôme"
+                    else -> "Partage de ma position : ${sharing.summary}"
+                }
+            }) {
             Text(when {
                 sharing == null -> "Snap Map"
                 sharing.ghost -> "$Ghost Mode fantôme"
                 else -> "📍 ${sharing.summary}"
-            }, Modifier.padding(horizontal = 14.dp, vertical = 9.dp), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = SnapColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }, Modifier.padding(horizontal = 14.dp, vertical = 9.dp).clearAndSetSemantics {}, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = SnapColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.weight(1f))
         FloatingRound("Paramètres de la carte", Icons.Filled.Settings, size = 40.dp, onClick = onOpenSettings)
@@ -246,21 +319,33 @@ private fun FloatingRound(description: String, icon: androidx.compose.ui.graphic
 /** Avatar d'un ami (ou le mien) posé sur la carte, avec son prénom dessous. */
 @Composable
 private fun FriendMarker(name: String, pictureUrl: String?, label: String, selected: Boolean = false, mine: Boolean = false,
-    modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier.clickable(onClick = onClick)) {
+    modifier: Modifier = Modifier, description: String = label, actionLabel: String? = null, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+        modifier = modifier.size(FRIEND_MARKER_SIZE_DP.dp).clickable(role = Role.Button, onClickLabel = actionLabel, onClick = onClick)
+            .clearAndSetSemantics {
+                contentDescription = description
+                role = Role.Button
+                // Pas d'état « sélectionné » sur un bouton : TalkBack dirait « non coché » pour chaque ami.
+                if (selected) stateDescription = "fiche ouverte"
+                onClick(actionLabel) { onClick(); true }
+            }) {
         val ring = when { mine -> SnapColors.Yellow; selected -> SnapColors.ChatBlue; else -> Color.White }
         Avatar(name, pictureUrl, if (selected) 60.dp else 52.dp, Modifier.shadow(6.dp, CircleShape).border(3.dp, ring, CircleShape))
         Spacer(Modifier.height(3.dp))
         Text(label, Modifier.shadow(2.dp, RoundedCornerShape(10.dp)).background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
-            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, maxLines = 1)
+            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 /** Story d'un ami épinglée sur la carte : vignette dans un anneau violet tant qu'elle n'est pas vue. */
 @Composable
-private fun StoryPinMarker(pin: StoryPin, onClick: () -> Unit) {
+private fun StoryPinMarker(pin: StoryPin, distance: String? = null, onClick: () -> Unit) {
     val ring = if (pin.hasUnviewed) SnapColors.SnapPurple else SnapColors.Muted
-    Box(Modifier.size(50.dp).shadow(6.dp, CircleShape).background(Color.White, CircleShape).border(3.dp, ring, CircleShape).padding(5.dp).clip(CircleShape).clickable(onClick = onClick)) {
+    val count = if (pin.items.size == 1) "1 snap" else "${pin.items.size} snaps"
+    val description = listOfNotNull("Story de ${pin.author.displayName}", count, if (pin.hasUnviewed) "pas encore vue" else "déjà vue", distance).joinToString(", ")
+    Box(Modifier.size(STORY_MARKER_SIZE_DP.dp).shadow(6.dp, CircleShape).background(Color.White, CircleShape).border(3.dp, ring, CircleShape).padding(5.dp).clip(CircleShape)
+        .clickable(role = Role.Button, onClick = onClick)
+        .clearAndSetSemantics { contentDescription = description; role = Role.Button; onClick("regarder la story") { onClick(); true } }) {
         val thumbnail = pin.thumbnailUrl
         if (thumbnail != null) AsyncImage(thumbnail, "Story de ${pin.author.displayName}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Avatar(pin.author.displayName, pin.author.pictureUrl, 40.dp)
@@ -282,17 +367,22 @@ private fun MapBanner(title: String, text: String, action: String?, onAction: ()
 private fun FriendCard(location: FriendLocation, now: java.time.Instant, onChat: () -> Unit, onLocate: () -> Unit, onClose: () -> Unit) {
     Surface(shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 6.dp, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(location.friend.displayName, location.friend.pictureUrl, 52.dp, Modifier.clickable(onClick = onLocate))
-            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Avatar(location.friend.displayName, location.friend.pictureUrl, 52.dp, Modifier.clickable(role = Role.Button, onClick = onLocate)
+                .semantics { contentDescription = "Centrer la carte sur ${location.friend.displayName}" })
+            // Annoncée à l'ouverture de la fiche : « Léa, il y a 2 h ».
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }) {
                 Text(location.friend.displayName, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = SnapColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(lastSeenLabel(location.updatedAt, now), fontSize = 13.sp, color = SnapColors.Grey)
             }
             Button(onClick = onChat, shape = RoundedCornerShape(20.dp), modifier = Modifier.height(40.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = SnapColors.ChatBlue, contentColor = Color.White)) {
-                Text("Chat", fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
+                Text("Chat", fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1,
+                    modifier = Modifier.clearAndSetSemantics { contentDescription = "Écrire à ${location.friend.displayName}" })
             }
-            TextButton(onClick = onClose) { Text("✕", color = SnapColors.Grey, fontSize = 18.sp) }
+            TextButton(onClick = onClose, modifier = Modifier.semantics { contentDescription = "Fermer la fiche" }) {
+                Text("✕", color = SnapColors.Grey, fontSize = 18.sp, modifier = Modifier.clearAndSetSemantics {})
+            }
         }
     }
 }
@@ -309,16 +399,16 @@ private fun MapSettingsSheet(sharing: LocationSharing, friends: List<Friend>, on
             return@ModalBottomSheet
         }
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Paramètres de la carte", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = SnapColors.Ink)
+            Text("Paramètres de la carte", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = SnapColors.Ink, modifier = Modifier.semantics { heading() })
             Section("Qui peut voir ma position") {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().toggleable(sharing.ghost, role = Role.Switch) { ghost ->
+                    if (ghost) onChange(sharing.copy(mode = LocationSharingMode.GHOST)) else onTurnOffGhost()
+                }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Mode fantôme", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = SnapColors.Ink)
                         Text("Quand il est activé, tes amis ne voient pas ta position, ni où tu publies tes stories.", fontSize = 13.sp, color = SnapColors.Grey)
                     }
-                    Switch(checked = sharing.ghost, onCheckedChange = { ghost ->
-                        if (ghost) onChange(sharing.copy(mode = LocationSharingMode.GHOST)) else onTurnOffGhost()
-                    }, colors = SwitchDefaults.colors(checkedTrackColor = SnapColors.ChatBlue))
+                    Switch(checked = sharing.ghost, onCheckedChange = null, colors = SwitchDefaults.colors(checkedTrackColor = SnapColors.ChatBlue))
                 }
                 HorizontalDivider(color = SnapColors.Border)
                 AudienceOptions(sharing, enabled = !sharing.ghost) { chosen ->
@@ -344,7 +434,8 @@ private val AudienceModes = listOf(LocationSharingMode.ALL_FRIENDS, LocationShar
 @Composable
 private fun AudienceOptions(sharing: LocationSharing, enabled: Boolean, onChoose: (LocationSharingMode) -> Unit) {
     AudienceModes.forEach { mode ->
-        Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { onChoose(mode) }.padding(horizontal = 16.dp, vertical = 12.dp).alpha(if (enabled) 1f else .4f),
+        Row(Modifier.fillMaxWidth().selectable(enabled && sharing.mode == mode, enabled = enabled, role = Role.RadioButton) { onChoose(mode) }
+            .padding(horizontal = 16.dp, vertical = 12.dp).alpha(if (enabled) 1f else .4f),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(mode.label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = SnapColors.Ink)
@@ -372,7 +463,7 @@ private fun TurnOffGhostDialog(sharing: LocationSharing, friends: List<Friend>, 
                 Text("Choisis qui peut voir ta position sur la carte.", color = SnapColors.Grey)
                 Spacer(Modifier.height(8.dp))
                 AudienceModes.forEach { option ->
-                    Text(option.label, Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable {
+                    Text(option.label, Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button) {
                         if (option.usesList) picking = option else onConfirm(sharing.copy(mode = option))
                     }.padding(vertical = 12.dp, horizontal = 4.dp), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = SnapColors.ChatBlue)
                 }
@@ -397,16 +488,18 @@ private fun FriendPicker(mode: LocationSharingMode, sharing: LocationSharing, fr
     val candidate = LocationSharing(mode, chosen)
     Column(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp, bottom = 24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ Retour", color = SnapColors.Grey) }
+            TextButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Retour" }) {
+                Text("‹ Retour", color = SnapColors.Grey, modifier = Modifier.clearAndSetSemantics {})
+            }
         }
-        Text(mode.label, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = SnapColors.Ink)
+        Text(mode.label, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = SnapColors.Ink, modifier = Modifier.semantics { heading() })
         Text(if (mode == LocationSharingMode.FRIENDS_EXCEPT) "Les amis cochés ne verront pas ta position." else "Seuls les amis cochés verront ta position.",
             fontSize = 14.sp, color = SnapColors.Grey, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
         if (friends.isEmpty()) Text("Aucun ami pour l'instant.", color = SnapColors.Grey, modifier = Modifier.padding(vertical = 16.dp))
         LazyColumn(Modifier.weight(1f, fill = false)) {
             items(friends, key = { it.id }) { friend ->
                 val checked = friend.id in chosen
-                Row(Modifier.fillMaxWidth().clickable { chosen = if (checked) chosen - friend.id else chosen + friend.id }.padding(vertical = 8.dp),
+                Row(Modifier.fillMaxWidth().toggleable(checked, role = Role.Checkbox) { chosen = if (checked) chosen - friend.id else chosen + friend.id }.padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Avatar(friend.displayName, friend.pictureUrl, 40.dp)
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {

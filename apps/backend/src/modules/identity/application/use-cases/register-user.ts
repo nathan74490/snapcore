@@ -42,7 +42,8 @@ export class RegisterUser {
     const firstName = parseFirstName(input.firstName);
     const lastName = parseLastName(input.lastName);
     const birthday = parseBirthday(input.birthday, this.clock.now());
-    const phoneNumber = input.phoneNumber ? parsePhoneNumber(input.phoneNumber) : null;
+    // Numéro vérifié par code SMS (ADR-034) : celui du compte Firebase prime sur celui du corps de la requête.
+    const phoneNumber = identity.phoneNumber ?? (input.phoneNumber ? parsePhoneNumber(input.phoneNumber) : null);
 
     try {
       const user = await this.users.create({
@@ -55,7 +56,10 @@ export class RegisterUser {
         email: identity.email,
         phoneNumber,
       });
-      this.analytics.capture(user.id, "user_registered", { with_phone: phoneNumber !== null });
+      this.analytics.capture(user.id, "user_registered", {
+        with_phone: phoneNumber !== null,
+        method: identity.phoneNumber ? "phone" : "email",
+      });
       return user;
     } catch (error) {
       if (!(error instanceof UniqueViolationError)) throw error;

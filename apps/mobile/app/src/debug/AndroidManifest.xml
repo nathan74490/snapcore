@@ -3,5 +3,7 @@
     <application>
         <!-- Public auth screens only, for screenshot review without signing out a real account. -->
         <activity android:name=".DesignPreviewActivity" android:exported="true" />
+        <!-- Aperçus locaux des notifications, sans envoi de message. Absent des builds release. -->
+        <activity android:name=".NotificationPreviewActivity" android:exported="true" />
     </application>
 </manifest>

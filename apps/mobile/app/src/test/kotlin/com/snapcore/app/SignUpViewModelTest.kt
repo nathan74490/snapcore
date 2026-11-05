@@ -7,7 +7,6 @@ import com.snapcore.app.domain.Session
 import com.snapcore.app.domain.SessionResolver
 import com.snapcore.app.domain.suggestUsername
 import com.snapcore.app.ui.auth.LoginViewModel
-import com.snapcore.app.ui.auth.PasswordHint
 import com.snapcore.app.ui.auth.SignUpStep
 import com.snapcore.app.ui.auth.SignUpViewModel
 import com.snapcore.app.ui.auth.UsernameStatus
@@ -32,7 +31,7 @@ import org.junit.Test
 import java.time.LocalDate
 import kotlin.random.Random
 
-// Inscription en 5 étapes façon Snapchat (ADR-029).
+// Inscription en 5 étapes façon Snapchat (ADR-029), numéro vérifié par code SMS (ADR-034).
 @OptIn(ExperimentalCoroutinesApi::class)
 class SignUpViewModelTest {
     private val dispatcher = StandardTestDispatcher()
@@ -60,23 +59,23 @@ class SignUpViewModelTest {
     // Jusqu'à l'étape du pseudo, avec le pseudo proposé d'office.
     private fun TestScope.reachUsername() {
         vm.onFirstName("  Nathan   Marie ")
-        vm.onLastName(" Boudet ")
         vm.next()
         vm.onBirthday(LocalDate.of(2004, 5, 12))
         vm.next()
         advanceUntilIdle()
     }
 
-    private fun TestScope.fillAllSteps() {
+    // Jusqu'à l'étape du code : pseudo accepté, numéro saisi, code demandé.
+    private fun TestScope.reachCode() {
         reachUsername()
         vm.next()
-        vm.onPassword("MotDePasse123")
+        vm.onNational("06 12 34 56 78")
         vm.next()
-        vm.onEmail("nathan@snapcore.test")
+        advanceUntilIdle()
     }
 
     @Test
-    fun `étape 1, prénom obligatoire et nom facultatif`() {
+    fun `étape 1, prénom obligatoire, plus de nom de famille`() {
         assertFalse(vm.state.value.canContinue)
         vm.onFirstName("Nathan2")
         vm.next()
@@ -105,12 +104,12 @@ class SignUpViewModelTest {
     }
 
     @Test
-    fun `un pseudo libre est proposé d'office, à partir du nom`() = runTest(dispatcher) {
+    fun `un pseudo libre est proposé d'office, à partir du prénom`() = runTest(dispatcher) {
         reachUsername()
 
         val state = vm.state.value
         assertFalse(state.editingUsername)
-        assertTrue(state.username, state.username.startsWith("nathanmab"))
+        assertTrue(state.username, state.username.startsWith("nathanma"))
         assertNull(AccountRules.usernameError(state.username))
         assertEquals(UsernameStatus.Available, state.usernameStatus)
     }
@@ -145,72 +144,91 @@ class SignUpViewModelTest {
     }
 
     @Test
-    fun `mot de passe de 8 caractères au moins`() = runTest(dispatcher) {
+    fun `étape 4, numéro au format international, puis code envoyé par SMS`() = runTest(dispatcher) {
         reachUsername()
         vm.next()
-        assertEquals(PasswordHint.EMPTY, vm.state.value.passwordHint)
-        vm.onPassword("court")
-        assertEquals(PasswordHint.TOO_SHORT, vm.state.value.passwordHint)
+        assertEquals(SignUpStep.PHONE, vm.state.value.step)
         assertFalse(vm.state.value.canContinue)
-        vm.onPassword("assezlong")
-        assertEquals(PasswordHint.OK, vm.state.value.passwordHint)
-        assertTrue(vm.state.value.canContinue)
-    }
 
-    @Test
-    fun `raccourci de domaine email`() {
-        vm.onEmail("nathan@gm")
-        vm.completeEmail("@gmail.com")
-        assertEquals("nathan@gmail.com", vm.state.value.email)
-    }
-
-    @Test
-    fun `parcours complet, compte Firebase, inscription backend normalisée, session prête`() = runTest(dispatcher) {
-        fillAllSteps()
+        vm.onNational("06 12 34 56 78")
         vm.next()
+        advanceUntilIdle()
+
+        assertEquals(listOf("+33612345678"), auth.codesSentTo)
+        assertEquals(SignUpStep.CODE, vm.state.value.step)
+        assertEquals("+33612345678", vm.state.value.phone.sentTo)
+        assertEquals("le SMS simulé montre le code", "482913", vm.state.value.phone.simulatedCode)
+        assertFalse("pas de compte Firebase avant le code", auth.signedIn)
+    }
+
+    @Test
+    fun `numéro refusé par le backend, l'erreur reste à l'étape du numéro`() = runTest(dispatcher) {
+        auth.failCodeRequestWith = ApiException(400, "Attends encore 12 s avant de demander un nouveau code")
+        reachUsername()
+        vm.next()
+        vm.onNational("0612345678")
+        vm.next()
+        advanceUntilIdle()
+
+        assertEquals(SignUpStep.PHONE, vm.state.value.step)
+        assertEquals("Attends encore 12 s avant de demander un nouveau code", vm.state.value.phone.numberError)
+    }
+
+    @Test
+    fun `parcours complet, le code saisi ouvre la session et crée le compte, sans email ni nom de famille`() = runTest(dispatcher) {
+        reachCode()
+        vm.onCode("48291")
+        assertTrue("pas encore vérifié à 5 chiffres", auth.phoneSignIns.isEmpty())
+        vm.onCode("482913")
         advanceUntilIdle()
 
         val registration = accounts.registrations.single()
         assertTrue(vm.state.value.session is Session.Ready)
-        assertEquals(listOf("nathan@snapcore.test"), auth.signUps)
+        assertEquals(listOf("+33612345678"), auth.phoneSignIns)
         assertEquals("Nathan Marie", registration.firstName)
-        assertEquals("Boudet", registration.lastName)
+        assertNull(registration.lastName)
         assertEquals(LocalDate.of(2004, 5, 12), registration.birthday)
-        assertNull("le téléphone est demandé après l'inscription", registration.phoneNumber)
+        assertNull("le numéro vérifié est lu par le backend dans le compte Firebase", registration.phoneNumber)
         assertNull(pending.value) // effacé après succès
     }
 
     @Test
-    fun `pseudo pris entre-temps, retour à l'étape du pseudo, puis nouvel essai sans recréer le compte Firebase`() = runTest(dispatcher) {
-        fillAllSteps()
+    fun `mauvais code, les cases se vident et l'erreur s'affiche, puis le bon code passe`() = runTest(dispatcher) {
+        reachCode()
+        vm.onCode("000000")
+        advanceUntilIdle()
+
+        assertEquals(SignUpStep.CODE, vm.state.value.step)
+        assertEquals("", vm.state.value.phone.code)
+        assertEquals("Code incorrect. Vérifie le SMS et réessaie.", vm.state.value.phone.codeError)
+        assertTrue(accounts.registrations.isEmpty())
+
+        vm.useSimulatedCode()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.session is Session.Ready)
+    }
+
+    @Test
+    fun `numéro déjà inscrit, le code connecte au compte existant sans en créer un second`() = runTest(dispatcher) {
+        reachCode()
+        accounts.account = com.snapcore.app.domain.Account("id", "nathan", null, null, null, false)
+        vm.useSimulatedCode()
+        advanceUntilIdle()
+
+        assertEquals(Session.Ready(accounts.account!!), vm.state.value.session)
+        assertTrue(accounts.registrations.isEmpty())
+    }
+
+    @Test
+    fun `pseudo pris entre-temps, retour à l'étape du pseudo, puis nouvel essai`() = runTest(dispatcher) {
+        reachCode()
         accounts.takenUsernames += vm.state.value.username
-        vm.next()
+        vm.useSimulatedCode()
         advanceUntilIdle()
 
         assertEquals(SignUpStep.USERNAME, vm.state.value.step)
         assertTrue(vm.state.value.editingUsername)
-        assertTrue(vm.state.value.firebaseAccountCreated)
         assertNotNull(pending.value) // conservé : reprise possible au prochain lancement
-
-        vm.onUsername("nathan_74")
-        advanceUntilIdle()
-        repeat(3) { vm.next() }
-        advanceUntilIdle()
-
-        assertTrue(vm.state.value.session is Session.Ready)
-        assertEquals(1, auth.signUps.size)
-    }
-
-    @Test
-    fun `email déjà utilisé chez Firebase, l'erreur reste à l'étape email`() = runTest(dispatcher) {
-        auth.failSignUpWith = "Un compte existe déjà avec cette adresse email"
-        fillAllSteps()
-        vm.next()
-        advanceUntilIdle()
-
-        assertEquals(SignUpStep.EMAIL, vm.state.value.step)
-        assertEquals("Un compte existe déjà avec cette adresse email", vm.state.value.emailError)
-        assertTrue(accounts.registrations.isEmpty())
     }
 
     @Test
@@ -225,7 +243,7 @@ class SignUpViewModelTest {
         advanceUntilIdle()
 
         assertTrue(vm.state.value.session is Session.Ready)
-        assertTrue(auth.signUps.isEmpty())
+        assertTrue("pas de nouveau code en reprise", auth.codesSentTo.isEmpty())
     }
 
     @Test
@@ -297,23 +315,22 @@ class SignUpViewModelTest {
         assertEquals(listOf("name", "birthday", "username", "birthday", "username"),
             analytics.events.filter { it.first == AnalyticsEvents.SIGNUP_STEP_VIEWED }.map { it.second["step"] })
 
-        auth.failSignUpWith = "Adresse déjà utilisée"
+        auth.failCodeRequestWith = ApiException(400, "Numéro de téléphone invalide : vérifie le pays et le numéro")
         vm.next()
-        vm.onPassword("MotDePasse123")
-        vm.next()
-        vm.onEmail("nathan@snapcore.test")
+        vm.onNational("0612345678")
         vm.next()
         advanceUntilIdle()
         val failure = analytics.propertiesOf(AnalyticsEvents.SIGNUP_FAILED)
-        assertEquals("email", failure["step"])
-        assertEquals("UserFacingException", failure["reason"])
-        assertFalse("jamais le message, qui peut contenir l'email", failure.values.any { "@" in it.toString() })
+        assertEquals("phone", failure["step"])
+        assertEquals("http_400", failure["reason"])
+        assertFalse("jamais le numéro", failure.values.any { "0612" in it.toString() || "+33" in it.toString() })
     }
 
     @Test
     fun `analytics, connexion refusee avec le code HTTP puis reussie`() = runTest(dispatcher) {
         val analytics = RecordingAnalytics()
-        val login = LoginViewModel(auth, SessionResolver(auth, accounts, pending), analytics)
+        val login = LoginViewModel(auth, SessionResolver(auth, accounts, pending), analytics, countryCode = "FR")
+        login.useEmail(true)
         login.onEmail("nathan@snapcore.test")
         login.onPassword("secret")
         auth.failSignInWith = ApiException(503, "Service indisponible")
@@ -325,5 +342,20 @@ class SignUpViewModelTest {
         login.submit()
         advanceUntilIdle()
         assertEquals(AnalyticsEvents.LOGIN_COMPLETED, analytics.names.last())
+    }
+
+    @Test
+    fun `connexion par code SMS, numéro, code puis session`() = runTest(dispatcher) {
+        accounts.account = com.snapcore.app.domain.Account("id", "nathan", null, null, null, false)
+        val login = LoginViewModel(auth, SessionResolver(auth, accounts, pending), countryCode = "FR")
+        login.onNational("6 12 34 56 78")
+        login.submit()
+        advanceUntilIdle()
+        assertEquals(com.snapcore.app.ui.auth.LoginMode.CODE, login.state.value.mode)
+
+        login.onCode("482913")
+        advanceUntilIdle()
+        assertEquals(listOf("+33612345678"), auth.phoneSignIns)
+        assertTrue(login.state.value.session is Session.Ready)
     }
 }

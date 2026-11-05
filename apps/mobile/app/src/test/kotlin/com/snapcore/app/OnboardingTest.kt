@@ -96,32 +96,7 @@ class OnboardingViewModelTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun vm(notify: Boolean = false) = OnboardingViewModel(accounts, friends, contacts, "FR") { notify }
-
-    @Test
-    fun `numéro enregistré au format international, puis la recherche des amis`() = runTest(dispatcher) {
-        val vm = vm()
-        vm.onNational("06 12 34 56 78")
-        vm.savePhone()
-        advanceUntilIdle()
-
-        assertEquals("+33612345678", accounts.account?.phoneNumber)
-        assertEquals(OnboardingStep.FIND_FRIENDS, vm.state.value.step)
-    }
-
-    @Test
-    fun `numéro déjà pris, le motif s'affiche et l'écran reste`() = runTest(dispatcher) {
-        val vm = OnboardingViewModel(object : com.snapcore.app.domain.AccountService by accounts {
-            override suspend fun updateProfile(username: String?, phoneNumber: String?, firstName: String?, lastName: String?): Account =
-                throw ApiException(409, "Ce numéro de téléphone est déjà utilisé")
-        }, friends, contacts, "FR")
-        vm.onNational("0612345678")
-        vm.savePhone()
-        advanceUntilIdle()
-
-        assertEquals(OnboardingStep.PHONE, vm.state.value.step)
-        assertEquals("Ce numéro de téléphone est déjà utilisé", vm.state.value.phoneError)
-    }
+    private fun vm(notify: Boolean = false) = OnboardingViewModel(accounts, friends, contacts) { notify }
 
     @Test
     fun `contacts autorisés, les amis à ajouter sont cochés d'office et les autres contacts à inviter`() = runTest(dispatcher) {
@@ -167,7 +142,6 @@ class OnboardingViewModelTest {
     @Test
     fun `avatar créé, enregistré, puis les notifications si Android doit encore les demander`() = runTest(dispatcher) {
         val vm = vm(notify = true)
-        vm.skipPhone()
         vm.onContactsPermission(granted = false)
         vm.skipAddFriends()
 
@@ -190,9 +164,8 @@ class OnboardingViewModelTest {
     @Test
     fun `analytics, etapes affichees, etapes passees, contacts et fin des premiers pas`() = runTest(dispatcher) {
         val analytics = RecordingAnalytics()
-        val vm = OnboardingViewModel(accounts, friends, contacts, "FR", analytics) { false }
+        val vm = OnboardingViewModel(accounts, friends, contacts, analytics) { false }
         advanceUntilIdle()
-        vm.skipPhone()
         advanceUntilIdle()
         vm.onContactsPermission(false)
         advanceUntilIdle()
@@ -203,8 +176,6 @@ class OnboardingViewModelTest {
 
         assertEquals(
             listOf(
-                AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "phone"),
-                AnalyticsEvents.ONBOARDING_STEP_SKIPPED to mapOf("step" to "phone"),
                 AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "find_friends"),
                 AnalyticsEvents.CONTACTS_PERMISSION_ANSWERED to mapOf("granted" to false),
                 AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "add_friends"),

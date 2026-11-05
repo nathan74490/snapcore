@@ -12,6 +12,12 @@ import { IDENTITY_PROVIDER, type IdentityProvider } from "./application/ports/id
 import { USER_REPOSITORY, type UserRepository } from "./application/ports/user.repository";
 import { CheckUsernameAvailability } from "./application/use-cases/check-username-availability";
 import { RegisterUser } from "./application/use-cases/register-user";
+import { PhoneSignIn } from "./application/use-cases/phone-sign-in";
+import { PHONE_CODE_STORE, SMS_SENDER, type PhoneCodeStore, type SmsSender } from "./application/ports/phone-sign-in.ports";
+import { RedisPhoneCodeStore } from "./infrastructure/redis-phone-code.store";
+import { SimulatedSmsSender } from "./infrastructure/simulated-sms.sender";
+import { REDIS } from "../../shared/infrastructure/redis/redis.module";
+import type Redis from "ioredis";
 import { ResolveCurrentUser } from "./application/use-cases/resolve-current-user";
 import { SyncEmailFromIdentityProvider } from "./application/use-cases/sync-email";
 import { UpdateProfile } from "./application/use-cases/update-profile";
@@ -53,6 +59,15 @@ import { UsersController } from "./interface/http/users.controller";
       inject: [USER_REPOSITORY, IDENTITY_PROVIDER, ANALYTICS, CLOCK],
       useFactory: (users: UserRepository, identity: IdentityProvider, analytics: Analytics, clock: Clock) =>
         new RegisterUser(users, identity, analytics, clock),
+    },
+    { provide: PHONE_CODE_STORE, inject: [REDIS], useFactory: (redis: Redis) => new RedisPhoneCodeStore(redis) },
+    // Opérateur SMS fictif (ADR-034) : à remplacer par un vrai opérateur avant toute ouverture au public.
+    { provide: SMS_SENDER, useFactory: () => new SimulatedSmsSender() },
+    {
+      provide: PhoneSignIn,
+      inject: [PHONE_CODE_STORE, SMS_SENDER, IDENTITY_PROVIDER, CLOCK],
+      useFactory: (codes: PhoneCodeStore, sms: SmsSender, identity: IdentityProvider, clock: Clock) =>
+        new PhoneSignIn(codes, sms, identity, clock),
     },
     {
       provide: CheckUsernameAvailability,

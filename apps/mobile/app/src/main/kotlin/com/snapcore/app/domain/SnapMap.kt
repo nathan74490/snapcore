@@ -127,13 +127,117 @@ fun GeoPoint.metersTo(other: GeoPoint): Double {
     return hypot(x, y) * PI / 180 * 6_371_000
 }
 
+/** Position ou décalage à l'écran, en dp ; y compte vers le bas. */
+data class ScreenOffset(val x: Double, val y: Double)
+
+// Les dimensions comprennent le prénom, l'avatar sélectionné et leur ombre.
+const val FRIEND_MARKER_SIZE_DP = 96.0
+const val STORY_MARKER_SIZE_DP = 50.0
+const val MAP_MARKER_GAP_DP = 6.0
+
+data class MapMarker(val center: ScreenOffset, val width: Double, val height: Double)
+data class MapMarkerArea(val left: Double, val top: Double, val right: Double, val bottom: Double)
+
 /**
- * Rang de chaque pin parmi les marqueurs qu'il recouvrirait : avatar d'un ami ou pin précédent à moins de
- * [radiusMeters]. 0 : seul à cet endroit, affiché sur son point ; n : n-ième à s'écarter, l'écran le place
- * autour du point pour qu'il ne cache pas l'avatar de son auteur ni un autre pin.
+ * Place les rectangles réellement projetés par la carte (rotation, zoom et densité compris).
+ * Le premier marqueur — moi, si ma position est connue — reste à sa position exacte.
+ * La recherche s'élargit jusqu'à trouver une place, sans retour sur une place occupée.
  */
-fun pinSlots(pins: List<StoryPin>, friends: List<FriendLocation>, radiusMeters: Double = 500.0): List<Int> =
-    pins.mapIndexed { index, pin ->
-        friends.count { it.position.metersTo(pin.position) < radiusMeters } +
-            pins.take(index).count { it.position.metersTo(pin.position) < radiusMeters }
+fun mapMarkerOffsets(markers: List<MapMarker>, area: MapMarkerArea? = null): List<ScreenOffset> {
+    val occupied = mutableListOf<MapMarker>()
+    val step = (markers.maxOfOrNull { maxOf(it.width, it.height) } ?: 0.0) + MAP_MARKER_GAP_DP
+    return markers.map { marker ->
+        fun free(offset: ScreenOffset): Boolean = occupied.none { other ->
+            kotlin.math.abs(marker.center.x + offset.x - other.center.x) < (marker.width + other.width) / 2 + MAP_MARKER_GAP_DP &&
+                kotlin.math.abs(marker.center.y + offset.y - other.center.y) < (marker.height + other.height) / 2 + MAP_MARKER_GAP_DP
+        }
+        val candidates = sequence {
+            yield(ScreenOffset(0.0, 0.0))
+            var ring = 1
+            while (ring <= occupied.size + 1) {
+                val edge = (-ring..ring).flatMap { x -> (-ring..ring).mapNotNull { y ->
+                    ScreenOffset(x * step, y * step).takeIf { kotlin.math.abs(x) == ring || kotlin.math.abs(y) == ring }
+                } }.sortedBy { it.x * it.x + it.y * it.y }
+                yieldAll(edge)
+                ring++
+            }
+        }
+        // Un ami visible ne doit pas être déplacé hors de l'écran pour libérer ma position.
+        // Si l'écran est plein, on privilégie malgré tout une place sans collision.
+        fun fits(offset: ScreenOffset): Boolean = area == null ||
+            (marker.center.x + offset.x - marker.width / 2 >= area.left &&
+                marker.center.x + offset.x + marker.width / 2 <= area.right &&
+                marker.center.y + offset.y - marker.height / 2 >= area.top &&
+                marker.center.y + offset.y + marker.height / 2 <= area.bottom)
+        val visible = area != null && marker.center.x in area.left..area.right && marker.center.y in area.top..area.bottom
+        val available = candidates.filter(::free)
+        val offset = if (occupied.isNotEmpty() && visible) available.firstOrNull(::fits) ?: available.first() else available.first()
+        occupied += marker.copy(center = ScreenOffset(marker.center.x + offset.x, marker.center.y + offset.y))
+        offset
     }
+}
+
+/**
+ * Place affichée de chaque marqueur, écartée de ceux qu'il recouvrirait (BUG-027, BUG-028), au [zoom] et à
+ * l'orientation [bearing] (degrés) de la carte. [sizes] : taille en dp de chaque marqueur.
+ *
+ * Projection Web Mercator calculée ici, comme Mapbox (512 dp de monde au zoom 0), et non par la carte : le
+ * résultat ne dépend pas du centre. Faire glisser la carte ne déplace donc aucun marqueur, et un ami hors
+ * champ ne gêne pas ceux qui sont à l'écran.
+ */
+fun mapMarkerLayout(positions: List<GeoPoint>, sizes: List<Double>, zoom: Double, bearing: Double = 0.0): List<GeoPoint> {
+    val world = 512.0 * Math.pow(2.0, zoom)
+    val angle = bearing * PI / 180
+    val cosB = cos(angle)
+    val sinB = kotlin.math.sin(angle)
+    fun project(p: GeoPoint): ScreenOffset {
+        val lat = p.latitude.coerceIn(-85.0511, 85.0511) * PI / 180
+        val x = world * (p.longitude + 180) / 360
+        val y = world * (0.5 - ln(kotlin.math.tan(PI / 4 + lat / 2)) / (2 * PI))
+        // Carte tournée de [bearing] : les rectangles des marqueurs restent alignés sur l'écran.
+        return ScreenOffset(x * cosB + y * sinB, -x * sinB + y * cosB)
+    }
+    fun unproject(s: ScreenOffset): GeoPoint {
+        val x = s.x * cosB - s.y * sinB
+        val y = s.x * sinB + s.y * cosB
+        val longitude = x / world * 360 - 180
+        val latitude = (2 * kotlin.math.atan(kotlin.math.exp((0.5 - y / world) * 2 * PI)) - PI / 2) * 180 / PI
+        return GeoPoint(latitude, longitude)
+    }
+    val screen = positions.map(::project)
+    val offsets = mapMarkerOffsets(screen.mapIndexed { i, s -> MapMarker(s, sizes[i], sizes[i]) })
+    return positions.indices.map { i ->
+        if (offsets[i] == ScreenOffset(0.0, 0.0)) positions[i]
+        else unproject(ScreenOffset(screen[i].x + offsets[i].x, screen[i].y + offsets[i].y))
+    }
+}
+
+/** Rayon des amis et stories pris en compte dans le premier cadrage sur moi (BUG-026 d'ADR-023). */
+const val NEARBY_FOCUS_RADIUS_METERS = 20_000.0
+
+/**
+ * Premier cadrage de la carte quand ma position est connue : moi et ce qui est à moins de [radiusMeters]
+ * (amis, stories), pour qu'un ami à 2 km ne reste pas hors de l'écran. Les amis lointains (autre ville)
+ * n'élargissent pas le cadre : la carte reste à l'échelle d'une ville ou d'une agglomération.
+ */
+fun focusAround(me: GeoPoint, others: List<GeoPoint>, radiusMeters: Double = NEARBY_FOCUS_RADIUS_METERS): MapFocus =
+    focusOn(listOf(me) + others.filter { me.metersTo(it) <= radiusMeters }, minZoom = 9.0, maxZoom = 13.0)!!
+
+/** Distance lue par TalkBack sur un marqueur : « à 300 m », « à 2,4 km », « à 35 km ». */
+fun distanceLabel(meters: Double): String = when {
+    meters < 50 -> "tout près de toi"
+    meters < 1_000 -> "à ${(meters / 50).roundToLong() * 50} m"
+    meters < 10_000 -> "à ${"%.1f".format(java.util.Locale.FRENCH, meters / 1_000)} km"
+    else -> "à ${(meters / 1_000).roundToLong()} km"
+}
+
+/** Ce que TalkBack annonce sur la carte : ce qui s'y trouve, et comment l'explorer. */
+fun mapSummary(friends: Int, stories: Int, meKnown: Boolean): String {
+    val parts = listOfNotNull(
+        when (friends) { 0 -> "aucun ami visible"; 1 -> "1 ami visible"; else -> "$friends amis visibles" },
+        when (stories) { 0 -> null; 1 -> "1 story"; else -> "$stories stories" },
+        if (meKnown) null else "ta position n'est pas connue",
+    )
+    return "Carte. " + parts.joinToString(", ").replaceFirstChar(Char::uppercase) +
+        ". Glisse ton doigt sur l'écran pour trouver tes amis, ou utilise le bouton Me recentrer."
+}

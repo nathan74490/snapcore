@@ -100,6 +100,8 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 |---|---|---|---|
 | GET | `/health` | Public | |
 | POST | `/auth/register` | Crée la ligne `User` (token seul, idempotent, `checkRevoked`) `{ username, firstName, lastName?, birthday: "YYYY-MM-DD", phoneNumber? }` ; 400 si moins de 13 ans | 015, 029 |
+| POST | `/auth/phone/code` | Public. Envoie un code SMS à 6 chiffres (5 min, un toutes les 30 s) `{ phoneNumber: "+33…" }` → `{ phoneNumber, expiresInSeconds, resendInSeconds, simulatedCode? }` ; `simulatedCode` seulement avec l'opérateur SMS simulé | 034 |
+| POST | `/auth/phone/verify` | Public. Vérifie le code `{ phoneNumber, code }` → `{ customToken }` (jeton Firebase à échanger par `signInWithCustomToken`) ; 400 si faux, expiré ou après 5 erreurs | 034 |
 | GET | `/users/username-availability?username=` | Public : `{ available, reason? }` (format invalide ou pseudo déjà porté par une ligne, même supprimée/suspendue) | 029 |
 | GET | `/me` | Mon profil, avec `lastName?` et `birthday?` (privés, jamais dans un profil public) | 014, 029 |
 | PATCH | `/me` | Modifier pseudo / prénom / nom (`""` le retire) / téléphone (409 si pris) | 014, 029 |

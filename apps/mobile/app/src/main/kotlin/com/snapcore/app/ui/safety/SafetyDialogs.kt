@@ -1,5 +1,9 @@
 package com.snapcore.app.ui.safety
 
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,7 +31,8 @@ import com.snapcore.app.ui.theme.SnapColors
 fun ConfirmActionDialog(title: String, text: String, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        // TalkBack : le titre de la boîte est lu en premier, comme un titre de section (ADR-033).
+        title = { Text(title, modifier = Modifier.semantics { heading() }) },
         text = { Text(text) },
         confirmButton = {
             TextButton(onClick = { onDismiss(); onConfirm() }) { Text(confirm, color = SnapColors.SnapRed, fontWeight = FontWeight.Bold) }
@@ -42,16 +47,17 @@ fun ReportDialog(subject: String, onReport: (ReportReason) -> Unit, onDismiss: (
     var reason by remember { mutableStateOf<ReportReason?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Signaler $subject") },
+        title = { Text("Signaler $subject", modifier = Modifier.semantics { heading() }) },
         text = {
             Column {
                 Text("Pourquoi ? Ton signalement est anonyme et sera examiné par la modération.", color = SnapColors.Grey)
                 ReportReason.entries.forEach { option ->
+                    // Un motif = un bouton radio lu en une fois : « Spam ou arnaque, sélectionné ».
                     Row(
-                        Modifier.fillMaxWidth().clickable { reason = option }.padding(vertical = 2.dp),
+                        Modifier.fillMaxWidth().selectable(reason == option, role = Role.RadioButton) { reason = option }.padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RadioButton(selected = reason == option, onClick = { reason = option },
+                        RadioButton(selected = reason == option, onClick = null,
                             colors = RadioButtonDefaults.colors(selectedColor = SnapColors.ChatBlue))
                         Text(option.label)
                     }

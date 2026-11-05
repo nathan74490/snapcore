@@ -1,5 +1,14 @@
 package com.snapcore.app.ui.home
 
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -55,7 +64,7 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
     onOpenProfile: () -> Unit, onOpenFriends: () -> Unit, onCaptured: (CapturedMedia) -> Unit,
     onOpenConversation: (Friend, snapId: String?) -> Unit, onOpenMyStory: () -> Unit, onPlayStory: (FriendStory, fromMap: Boolean) -> Unit,
     modifier: Modifier = Modifier, snapRecipient: Friend? = null, onSnapTo: (Friend) -> Unit = {}, onClearSnapRecipient: () -> Unit = {},
-    onOpenGroup: (Group) -> Unit = {}, onNewChat: () -> Unit = onOpenFriends) {
+    onOpenGroup: (Group, snapId: String?) -> Unit = { _, _ -> }, onNewChat: () -> Unit = onOpenFriends) {
     // Demandes d'ami en attente : le bouton d'ajout passe en jaune avec un badge, comme dans Snapchat.
     val requestsVm = containerViewModel { FriendRequestsViewModel(it.friends, it.realtime.events) }
     val pendingRequests by requestsVm.count.collectAsStateWithLifecycle()
@@ -100,7 +109,10 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
             // La caméra est toujours le fond fixe. Chat et Stories sont des panneaux au-dessus :
             // ils recouvrent la caméra à l'ouverture et la découvrent au retour, dans les deux sens.
             // La compensation reste dans la couche graphique, sans réagencer le contenu.
+            // TalkBack : seule la page de l'onglet courant est lisible (la caméra reste composée derrière le Chat
+            // et les Stories, et les pages voisines sont gardées en mémoire) (ADR-033).
             Box(Modifier.fillMaxSize()
+                .then(if (page != pager.settledPage) Modifier.clearAndSetSemantics {} else Modifier)
                 .zIndex(if (page == CAMERA_TAB) 0f else 1f)
                 .graphicsLayer {
                     translationX = if (page == CAMERA_TAB) {
@@ -112,10 +124,11 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                 CameraPageLifecycle(cameraVisible) {
                     // Comme Snapchat : la barre d'état reste noire et l'aperçu est une carte aux coins arrondis.
                     Box(Modifier.fillMaxSize().background(Color.Black).statusBarsPadding().clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))) {
-                        CameraScreen(onCaptured, lensMode = lensMode, onLensModeChange = { lensMode = it }, onRecordingChange = { recording = it })
+                        CameraScreen(onCaptured, lensMode = lensMode, onLensModeChange = { lensMode = it }, onRecordingChange = { recording = it },
+                            screenReaderFocus = pager.settledPage == CAMERA_TAB)
                         if (!recording) Row(Modifier.statusBarsPadding().fillMaxWidth().padding(start = 8.dp, end = 72.dp, top = 8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(account.displayName, account.pictureUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
+                            Avatar(account.displayName, account.pictureUrl, 40.dp, Modifier.profileButton(onOpenProfile))
                             IconButton(onClick = onOpenFriends) { FigmaAsset("14-588_imgIconSearch", "Rechercher", tint = Color.White) }
                             Spacer(Modifier.weight(1f))
                             Box {
@@ -126,7 +139,8 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                         // Snap en réponse à un ami (bouton appareil photo du chat) : rappel de son nom, ✕ pour annuler.
                         if (snapRecipient != null && !recording) {
                             Row(Modifier.align(Alignment.TopCenter).padding(top = 64.dp).clip(RoundedCornerShape(18.dp))
-                                .background(Color.Black.copy(alpha = .45f)).clickable(onClick = onClearSnapRecipient)
+                                .background(Color.Black.copy(alpha = .45f))
+                                .clickable(role = Role.Button, onClickLabel = "annuler le snap pour ${snapRecipient.displayName}", onClick = onClearSnapRecipient)
                                 .padding(start = 14.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Snap pour ${snapRecipient.displayName}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
@@ -146,10 +160,14 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                     Row(Modifier.statusBarsPadding().fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.width(96.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Avatar(account.displayName, account.pictureUrl, 40.dp, Modifier.clickable(onClick = onOpenProfile))
+                            Avatar(account.displayName, account.pictureUrl, 40.dp, Modifier.profileButton(onOpenProfile))
                             RoundAction("15-925_imgIconSearch", "Rechercher des amis", onOpenFriends)
                         }
-                        Box(Modifier.weight(1f), Alignment.Center) { Text(labels[page], style = MaterialTheme.typography.titleLarge) }
+                        Box(Modifier.weight(1f), Alignment.Center) {
+                            // À l'arrivée sur l'onglet, TalkBack se place sur son titre.
+                            Text(labels[page], style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.semantics { heading() }.screenReaderFocusWhen(pager.settledPage == page))
+                        }
                         Row(Modifier.width(96.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                             Box {
                                 if (pendingRequests > 0) RoundAction("15-925_imgIconAddFriend", "Ajouter des amis", onOpenFriends, highlighted = true)
@@ -173,8 +191,13 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
                 if (lensBar) LensModeBar(onClose = { lensMode = false })
                 else Row(Modifier.fillMaxWidth().height(49.dp).padding(horizontal = 8.dp)) {
                     labels.forEachIndexed { index, label ->
-                        Column(Modifier.weight(1f).fillMaxHeight().clickable(enabled = !(camera && recording)) {
+                        Column(Modifier.weight(1f).fillMaxHeight().selectable(index == pager.currentPage, enabled = !(camera && recording), role = Role.Tab) {
                             scope.launch { pager.animateScrollToPage(index, animationSpec = tween(280, easing = FastOutSlowInEasing)) }
+                        }.clearAndSetSemantics {
+                            contentDescription = label
+                            role = Role.Tab
+                            this.selected = index == pager.currentPage
+                            onClick { scope.launch { pager.animateScrollToPage(index) }; true }
                         }.padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             // Tab Bar 10:458 : icône pleine pour l'onglet actif, contour pour les autres.
@@ -194,7 +217,8 @@ fun HomeScreen(account: Account, selected: Int, onSelect: (Int) -> Unit,
 @Composable
 private fun RequestsBadge(count: Int, modifier: Modifier = Modifier) {
     if (count <= 0) return
-    Box(modifier.sizeIn(minWidth = 18.dp, minHeight = 18.dp).background(SnapColors.SnapRed, CircleShape).padding(horizontal = 4.dp), Alignment.Center) {
+    Box(modifier.sizeIn(minWidth = 18.dp, minHeight = 18.dp).background(SnapColors.SnapRed, CircleShape).padding(horizontal = 4.dp)
+        .clearAndSetSemantics { contentDescription = if (count == 1) "1 demande d'ami" else "$count demandes d'ami" }, Alignment.Center) {
         Text(if (count > 9) "9+" else count.toString(), color = Color.White, fontSize = 11.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold)
     }
 }

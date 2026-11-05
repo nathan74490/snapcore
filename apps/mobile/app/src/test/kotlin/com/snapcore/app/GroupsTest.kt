@@ -47,8 +47,12 @@ private fun message(from: Friend, type: ChatContentType = ChatContentType.TEXT, 
 private class FakeGroups(var current: Group = group("Soirée"), var history: List<GroupMessage> = emptyList()) : GroupService {
     val calls = mutableListOf<String>()
     var failCreate = false
+    var failLoad = false
     override suspend fun groups() = listOf(GroupSummary(current, history.firstOrNull()))
-    override suspend fun group(groupId: String) = current
+    override suspend fun group(groupId: String): Group {
+        if (failLoad) error("Impossible de joindre le serveur")
+        return current
+    }
     override suspend fun create(name: String?, memberIds: List<String>): Group {
         calls += "create:$name:${memberIds.joinToString(",")}"
         if (failCreate) error("Serveur injoignable")
@@ -83,8 +87,8 @@ class GroupRulesTest {
     @Test
     fun `statut de la ligne du groupe dans la liste Chat`() {
         val g = group("Soirée")
-        assertEquals("Nouveau snap de Léa", statusOf(message(lea, ChatContentType.SNAP_PHOTO), g, me.id, unread = true).label)
-        assertEquals("Nouveau chat de Léa", statusOf(message(lea), g, me.id, unread = true).label)
+        assertEquals("Snap de Léa", statusOf(message(lea, ChatContentType.SNAP_PHOTO), g, me.id, unread = true).label)
+        assertEquals("Chat de Léa", statusOf(message(lea), g, me.id, unread = true).label)
         assertEquals("Reçu", statusOf(message(lea), g, me.id, unread = false).label)
         assertEquals("Envoyé", statusOf(message(me, seenBy = listOf(lea.id)), g, me.id, unread = false).label)
         // Ouvert seulement quand tous les autres membres ont vu.
@@ -173,6 +177,30 @@ class GroupViewModelsTest {
         advanceUntilIdle()
         assertEquals("Serveur injoignable", vm.state.value.error)
         assertNull(vm.state.value.created)
+    }
+
+    @Test
+    fun `echec initial persistant, nouvelle tentative et historique conserve apres une autre panne (BUG-029)`() = runTest(dispatcher) {
+        val groups = FakeGroups(history = listOf(message(lea))).apply { failLoad = true }
+        val vm = GroupConversationViewModel("g1", me.id, groups, MutableSharedFlow())
+        advanceUntilIdle()
+        assertNull(vm.state.value.group)
+        assertTrue(!vm.state.value.loading)
+        assertEquals("Impossible de joindre le serveur", vm.state.value.initialLoadError)
+        vm.consumeError()
+        assertEquals("Impossible de joindre le serveur", vm.state.value.initialLoadError)
+        groups.failLoad = false
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals("Soirée", vm.state.value.group?.name)
+        assertNull(vm.state.value.initialLoadError)
+        groups.failLoad = true
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals("Soirée", vm.state.value.group?.name)
+        assertEquals(1, vm.state.value.messages.size)
+        assertEquals("Impossible de joindre le serveur", vm.state.value.error)
+        assertNull(vm.state.value.initialLoadError)
     }
 
     @Test

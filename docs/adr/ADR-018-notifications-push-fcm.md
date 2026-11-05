@@ -29,6 +29,7 @@ Le chat (ADR-006) et la gestion des amis (ADR-012) reposent sur la passerelle te
 - L'upsert par `token` suppose que le token FCM est unique par appareil au niveau applicatif (garanti par le SDK Firebase) ; la contrainte `@unique` sur `DeviceToken.token` (déjà présente au schéma) rend cet upsert atomique côté base.
 
 ## Historique
+- Révision 5 (présentation Android, 2026-11-04) : avatars de profil avec repli en initiales, icônes photo/vidéo/chat, titres explicites, action d'ouverture et version publique neutre. Gabarit natif vérifié sur Galaxy A54, canal existant conservé et aucun changement du transport FCM. Détails et captures : `docs/design/notifications-android.md`.
 - Version initiale : mentionnait FCM sans modèle de token ni mécanisme de présence, et le décrivait comme une dépendance "distincte du reste de la stack" avant l'adoption de Firebase Authentication (ADR-015).
 - Révision (revue technique) : ajout de `DeviceToken`, mécanisme de présence Redis multi-instance, mise à jour du contexte suite à ADR-015.
 - Révision 2 : ajout de la suppression du `DeviceToken` au logout et de l'upsert par `token` pour gérer le changement de compte sur un même appareil ; la contrainte `@unique` sur `token` était déjà présente au schéma.

@@ -1,5 +1,13 @@
 package com.snapcore.app.ui.auth
 
+import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.semantics.isTraversalGroup
+import com.snapcore.app.ui.components.rememberScreenReaderOn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +65,25 @@ import com.snapcore.app.ui.components.SnapTextField
 import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
+import android.telephony.TelephonyManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import com.snapcore.app.ui.onboarding.GhostLines
+import com.snapcore.app.ui.components.ChunkyButton
+import com.snapcore.app.ui.components.GhostMascot
+import com.snapcore.app.ui.components.GhostMood
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
+import com.snapcore.app.ui.onboarding.GhostSays
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 
 @Composable
 fun StartScreen(onSession: (Session) -> Unit) {
@@ -83,66 +110,105 @@ private fun Logo() {
     FigmaAsset("13-241_imgImageGhostLogo")
 }
 
+/**
+ * Accueil façon Duolingo, aux couleurs de SnapCore : le fantôme animé au centre, le nom et l'accroche, puis
+ * « C'est parti ! » (inscription) et « J'ai déjà un compte » (connexion). Toucher le fantôme change son humeur.
+ */
 @Composable
 fun WelcomeScreen(onLogin: () -> Unit, onSignUp: () -> Unit) {
     StatusBarIcons(dark = true)
-
-    BoxWithConstraints(Modifier.fillMaxSize().background(SnapColors.Yellow)) {
-        FigmaAsset("13-241_imgImageGhostLogo", modifier = Modifier.align(Alignment.TopCenter).padding(top = maxHeight * (262f / 852f)))
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            Box(Modifier.fillMaxWidth().height(80.dp).background(SnapColors.SnapRed).clickable(onClick = onLogin), Alignment.Center) {
-                Text("CONNEXION", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            }
-            Box(Modifier.fillMaxWidth().background(SnapColors.ChatBlue).navigationBarsPadding().height(66.dp).clickable(onClick = onSignUp), Alignment.Center) {
-                Text("INSCRIPTION", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            }
-        }
+    val moods = remember { listOf(GhostMood.WAVE, GhostMood.HAPPY, GhostMood.LOVE, GhostMood.CELEBRATE, GhostMood.CURIOUS) }
+    var mood by remember { mutableIntStateOf(0) }
+    Column(Modifier.fillMaxSize().background(SnapColors.Yellow).systemBarsPadding().padding(horizontal = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.weight(1f))
+        GhostMascot(moods[mood], Modifier.size(220.dp).clickable(
+            interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClickLabel = "le faire réagir",
+        ) { mood = (mood + 1) % moods.size }.clearAndSetSemantics {})
+        Text("snapcore", fontFamily = WordmarkFont, fontWeight = FontWeight.Black, fontSize = 46.sp, color = SnapColors.Ink,
+            modifier = Modifier.padding(top = 8.dp).semantics { heading(); contentDescription = "SnapCore" })
+        Text("Tes snaps, tes stories et tes amis.\nAu même endroit.", fontSize = 19.sp, lineHeight = 26.sp,
+            color = SnapColors.Ink.copy(alpha = .62f), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
+        Spacer(Modifier.weight(1.3f))
+        ChunkyButton("Je m'inscris", onSignUp, container = SnapColors.ChatBlue, edge = Color(0xFF0A87C8), content = Color.White)
+        Spacer(Modifier.height(14.dp))
+        ChunkyButton("J'ai déjà un compte", onLogin, container = SnapColors.SnapRed, edge = Color(0xFFC42A43), content = Color.White)
+        Spacer(Modifier.height(20.dp))
     }
 }
 
+/** Nunito en graisse Black pour le nom de l'app, comme le logotype arrondi de Duolingo. */
+private val WordmarkFont = FontFamily(Font(com.snapcore.app.R.font.nunito_sans, FontWeight.Black,
+    variationSettings = FontVariation.Settings(FontVariation.weight(950), FontVariation.Setting("YTLC", 500f))))
+
+/**
+ * Connexion guidée par le fantôme, comme l'inscription (ADR-029) : il pose la question, se cache les yeux
+ * pendant la saisie du mot de passe et annonce lui-même les erreurs.
+ */
 @Composable
 fun LoginScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
-    val vm = containerViewModel { LoginViewModel(it.auth, it.sessionResolver, it.analytics) }
+    val context = LocalContext.current
+    val vm = containerViewModel {
+        val sim = context.getSystemService(TelephonyManager::class.java)?.simCountryIso?.takeIf { code -> code.isNotBlank() }
+        LoginViewModel(it.auth, it.sessionResolver, it.analytics, countryCode = sim ?: java.util.Locale.getDefault().country)
+    }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.session) { state.session?.let(onSession) }
-
+    val goBack = { if (!vm.back()) onBack() }
+    BackHandler(onBack = goBack)
+    var passwordFocused by remember { mutableStateOf(false) }
+    var reveal by remember { mutableStateOf(false) }
+    var pickingCountry by remember { mutableStateOf(false) }
+    if (pickingCountry) {
+        CountryPicker(onPick = { vm.onCountry(it); pickingCountry = false }, onClose = { pickingCountry = false })
+        BackHandler { pickingCountry = false }
+        return
+    }
 
     StatusBarIcons(dark = true)
-    Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding().imePadding().verticalScroll(rememberScrollState())) {
-        IconButton(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) {
-            FigmaAsset("19-1518_imgIconChevronLeft", "Retour")
+    // TalkBack : la phrase du fantôme, les champs et le bouton d'abord, le retour en dernier.
+    Column(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding().imePadding().semantics { isTraversalGroup = true }) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp).semantics { traversalIndex = 2f },
+            verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = goBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour", tint = SnapColors.Muted) }
+            Text("Connexion", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, modifier = Modifier.semantics { heading() })
         }
-        Text("Connexion", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Normal,
-            modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 36.dp), textAlign = TextAlign.Center)
-        Column(Modifier.padding(horizontal = 53.dp)) {
-            LoginField(state.email, vm::onEmail, "ADRESSE EMAIL", false)
-            Spacer(Modifier.height(12.dp))
-            LoginField(state.password, vm::onPassword, "MOT DE PASSE", true)
-            state.error?.let { Text(it, color = SnapColors.SnapRed, modifier = Modifier.padding(top = 12.dp)) }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+            val line = GhostLines.login(state, passwordFocused)
+            GhostSays(line.text, line.mood, Modifier.padding(top = 8.dp, bottom = 24.dp), ghostSize = 88.dp)
+            when (state.mode) {
+                LoginMode.PHONE -> {
+                    PhoneNumberFields(state.phone, { pickingCountry = true }, vm::onNational)
+                    // Comptes créés avec un email, avant la connexion par SMS (ADR-034).
+                    Text("Se connecter avec un email", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 20.dp).clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button) { vm.useEmail(true) }.padding(vertical = 6.dp))
+                }
+                LoginMode.CODE -> {
+                    SimulatedSms(state.phone.simulatedCode, vm::useSimulatedCode, Modifier.padding(bottom = 20.dp))
+                    PhoneCodeFields(state.phone, vm::onCode, vm::resendCode, enabled = !state.loading)
+                }
+                LoginMode.EMAIL -> {
+                    SignUpField("Email", state.email, vm::onEmail, "ton.email@exemple.fr", keyboardType = KeyboardType.Email)
+                    Spacer(Modifier.height(20.dp))
+                    SignUpField("Mot de passe", state.password, vm::onPassword, "Ton mot de passe", keyboardType = KeyboardType.Password,
+                        password = !reveal, modifier = Modifier.onFocusChanged { passwordFocused = it.isFocused }) {
+                        if (state.password.isNotEmpty()) IconButton(onClick = { reveal = !reveal }) {
+                            Icon(if (reveal) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                if (reveal) "Masquer le mot de passe" else "Afficher le mot de passe", tint = SnapColors.Muted)
+                        }
+                    }
+                    Text("Se connecter avec mon numéro", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 20.dp).clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button) { vm.useEmail(false) }.padding(vertical = 6.dp))
+                }
+            }
         }
-        Spacer(Modifier.height(150.dp))
-        PrimaryButton("Connexion", vm::submit, enabled = state.email.isNotBlank() && state.password.isNotBlank(),
-            loading = state.loading, modifier = Modifier.padding(horizontal = 75.dp),
-            // Bouton « Log In » de la maquette (19:1534) : 48 de haut, libellé Regular 19.
-            height = 48.dp, textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp))
-        Spacer(Modifier.height(24.dp))
+        PrimaryButton(when (state.mode) {
+            LoginMode.PHONE -> "Recevoir le code par SMS"
+            LoginMode.CODE -> "Valider"
+            LoginMode.EMAIL -> "Connexion"
+        }, vm::submit, enabled = state.canSubmit || state.loading,
+            loading = state.loading, modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp), height = 46.dp)
     }
-}
-
-@Composable
-private fun LoginField(value: String, change: (String) -> Unit, label: String, password: Boolean) {
-
-    var reveal by remember { mutableStateOf(false) }
-    Text(label, color = SnapColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = .96.sp)
-    Row(Modifier.fillMaxWidth().height(38.dp), verticalAlignment = Alignment.CenterVertically) {
-        BasicTextField(value, change, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, color = SnapColors.Ink),
-            visualTransformation = if(password && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(keyboardType = if(password) KeyboardType.Password else KeyboardType.Email),
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue), modifier = Modifier.weight(1f))
-        if(password) IconButton(onClick = { reveal = !reveal }, modifier = Modifier.size(36.dp)) {
-            if(reveal) Icon(Icons.Filled.Visibility, "Masquer le mot de passe", tint = SnapColors.Muted, modifier = Modifier.size(22.dp))
-            else FigmaAsset("19-1518_imgIconEyeOff", "Afficher le mot de passe")
-        }
-    }
-    HorizontalDivider(color = SnapColors.Hairline, thickness = 1.dp)
 }

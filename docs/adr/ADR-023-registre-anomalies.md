@@ -39,6 +39,13 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 | BUG-020 | Faible | Mobile / stories | Un élément de « Ma story » se supprime d'un seul appui, sans confirmation | Corrigé (branche fix/campagne-2026-11-04-2) |
 | BUG-021 | Faible | Mobile / textes | Trois textes vouvoient l'utilisateur alors que l'app le tutoie partout ailleurs | Corrigé (branche fix/campagne-2026-11-04-2) |
 | BUG-022 | Faible | Backend / tests | Le test de BUG-014 échoue environ une fois sur deux (deux chats à la même heure figée) | Ouvert |
+| BUG-023 | Faible | Mobile / groupes | La notification d'un groupe sans nom affiche mon prénom et omet celui de l'expéditeur | Ouvert |
+| BUG-024 | Faible | Mobile / groupes | Toucher un groupe avec un nouveau snap ouvre la conversation au lieu du snap | Ouvert |
+| BUG-025 | Faible | Mobile / groupes | « Nouveau snap de Léa » est coupé dans la liste Chat : le prénom disparaît | Ouvert |
+| BUG-026 | Moyenne | Mobile / Snap Map | À l'ouverture, la carte ne montre aucun ami alors que plusieurs sont à 2-3 km | Ouvert |
+| BUG-027 | Faible | Mobile / Snap Map | Les pins de stories et les avatars de plusieurs amis proches se recouvrent | Corrigé (modifications locales, validation Android du 2026-11-04) |
+| BUG-028 | Moyenne | Mobile / Snap Map | Mon avatar masque entièrement un ami situé au même endroit | Corrigé (modifications locales, validation Android du 2026-11-04) |
+| BUG-029 | Moyenne | Mobile / groupes, réseau | Un groupe reste en chargement après l'échec de son chargement initial, sans bouton Réessayer | Corrigé (modifications locales, validation Android du 2026-11-04) |
 
 ### BUG-001 : Une vidéo de 60 s sans filtre dépasse la limite de 60 Mo
 - **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/camera/CameraScreen.kt` (`videoCaptureQualitySelector = QualitySelector.from(Quality.HD)`), limite dans `apps/backend/src/modules/media/domain/media-purpose.ts` (`SNAP_VIDEO`/`STORY_VIDEO` : 60 Mo).
@@ -224,6 +231,64 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
   - Résultat : le test échoue environ une fois sur deux, sans rapport avec le code testé.
 - **Impact** : une suite de tests qui échoue par hasard fait douter des vraies régressions.
 - **Piste** : `advance(MINUTE)` entre les deux chats.
+- **Mesure** (troisième campagne de test du 2026-11-04) : 4 échecs sur 5 lancements de `messaging-use-cases.spec.ts`, et 2 sur 3 pour la suite complète. C'est le seul test en échec.
+
+### BUG-023 : Notification d'un groupe sans nom, mauvais titre
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/push/PushServices.kt`, branche `group.message.received` : sans `groupName`, le titre reprend les prénoms des membres **sauf l'expéditeur** (`filter { it != senderName }`).
+- **Constat** (troisième campagne de test du 2026-11-04, Galaxy A54, app en arrière-plan) :
+  - Lucas écrit dans le groupe sans nom « Lucas et Hugo ».
+  - La notification a pour titre « Nathan et Hugo » : elle contient mon propre prénom, et pas celui de Lucas.
+  - Dans l'app, le même groupe s'appelle « Lucas et Hugo », d'après `Group.title(myId)`, qui écarte moi et non l'expéditeur.
+- **Impact** : le titre ne correspond pas au nom du groupe dans la liste Chat. On ne reconnaît pas le groupe, et on lit son propre prénom.
+- **Piste** : construire le titre comme `Group.title(myId)`, en écartant le compte connecté (id connu de l'app) plutôt que l'expéditeur.
+
+### BUG-024 : Un snap de groupe ne s'ouvre pas depuis la liste Chat
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/chat/ChatListScreen.kt`, `GroupRow` : l'appui ouvre toujours la conversation (`onOpenGroup`).
+- **Constat** (troisième campagne de test du 2026-11-04) : la ligne de « Soirée samedi » affiche « Nouveau snap de Léa ». La toucher ouvre la conversation, et il faut encore toucher « Appuie pour voir ». Pour un ami, le même appui ouvre directement le snap (BUG-014), comme dans Snapchat.
+- **Impact** : comportement différent entre un ami et un groupe ; une étape de plus pour voir un snap.
+- **Piste** : passer à `GroupConversationRoute` un `openSnapId` (le `headline` à ouvrir), comme `ConversationRoute`. La conversation ouvre le lecteur dès le chargement et ramène à la liste à sa fermeture.
+
+### BUG-025 : Statut d'un groupe coupé dans la liste Chat
+- **Où** : `ChatListScreen.kt`, `GroupRow` ; libellé de `statusOf(GroupMessage, …)` dans `domain/Groups.kt`.
+- **Constat** (troisième campagne de test du 2026-11-04, Galaxy A54) : « Nouveau snap de Léa · à l'instant » ne tient pas sur la ligne. Elle affiche « Nouveau snap de… », et le prénom, l'information utile, disparaît. « Nouveau chat de Lucas » tient, de justesse.
+- **Impact** : on ne sait pas qui a envoyé le snap sans ouvrir le groupe.
+- **Piste** : un libellé plus court, par exemple « Snap de Léa » ou « Léa · nouveau snap », ou l'heure sur une ligne à part.
+
+### BUG-026 : Snap Map, aucun ami visible à l'ouverture
+- **Où** : `apps/mobile/app/src/main/kotlin/com/snapcore/app/ui/map/MapScreen.kt`, premier cadrage : centré sur moi au zoom ville (`CityZoom = 13`), sans tenir compte des amis.
+- **Constat** (troisième campagne de test du 2026-11-04, Galaxy A54) :
+  - Léa, Hugo et Inès sont à 2 ou 3 km, autour du lac d'Annecy, et leurs positions sont bien en Redis.
+  - À l'ouverture, la carte ne montre que « Moi ».
+  - Il faut déplacer la carte vers l'est pour les voir ; l'affichage est alors correct.
+  - Déjà relevé comme simple remarque lors de la première campagne.
+- **Impact** : l'utilisateur croit qu'aucun ami ne partage sa position.
+- **Piste** : un premier cadrage qui englobe ma position et les amis proches (par exemple ceux à moins de 20 km), avec `focusOn` déjà utilisé quand ma position est inconnue.
+
+### BUG-027 : Snap Map, pins et avatars superposés
+- **Où** : `MapScreen.kt` et `domain/SnapMap.kt` (`pinSlots`) : un pin ne s'écarte que des avatars et des pins à moins de 500 m, avec un écart fixe de 58 dp, quel que soit le zoom.
+- **Constat** (troisième campagne de test du 2026-11-04, Galaxy A54, zoom ville) : dans la vieille ville d'Annecy, les stories d'Inès, de Chloé et de Léa s'empilent. L'avatar d'Inès recouvre l'une d'elles.
+- **Impact** : des stories sont difficiles à voir et à toucher.
+- **Piste** : regrouper les marqueurs proches au zoom courant (« 3 stories »), ou calculer l'écart à partir de la distance à l'écran plutôt qu'en mètres.
+- **Correction et validation** : placement des rectangles projetés par Mapbox, libellés et mon avatar compris, puis reprojection du centre final. Recherche élargie sans retour sur une place déjà occupée, priorité aux places visibles ; les points hors champ restent à leur position géographique. Tests de 50 marqueurs très proches et contrôle sur Galaxy A54 aux cadrages ville et région. Voir la validation ajoutée à la quatrième campagne.
+- **Reprise du 2026-11-05** : le placement était recalculé à chaque image du déplacement de la carte, et Mapbox renvoie des pixels faussés pour les points hors champ. Glisser la carte faisait donc sauter les stories d'une place à l'autre, et des amis lointains restaient collés au bord de l'écran. Le placement (`mapMarkerLayout`) projette désormais lui-même en Web Mercator : il ne dépend que du zoom et de l'orientation, jamais du centre. Il est recalculé quand la carte s'immobilise, et les marqueurs glissent vers leur nouvelle place. Contrôle sur Galaxy A54 : après un glissement, tous les marqueurs se déplacent du même vecteur que la carte.
+
+### BUG-028 : Snap Map, mon avatar masque un ami au même endroit
+- **Constat** (quatrième campagne du 2026-11-04, Galaxy A54, APK local installé à 14 h 36) : rober et moi avons des positions presque identiques. Son avatar est placé en `[18,570][165,717]`, le mien en `[19,570][166,717]`. Seul « Moi » est visible ; l'appui ouvre mes paramètres, pas la fiche de rober.
+- **Où** : `MapScreen.kt` ajoute mon marqueur après ceux des amis, avec `allowOverlap(true)`. `mapLayout` dans `domain/SnapMap.kt` ne reçoit pas ma position et ne réserve aucun espace pour mon marqueur.
+- **Impact** : un ami proche peut disparaître entièrement et devenir impossible à sélectionner à cet endroit.
+- **Piste** : inclure ma position dans la résolution des collisions, ou regrouper les comptes superposés avec un choix au toucher.
+- **Preuves** : [rapport et captures](../tests/campagne-2026-11-04-4.md).
+
+- **Correction et validation de BUG-028** : ma position visible est réservée avant les amis. (Depuis la reprise du 2026-11-05, voir BUG-027, le placement ne tient plus compte des bords de l'écran : au bord, l'ami écarté peut sortir du champ, et il suffit de déplacer la carte pour le voir.) Test de régression et contrôle sur Galaxy A54 : rober est visible et son appui ouvre sa propre fiche.
+
+### BUG-029 : Groupe en chargement persistant après un échec réseau initial
+- **Constat** (quatrième campagne du 2026-11-04, Galaxy A54) : ouvrir « Lucas et Hugo » depuis la liste avec l'API arrêtée laisse un écran sans titre ni historique, avec une roue de chargement et aucun bouton Réessayer. État encore présent après plus d'une minute. Après rétablissement de l'API, sortir et rouvrir le groupe rétablit son contenu.
+- **Où** : `GroupConversationScreen.kt` affiche le chargement si `group == null`, même après passage de `loading` à faux dans le ViewModel à l'échec. L'erreur est consommée par une snackbar ; aucun état d'erreur initial avec relance n'est rendu.
+- **Impact** : l'utilisateur attend sans savoir comment relancer le chargement ; le champ de saisie reste présent sur cet écran incomplet.
+- **Piste** : distinguer chargement initial, échec initial et contenu chargé ; proposer Réessayer avec `vm.refresh()`.
+- **Preuves** : [rapport et captures](../tests/campagne-2026-11-04-4.md).
+
+- **Correction et validation de BUG-029** : état d'erreur initial persistant avec « Réessayer », distinct des erreurs transitoires d'un groupe déjà chargé. La saisie est masquée avant chargement du groupe. Test de panne, nouvelle tentative et conservation de l'historique ; contrôle réel sur Galaxy A54 avec arrêt et rétablissement de l'API.
 
 ## Alternatives
 - **Corriger chaque anomalie dès qu'elle est trouvée** : rien n'est oublié, mais la fonctionnalité en cours se retrouve mêlée à des changements sans rapport, plus difficiles à relire et à annuler. Écarté.
@@ -241,6 +306,9 @@ En développant une fonctionnalité, on tombe régulièrement sur des anomalies 
 - Cet ADR n'est pas une décision d'architecture au sens strict, mais un outil de suivi ; il est rangé avec les ADR pour rester à côté des décisions qu'il référence.
 
 ## Historique
+- Révision 16 : BUG-027 à BUG-029 corrigés localement et vérifiés sur Galaxy A54 ; 158 tests Android passent, lint sans erreur. L'APK corrigé est installé sur l'appareil. Voir la section de validation de `docs/tests/campagne-2026-11-04-4.md`.
+- Révision 15 : BUG-028 et BUG-029 constatés sur appareil pendant la quatrième campagne du 2026-11-04 ; BUG-027 reste visible à certains cadrages malgré les changements locaux. Voir `docs/tests/campagne-2026-11-04-4.md`.
+- Révision 14 : BUG-023 à BUG-027 relevés pendant la troisième campagne de test du 2026-11-04, voir `docs/tests/campagne-2026-11-04-3.md` ; BUG-022 mesuré.
 - Révision 13 : BUG-022 relevé pendant le développement des groupes (ADR-032).
 - Révision 12 : BUG-019 à BUG-021 corrigés (branche `fix/campagne-2026-11-04-2`).
 - Révision 11 : BUG-019 à BUG-021 relevés pendant la seconde campagne de test du 2026-11-04, voir `docs/tests/campagne-2026-11-04-2.md`.

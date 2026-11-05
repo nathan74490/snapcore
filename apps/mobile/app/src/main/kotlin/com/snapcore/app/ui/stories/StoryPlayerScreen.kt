@@ -30,6 +30,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import com.snapcore.app.ui.components.rememberScreenReaderOn
+import com.snapcore.app.ui.components.screenReaderFocusOnAppear
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -85,6 +97,12 @@ fun StoryPlayerScreen(title: String, authorId: String?, startItemId: String?, on
     reporting?.let { itemId ->
         ReportDialog(subject = "cette story", onReport = { safetyVm.report(ReportTarget.StoryItem(itemId), it) }, onDismiss = { reporting = null })
     }
+    // TalkBack (ADR-033) : pas d'avance automatique, l'élément reste affiché jusqu'à « Suivant » ; chaque geste
+    // (taper à gauche / à droite) existe aussi en bouton et en action personnalisée.
+    val screenReader = rememberScreenReaderOn()
+    // Pause demandée (bouton ou action « Pause ») ; le signalement met aussi en pause.
+    var userPaused by remember { mutableStateOf(false) }
+    val paused = userPaused || reporting != null
 
     Box(
         Modifier
@@ -96,27 +114,64 @@ fun StoryPlayerScreen(title: String, authorId: String?, startItemId: String?, on
     ) {
         when (val s = state) {
             PlayerState.Loading, PlayerState.Finished -> CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
-            is PlayerState.Failed -> Text(s.message, color = Color.White, modifier = Modifier.align(Alignment.Center))
+            is PlayerState.Failed -> Text(s.message, color = Color.White,
+                modifier = Modifier.align(Alignment.Center).semantics { liveRegion = LiveRegionMode.Polite })
             is PlayerState.Playing -> {
                 var progress by remember(s.index) { mutableFloatStateOf(0f) }
-                when {
-                    s.url == null -> CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
-                    s.current.kind == MediaKind.PHOTO -> {
-                        StoryPhoto(s.url)
-                        val animated = remember(s.index) { Animatable(0f) }
-                        val paused = reporting != null
-                        LaunchedEffect(s.index, paused) {
-                            if (paused) return@LaunchedEffect
-                            // Reprend là où la pause l'avait arrêtée.
-                            val remaining = ((1f - animated.value) * PHOTO_DURATION_MS).toInt()
-                            animated.animateTo(1f, tween(remaining, easing = LinearEasing)) { progress = value }
-                            vm.next()
+                // Nouvel élément : la lecture reprend.
+                LaunchedEffect(s.index) { userPaused = false }
+                val description = itemDescription(s, title, mine = authorId == null)
+                // Un seul élément décrit le média (« Photo de Léa, il y a 3 h, 2 sur 5 ») avec ses actions ; le focus
+                // TalkBack s'y pose à chaque nouvel élément.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .screenReaderFocusOnAppear(s.index)
+                        .clearAndSetSemantics {
+                            contentDescription = description
+                            customActions = buildList {
+                                add(CustomAccessibilityAction("Suivant") { vm.next(); true })
+                                if (s.index > 0) add(CustomAccessibilityAction("Précédent") { vm.previous(); true })
+                                if (s.current.kind == MediaKind.VIDEO) {
+                                    add(CustomAccessibilityAction(if (userPaused) "Reprendre" else "Pause") { userPaused = !userPaused; true })
+                                }
+                                if (authorId != null) add(CustomAccessibilityAction("Signaler") { reporting = s.current.id; true })
+                                add(CustomAccessibilityAction("Fermer") { onClose(); true })
+                            }
+                        },
+                ) {
+                    when {
+                        s.url == null -> CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
+                        s.current.kind == MediaKind.PHOTO -> {
+                            StoryPhoto(s.url)
+                            val animated = remember(s.index) { Animatable(0f) }
+                            LaunchedEffect(s.index, paused, screenReader) {
+                                if (paused || screenReader) return@LaunchedEffect
+                                // Reprend là où la pause l'avait arrêtée.
+                                val remaining = ((1f - animated.value) * PHOTO_DURATION_MS).toInt()
+                                animated.animateTo(1f, tween(remaining, easing = LinearEasing)) { progress = value }
+                                vm.next()
+                            }
                         }
+                        else -> StoryVideo(s.url, playing = !paused, onProgress = { progress = it },
+                            onEnded = { if (!screenReader) vm.next() })
                     }
-                    else -> StoryVideo(s.url, onProgress = { progress = it }, onEnded = vm::next)
+                }
+                if (screenReader) {
+                    Row(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().systemBarsPadding().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        StoryControl("Précédent", enabled = s.index > 0, onClick = vm::previous)
+                        if (s.current.kind == MediaKind.VIDEO) {
+                            StoryControl(if (userPaused) "Reprendre" else "Pause", onClick = { userPaused = !userPaused })
+                        }
+                        StoryControl(if (s.index == s.items.lastIndex) "Terminer" else "Suivant", onClick = vm::next)
+                    }
                 }
                 Column(Modifier.fillMaxWidth().systemBarsPadding().padding(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                    // Barres de progression : visuelles seulement, la position est dite par la description du média.
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth().clearAndSetSemantics {}) {
                         s.items.indices.forEach { i ->
                             LinearProgressIndicator(
                                 progress = { if (i < s.index) 1f else if (i == s.index) progress else 0f },
@@ -131,8 +186,9 @@ fun StoryPlayerScreen(title: String, authorId: String?, startItemId: String?, on
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(title, color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp))
-                        Text("  ${relativeTime(s.current.createdAt)}", color = Color.White.copy(alpha = 0.8f))
+                        // Déjà lus dans la description du média.
+                        Text(title, color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp).clearAndSetSemantics {})
+                        Text("  ${relativeTime(s.current.createdAt)}", color = Color.White.copy(alpha = 0.8f), modifier = Modifier.clearAndSetSemantics {})
                         Box(Modifier.weight(1f))
                         if (authorId != null) {
                             IconButton(onClick = { reporting = s.current.id }) { Icon(Icons.Outlined.Flag, "Signaler cette story", tint = Color.White) }
@@ -143,6 +199,26 @@ fun StoryPlayerScreen(title: String, authorId: String?, startItemId: String?, on
             }
         }
     }
+}
+
+/** « Photo de Léa, il y a 3 h, 2 sur 5 » ; « Vidéo de ta story, à l'instant, 1 sur 2 ». */
+private fun itemDescription(s: PlayerState.Playing, title: String, mine: Boolean): String {
+    val kind = if (s.current.kind == MediaKind.VIDEO) "Vidéo" else "Photo"
+    val owner = if (mine) "de ta story" else "de $title"
+    val ago = relativeTime(s.current.createdAt).let { if (it == "à l'instant") it else "il y a $it" }
+    val loading = if (s.url == null) ", chargement" else ""
+    return "$kind $owner, $ago, ${s.index + 1} sur ${s.items.size}$loading"
+}
+
+/** Bouton du lecteur affiché seulement avec TalkBack : précédent, pause, suivant. */
+@Composable
+private fun StoryControl(label: String, onClick: () -> Unit, enabled: Boolean = true) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        colors = ButtonDefaults.textButtonColors(contentColor = Color.White, disabledContentColor = Color.White.copy(alpha = 0.4f)),
+        modifier = Modifier.background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(20.dp)),
+    ) { Text(label, fontWeight = FontWeight.Bold) }
 }
 
 @Composable
@@ -161,8 +237,10 @@ private fun StoryPhoto(url: String) {
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun StoryVideo(url: String, onProgress: (Float) -> Unit, onEnded: () -> Unit) {
+private fun StoryVideo(url: String, playing: Boolean, onProgress: (Float) -> Unit, onEnded: () -> Unit) {
     val context = LocalContext.current
+    // Le listener est posé une fois : il doit appeler la version courante de onEnded.
+    val ended by rememberUpdatedState(onEnded)
     val player = remember(url) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(url))
@@ -173,7 +251,7 @@ private fun StoryVideo(url: String, onProgress: (Float) -> Unit, onEnded: () -> 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) onEnded()
+                if (playbackState == Player.STATE_ENDED) ended()
             }
         }
         player.addListener(listener)
@@ -182,6 +260,7 @@ private fun StoryVideo(url: String, onProgress: (Float) -> Unit, onEnded: () -> 
             player.release()
         }
     }
+    LaunchedEffect(player, playing) { player.playWhenReady = playing }
     LaunchedEffect(player) {
         while (true) {
             if (player.duration > 0) onProgress(player.currentPosition.toFloat() / player.duration)

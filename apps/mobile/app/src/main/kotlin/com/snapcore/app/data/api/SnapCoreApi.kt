@@ -16,6 +16,13 @@ interface SnapCoreApi {
     @POST("auth/register")
     suspend fun register(@Body body: RegisterRequest): UserDto
 
+    // Connexion par code SMS (ADR-034) : routes publiques, appelées avant toute session.
+    @POST("auth/phone/code")
+    suspend fun sendPhoneCode(@Body body: PhoneCodeRequest): PhoneCodeSentDto
+
+    @POST("auth/phone/verify")
+    suspend fun verifyPhoneCode(@Body body: PhoneCodeVerification): PhoneSignInDto
+
     @GET("me")
     suspend fun me(): UserDto
 
@@ -283,6 +290,18 @@ data class RegisterRequest(
 
 @Serializable
 data class UsernameAvailabilityDto(val available: Boolean, val reason: String? = null)
+
+@Serializable
+data class PhoneCodeRequest(val phoneNumber: String)
+
+@Serializable
+data class PhoneCodeSentDto(val phoneNumber: String, val expiresInSeconds: Int, val resendInSeconds: Int, val simulatedCode: String? = null)
+
+@Serializable
+data class PhoneCodeVerification(val phoneNumber: String, val code: String)
+
+@Serializable
+data class PhoneSignInDto(val customToken: String)
 
 @Serializable
 data class ContactsMatchRequest(val phoneNumbers: List<String>)

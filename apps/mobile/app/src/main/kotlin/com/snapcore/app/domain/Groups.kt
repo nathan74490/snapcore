@@ -76,7 +76,7 @@ data class GroupSummary(
 
 /**
  * Statut d'un message de groupe sur la ligne de la liste Chat, mêmes icônes que pour un ami (ADR-009) :
- * « Nouveau snap de Léa », « Envoyé », « Ouvert » quand tous les autres ont vu, « Reçu ».
+ * « Snap de Léa », « Chat de Léa », « Envoyé », « Ouvert » quand tous les autres ont vu, « Reçu ».
  */
 fun statusOf(message: GroupMessage, group: Group, myId: String, unread: Boolean): MessageStatus {
     val shape = if (message.isSnap) StatusShape.SQUARE else StatusShape.ARROW
@@ -96,8 +96,10 @@ fun statusOf(message: GroupMessage, group: Group, myId: String, unread: Boolean)
             val everyone = group.others(myId).isNotEmpty() && group.others(myId).all { it.id in message.seenBy }
             MessageStatus(shape, color, filled = !everyone, label = if (everyone) "Ouvert" else "Envoyé")
         }
-        message.isSnap && !message.openedByMe -> MessageStatus(shape, color, filled = true, label = "Nouveau snap de $sender")
-        !message.isSnap && unread -> MessageStatus(shape, color, filled = true, label = "Nouveau chat de $sender")
+        // Libellé court : « Nouveau snap de Léa » était coupé avant le prénom sur un téléphone (BUG-025 d'ADR-023).
+        // La couleur et le gras signalent déjà la nouveauté.
+        message.isSnap && !message.openedByMe -> MessageStatus(shape, color, filled = true, label = "Snap de $sender")
+        !message.isSnap && unread -> MessageStatus(shape, color, filled = true, label = "Chat de $sender")
         else -> MessageStatus(shape, color, filled = false, label = "Reçu")
     }
 }

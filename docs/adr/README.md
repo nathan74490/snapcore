@@ -35,3 +35,5 @@ Liste des Architecture Decision Records du projet.
 | [ADR-029](./ADR-029-onboarding-facon-snapchat.md) | Onboarding façon Snapchat : inscription en 5 étapes, âge minimum, pseudo proposé, premiers pas avec les contacts | Accepté |
 | [ADR-030](./ADR-030-ab-testing-posthog.md) | A/B testing avec les expériences PostHog, premier test sur le bouton du paywall SnapCore+ | Accepté |
 | [ADR-031](./ADR-031-snap-map.md) | Snap Map : carte Mapbox, position des amis, mode fantôme et stories géolocalisées | Accepté |
+| [ADR-033](./ADR-033-accessibilite-talkback.md) | Accessibilité TalkBack de l'accueil jusqu'à la Snap Map | Accepté |
+| [ADR-034](./ADR-034-connexion-par-sms-simule.md) | Connexion par numéro de téléphone et code SMS, avec un opérateur SMS simulé | Accepté |

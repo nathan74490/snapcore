@@ -57,6 +57,19 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import com.snapcore.app.domain.ChatContentType
+import com.snapcore.app.ui.components.rememberScreenReaderOn
+import com.snapcore.app.ui.components.screenReaderFocusOnAppear
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
@@ -148,8 +161,11 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
     val lifecycleOwner = LocalLifecycleOwner.current
     // Le clavier arrive après le panneau : aucune variation de largeur pendant le glissement.
     // Ouvert sur un snap : pas de clavier par-dessus la lecture.
+    val screenReader = rememberScreenReaderOn()
     LaunchedEffect(friend.id, lifecycleOwner) {
         if (openSnapId != null) return@LaunchedEffect
+        // Avec TalkBack, pas de clavier ouvert d'office : il masquerait la moitié de l'écran à l'arrivée (ADR-033).
+        if (screenReader) return@LaunchedEffect
         lifecycleOwner.lifecycle.withResumed {
             composerFocus.requestFocus()
             keyboard?.show()
@@ -169,6 +185,24 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
             snackbar.showSnackbar(it)
             vm.consumeError()
         }
+    }
+    // TalkBack (ADR-033) : un message reçu, l'ami qui se met à écrire et son propre envoi sont annoncés,
+    // une fois chacun, sans relire l'historique à l'ouverture.
+    var announcement by remember { mutableStateOf<Announcement?>(null) }
+    var lastNewestId by remember { mutableStateOf<String?>(null) }
+    val newestMessage = state.messages.firstOrNull()
+    LaunchedEffect(newestMessage?.id, newestMessage?.pending) {
+        if (newestMessage == null && state.loading) return@LaunchedEffect
+        val previous = lastNewestId
+        lastNewestId = newestMessage?.id.orEmpty()
+        if (previous == null || newestMessage == null || newestMessage.id == previous || newestMessage.pending) return@LaunchedEffect
+        announcement = Announcement(
+            if (newestMessage.isFrom(myId)) (if (newestMessage.isSnap) "Snap envoyé" else "Message envoyé")
+            else spokenMessage(newestMessage, myId, friend.displayName),
+        )
+    }
+    LaunchedEffect(state.friendTyping) {
+        if (state.friendTyping) announcement = Announcement("${friend.displayName} écrit…")
     }
 
     // Snap déjà vu : c'est précisément ce que SnapCore+ débloque (ADR-025).
@@ -190,6 +224,8 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
     // Icônes claires sur le snap plein écran, sombres sur la conversation. Le réglage dépend de l'état du
     // lecteur pour être réappliqué à sa fermeture : sinon il restait blanc sur fond blanc (BUG-015 d'ADR-023).
     StatusBarIcons(dark = state.viewer == null)
+    // Snap ouvert : la conversation dessous est masquée pour TalkBack, seul le snap est lu (ADR-033).
+    Box(Modifier.fillMaxSize().then(if (viewing) Modifier.clearAndSetSemantics {} else Modifier)) {
     SwipeBackPane(backdrop, enabled = state.viewer == null, onBack = onSwipeBack) { backGesture ->
         Scaffold(
             topBar = {
@@ -199,7 +235,9 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                         IconButton(onClick = onBack) { FigmaAsset("15-1124_imgIconChevronLeft", "Retour") }
                         // Comme Snapchat : avatar compact, prénom en gras et le pseudo dessous.
                         Avatar(friend.displayName, friend.pictureUrl, 40.dp)
-                        Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        // Titre de l'écran pour TalkBack, qui y pose son focus à l'ouverture (ADR-033).
+                        Column(Modifier.padding(start = 10.dp).weight(1f)
+                            .semantics(mergeDescendants = true) { heading() }.screenReaderFocusOnAppear(friend.id)) {
                             Text(friend.displayName, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
                             if (friend.firstName != null) Text("@${friend.username}", color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall)
                         }
@@ -230,8 +268,14 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Box(Modifier.size(44.dp).clip(CircleShape).background(SnapColors.Ink).clickable(onClick = onOpenCamera), Alignment.Center) {
-                        FigmaAsset("17-1301_imgIconCamera", "Envoyer un snap", Modifier.size(24.dp), tint = Color.White)
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(SnapColors.Ink)
+                        .clickable(role = Role.Button, onClick = onOpenCamera)
+                        .clearAndSetSemantics {
+                            contentDescription = "Envoyer un snap à ${friend.displayName}"
+                            role = Role.Button
+                            this.onClick("ouvrir l'appareil photo") { onOpenCamera(); true }
+                        }, Alignment.Center) {
+                        FigmaAsset("17-1301_imgIconCamera", null, Modifier.size(24.dp), tint = Color.White)
                     }
                     BasicTextField(value = state.draft, onValueChange = vm::onDraft,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
@@ -241,10 +285,15 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue),
                         modifier = Modifier.focusRequester(composerFocus).weight(1f).heightIn(min = 44.dp)
                             .border(1.5.dp, SnapColors.Grey, RoundedCornerShape(22.dp)).padding(horizontal = 16.dp, vertical = 11.dp),
-                        decorationBox = { field -> Box { if(state.draft.isEmpty()) Text("Envoyer un Chat", color = SnapColors.Muted, style = MaterialTheme.typography.bodyLarge); field() } })
+                        // Le champ garde son libellé pour TalkBack même une fois rempli ; le texte indicatif, lui, est masqué (ADR-033).
+                        decorationBox = { field -> Box(Modifier.semantics { contentDescription = "Message à ${friend.displayName}" }) {
+                            if(state.draft.isEmpty()) Text("Envoyer un Chat", color = SnapColors.Muted, style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.clearAndSetSemantics {})
+                            field()
+                        } })
                     if (state.draft.isNotBlank()) {
                         IconButton(onClick = vm::send) {
-                            Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = SnapColors.ChatBlue)
+                            Icon(Icons.AutoMirrored.Filled.Send, "Envoyer le message", tint = SnapColors.ChatBlue)
                         }
                     }
                 }
@@ -293,12 +342,14 @@ fun ConversationScreen(friend: Friend, myId: String, onBack: () -> Unit, onOpenP
         }
 
     }
+    }
+    ScreenReaderAnnouncer(announcement)
 
     // Snap ouvert depuis la liste des chats : le fermer y ramène directement.
     val closeViewer = { vm.closeViewer(); if (openSnapId != null) onBack() }
     state.viewer?.let { viewer ->
         BackHandler(onBack = closeViewer)
-        SnapViewer(viewer, onClose = closeViewer)
+        SnapViewer(viewer, onClose = closeViewer, from = friend.displayName)
     }
 }
 
@@ -310,20 +361,37 @@ private fun MessageRow(message: ChatMessage, myId: String, friendName: String, d
     val mine = message.isFrom(myId)
     val status = statusOf(message, myId)
     val color = if (mine) SnapColors.SnapRed else SnapColors.ChatBlue
+    // TalkBack (ADR-033) : le jour est un titre (on saute de jour en jour) ; chaque message est un seul élément
+    // « Léa : salut, 14:32 », le nom affiché au-dessus étant masqué. Signaler passe par une action personnalisée.
+    val openable = message.isSnap && (canTryToOpen(message, myId) || message.failed)
+    val spoken = spokenMessage(message, myId, friendName)
+    val openLabel = when {
+        message.failed -> "réessayer l'envoi"
+        message.openedAt == null -> "voir le snap"
+        else -> "revoir le snap"
+    }
     Column(Modifier.fillMaxWidth()) {
         dayHeader?.let {
             Text(it, color = SnapColors.Grey, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp))
+                letterSpacing = 1.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp)
+                    .semantics { heading(); contentDescription = it.lowercase() })
         }
         if (showName) {
             Text(if (mine) "MOI" else friendName.uppercase(), color = color, style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = if (dayHeader == null) 12.dp else 4.dp, bottom = 2.dp))
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = if (dayHeader == null) 12.dp else 4.dp, bottom = 2.dp)
+                    .clearAndSetSemantics {})
         }
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).clearAndSetSemantics {
+            contentDescription = spoken
+            if (openable) {
+                role = Role.Button
+                this.onClick(openLabel) { onOpenSnap(); true }
+            }
+            if (onReport != null) customActions = listOf(CustomAccessibilityAction("Signaler ce message") { onReport(); true })
+        }) {
             Box(Modifier.width(2.dp).fillMaxHeight().background(color))
             if (message.isSnap) {
                 // Un snap envoyé en échec se relance d'un appui.
-                val openable = canTryToOpen(message, myId) || message.failed
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -364,7 +432,7 @@ private fun MessageRow(message: ChatMessage, myId: String, friendName: String, d
 @Composable
 internal fun TypingIndicator(friendName: String, showName: Boolean, color: Color = SnapColors.ChatBlue) {
     val transition = rememberInfiniteTransition(label = "typing")
-    Column(Modifier.fillMaxWidth().semantics { contentDescription = "$friendName est en train d'écrire" }) {
+    Column(Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = "$friendName est en train d'écrire" }) {
         if (showName) {
             Text(friendName.uppercase(), color = color, style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
@@ -390,4 +458,51 @@ internal fun TypingIndicator(friendName: String, showName: Boolean, color: Color
             }
         }
     }
+}
+
+/** « Léa : salut, 14:32 », « Toi : snap photo, ouvert, 14:30 » : un message du fil tel que TalkBack le lit (ADR-033). */
+private fun spokenMessage(message: ChatMessage, myId: String, friendName: String): String {
+    val mine = message.isFrom(myId)
+    val who = if (mine) "Toi" else friendName
+    val kind = if (message.type == ChatContentType.SNAP_PHOTO_VIDEO) "snap vidéo" else "snap photo"
+    val body = when {
+        !message.isSnap -> message.content.orEmpty() + when {
+            message.failed -> ", échec de l'envoi"
+            message.pending -> ", envoi en cours"
+            else -> ""
+        }
+        message.failed -> "$kind, échec de l'envoi"
+        message.pending -> "$kind, envoi en cours"
+        mine -> "$kind, ${statusOf(message, myId).label.lowercase()}"
+        message.mediaPurged -> "$kind, expiré"
+        message.openedAt == null -> "$kind, pas encore ouvert"
+        else -> "$kind, déjà vu"
+    }
+    return "$who : $body, ${clockTime(message.createdAt)}"
+}
+
+/** Une annonce TalkBack ; deux annonces au même texte restent distinctes grâce à [id]. */
+internal class Announcement(val text: String, val id: Long = System.nanoTime())
+
+/**
+ * Région live polie (ADR-033) : annonce [announcement] une fois, puis s'efface pour ne pas rester dans le
+ * parcours au doigt. Sans TalkBack, rien n'est composé. Le nœud existe d'avance, vide : TalkBack n'annonce que
+ * les changements d'un nœud déjà présent.
+ */
+@Composable
+internal fun ScreenReaderAnnouncer(announcement: Announcement?) {
+    if (!rememberScreenReaderOn()) return
+    var spoken by remember { mutableStateOf("") }
+    LaunchedEffect(announcement?.id) {
+        val text = announcement?.text ?: return@LaunchedEffect
+        spoken = ""
+        delay(100)
+        spoken = text
+        delay(5_000)
+        spoken = ""
+    }
+    Box(Modifier.size(1.dp).semantics {
+        liveRegion = LiveRegionMode.Polite
+        contentDescription = spoken
+    })
 }

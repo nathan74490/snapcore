@@ -43,6 +43,7 @@ data class GroupConversationState(
     val group: Group? = null,
     val messages: List<GroupMessage> = emptyList(),
     val loading: Boolean = true,
+    val initialLoadError: String? = null,
     val draft: String = "",
     val error: String? = null,
     val viewer: SnapViewerState? = null,
@@ -62,14 +63,18 @@ class GroupConversationViewModel(
     private val outbox: StateFlow<List<OutgoingSnap>> = MutableStateFlow(emptyList()),
     private val retrySend: (String) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
+    /** Snap à ouvrir dès le chargement (touché depuis la liste Chat) ; l'écran s'ouvre déjà sur sa lecture. */
+    private var openOnLoad: String? = null,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(GroupConversationState())
+    private val _state = MutableStateFlow(GroupConversationState(viewer = openOnLoad?.let { SnapViewerState.Loading }))
     val state: StateFlow<GroupConversationState> = _state.asStateFlow()
 
     private val sent = SentTracker()
     private var lastTypingSignal = Long.MIN_VALUE / 2
     private var viewing: String? = null
     private val typingTimeouts = mutableMapOf<String, Job>()
+    /** Dernier message d'un autre membre déjà signalé comme lu au backend. */
+    private var lastMarkedRead: String? = null
 
     init {
         refresh()
@@ -91,18 +96,33 @@ class GroupConversationViewModel(
     fun refresh() {
         val known = sent.mark()
         viewModelScope.launch {
+            _state.update { it.copy(loading = true, initialLoadError = null) }
             runCatching { groups.group(groupId) to groups.messages(groupId) }
                 .onSuccess { (group, messages) ->
                     sent.acknowledge(known)
-                    _state.update { it.copy(group = group, messages = withPending(it.messages, messages), loading = false) }
+                    _state.update { it.copy(group = group, messages = withPending(it.messages, messages), loading = false, initialLoadError = null, error = null) }
                     publish()
-                    // Chats reçus depuis ma dernière lecture : le groupe passe en « lu » chez les autres.
-                    if (messages.any { !it.isFrom(myId) && !it.isSnap && myId !in it.seenBy }) runCatching { groups.markRead(groupId) }
+                    openOnLoad?.let { id ->
+                        openOnLoad = null
+                        val snap = messages.firstOrNull { it.id == id }
+                        _state.update { it.copy(viewer = null) }
+                        if (snap != null && canTryToOpen(snap, myId)) open(snap)
+                    }
+                    // Nouveau message d'un autre membre affiché (chat ou snap) : le groupe passe en « lu ». Ne
+                    // regarder que les chats laissait le groupe « non lu » après un snap ouvert depuis la liste.
+                    val newest = messages.firstOrNull { !it.isFrom(myId) }?.id
+                    if (newest != null && newest != lastMarkedRead) {
+                        lastMarkedRead = newest
+                        runCatching { groups.markRead(groupId) }
+                    }
                 }
                 // 404 : je ne fais plus partie du groupe (parti depuis un autre appareil, groupe supprimé).
                 .onFailure { e ->
                     val gone = (e as? com.snapcore.app.data.api.ApiException)?.isNotFound == true
-                    _state.update { it.copy(loading = false, error = if (gone) null else e.message, closed = gone, viewer = null) }
+                    val message = e.message ?: "Impossible de charger le groupe. Réessaie."
+                    _state.update { state -> state.copy(loading = false,
+                        initialLoadError = message.takeIf { !gone && state.group == null },
+                        error = message.takeIf { !gone && state.group != null }, closed = gone, viewer = null) }
                 }
         }
     }
@@ -117,6 +137,7 @@ class GroupConversationViewModel(
 
     // Interface optimiste, comme dans une conversation à deux.
     fun send() {
+        if (_state.value.group == null) return
         val content = _state.value.draft.trim()
         if (content.isEmpty()) return
         lastTypingSignal = Long.MIN_VALUE / 2

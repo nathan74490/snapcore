@@ -42,6 +42,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -119,15 +128,16 @@ fun PreviewScreen(media: CapturedMedia, onDiscard: () -> Unit, onSendTo: (Captur
         when (media.kind) {
             MediaKind.PHOTO -> AsyncImage(
                 model = media.file,
-                contentDescription = "Snap",
+                contentDescription = "Ta photo",
                 contentScale = ContentScale.Crop,
                 colorFilter = state.filter.matrix?.let { ColorFilter.colorMatrix(ComposeColorMatrix(it.toAndroidMatrix())) },
                 modifier = Modifier.fillMaxSize(),
             )
-            MediaKind.VIDEO -> LoopingVideo(media, state.filter)
+            MediaKind.VIDEO -> LoopingVideo(media, state.filter, Modifier.semantics { contentDescription = "Ta vidéo" })
         }
 
-        AnimatedVisibility(labelVisible, Modifier.align(Alignment.Center), enter = fadeIn(), exit = fadeOut()) {
+        // Nom du filtre affiché brièvement : TalkBack le lit déjà sur le sélecteur de filtre ci-dessous.
+        AnimatedVisibility(labelVisible, Modifier.align(Alignment.Center).clearAndSetSemantics {}, enter = fadeIn(), exit = fadeOut()) {
             Text(
                 state.filter.label,
                 color = Color.White,
@@ -138,7 +148,7 @@ fun PreviewScreen(media: CapturedMedia, onDiscard: () -> Unit, onSendTo: (Captur
         }
 
         IconButton(onClick = discard, enabled = !state.rendering, modifier = Modifier.systemBarsPadding().padding(8.dp)) {
-            Icon(Icons.Filled.Close, "Supprimer", tint = Color.White)
+            Icon(Icons.Filled.Close, "Supprimer le snap", tint = Color.White)
         }
 
         Column(
@@ -146,19 +156,34 @@ fun PreviewScreen(media: CapturedMedia, onDiscard: () -> Unit, onSendTo: (Captur
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // TalkBack (ADR-033) : le glissement n'est pas le seul moyen de changer de filtre. Les points forment
+            // un sélecteur « Filtre, Noir et blanc, 2 sur 6 » : double appui = filtre suivant, actions Suivant / Précédent.
+            val filterCount = CameraFilters.ALL.size
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.clearAndSetSemantics {
+                contentDescription = "Filtre"
+                stateDescription = "${state.filter.label}, ${state.filterIndex + 1} sur $filterCount"
+                liveRegion = LiveRegionMode.Polite
+                onClick("passer au filtre suivant") { vm.swipe(1); true }
+                customActions = listOf(
+                    CustomAccessibilityAction("Filtre suivant") { vm.swipe(1); true },
+                    CustomAccessibilityAction("Filtre précédent") { vm.swipe(-1); true },
+                )
+            }) {
                 CameraFilters.ALL.indices.forEach { i ->
                     Box(Modifier.size(6.dp).background(if (i == state.filterIndex) Color.White else Color(0x80FFFFFF), CircleShape))
                 }
             }
             state.error?.let {
-                Text(it, color = Color.White, modifier = Modifier.background(Color(0x99000000)).padding(8.dp))
+                Text(it, color = Color.White, modifier = Modifier.background(Color(0x99000000)).padding(8.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite })
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Button(
                     onClick = vm::confirm,
                     enabled = !state.rendering,
                     colors = ButtonDefaults.buttonColors(containerColor = SnapColors.ChatBlue),
+                    // Annonce « Application du filtre… » pendant le rendu.
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 ) {
                     if (state.rendering) {
                         CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
@@ -183,7 +208,7 @@ private class LiveRgbMatrix : RgbMatrix {
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun LoopingVideo(media: CapturedMedia, filter: CameraFilter) {
+private fun LoopingVideo(media: CapturedMedia, filter: CameraFilter, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val effect = remember { LiveRgbMatrix() }
     effect.matrix = (filter.matrix ?: ColorMatrix.IDENTITY).toGlMatrix()
@@ -200,6 +225,6 @@ private fun LoopingVideo(media: CapturedMedia, filter: CameraFilter) {
     DisposableEffect(player) { onDispose { player.release() } }
     AndroidView(
         factory = { PlayerView(it).apply { this.player = player; useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM } },
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
     )
 }

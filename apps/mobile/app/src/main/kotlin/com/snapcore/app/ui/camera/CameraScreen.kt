@@ -1,5 +1,7 @@
 package com.snapcore.app.ui.camera
 
+import androidx.compose.runtime.mutableIntStateOf
+import com.snapcore.app.ui.components.rememberScreenReaderOn
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -58,8 +60,18 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -79,6 +91,7 @@ import com.snapcore.app.ui.appContainer
 import com.snapcore.app.ui.components.FigmaAsset
 import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.components.StatusBarIcons
+import com.snapcore.app.ui.components.screenReaderFocusWhen
 import com.snapcore.app.ui.theme.SnapColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -109,6 +122,8 @@ fun CameraScreen(
     lensMode: Boolean = false,
     onLensModeChange: (Boolean) -> Unit = {},
     onRecordingChange: (Boolean) -> Unit = {},
+    // TalkBack : vrai quand l'onglet Caméra devient la page active ; le focus se pose alors sur le déclencheur (ADR-033).
+    screenReaderFocus: Boolean = false,
 ) {
     val context = LocalContext.current
     fun granted() = REQUIRED_PERMISSIONS.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
@@ -119,7 +134,7 @@ fun CameraScreen(
 
     Box(modifier.fillMaxSize().background(Color.Black)) {
         if (hasPermissions) {
-            CameraContent(onCaptured, lensMode, onLensModeChange, onRecordingChange)
+            CameraContent(onCaptured, lensMode, onLensModeChange, onRecordingChange, screenReaderFocus)
         } else {
             Column(
                 Modifier.align(Alignment.Center).padding(32.dp),
@@ -143,6 +158,7 @@ private fun CameraContent(
     lensMode: Boolean,
     onLensModeChange: (Boolean) -> Unit,
     onRecordingChange: (Boolean) -> Unit,
+    screenReaderFocus: Boolean,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -175,22 +191,32 @@ private fun CameraContent(
         lensLoading = lens != null
         camera.show(lens) { if (selectedLens == lens) lensLoading = false }
     }
+    // Avec TalkBack, passer d'une Lens à l'autre fait défiler le carrousel : la Lens n'est appliquée qu'au double
+    // appui, jamais parce qu'elle passe au centre (ADR-033). Sans TalkBack, comme dans Snapchat (ADR-024).
+    val lensScreenReader = rememberScreenReaderOn()
+    var chosenLensIndex by remember { mutableIntStateOf(0) }
+    fun applyLens(index: Int) {
+        val lens = lenses.getOrNull(index - 1)
+        selectedLens = lens
+        lens?.let { analytics.capture(AnalyticsEvents.LENS_SELECTED, mapOf("lens" to it.name.orEmpty())) }
+        // Une Lens visage se joue sur la caméra frontale.
+        if (lens?.facingPreference == LensesComponent.Lens.Facing.FRONT) front = true
+        onLensModeChange(index > 0)
+    }
     // La Lens active est celle qui s'arrête au centre du carrousel, comme dans Snapchat (ADR-024).
-    LaunchedEffect(lensList, lenses) {
+    LaunchedEffect(lensList, lenses, lensScreenReader) {
+        if (lensScreenReader) return@LaunchedEffect
         snapshotFlow { if (lensList.isScrollInProgress) null else lensList.centeredIndex() }
             .filterNotNull()
             .distinctUntilChanged()
-            .collect { index ->
-                val lens = lenses.getOrNull(index - 1)
-                selectedLens = lens
-                lens?.let { analytics.capture(AnalyticsEvents.LENS_SELECTED, mapOf("lens" to it.name.orEmpty())) }
-                // Une Lens visage se joue sur la caméra frontale.
-                if (lens?.facingPreference == LensesComponent.Lens.Facing.FRONT) front = true
-                onLensModeChange(index > 0)
-            }
+            .collect { index -> applyLens(index) }
     }
     // ✕ de la barre du bas : retour à la première position, sans Lens.
-    LaunchedEffect(lensMode) { if (!lensMode && lensList.centeredIndex() != 0) lensList.animateScrollToItem(0) }
+    LaunchedEffect(lensMode) {
+        if (lensMode) return@LaunchedEffect
+        if (lensScreenReader && chosenLensIndex != 0) { chosenLensIndex = 0; applyLens(0) }
+        if (lensList.centeredIndex() != 0) lensList.animateScrollToItem(0)
+    }
     DisposableEffect(Unit) { onDispose { onLensModeChange(false); onRecordingChange(false) } }
     // Pendant l'enregistrement, l'accueil masque sa barre du haut et ses onglets, comme Snapchat.
     LaunchedEffect(recording != null) { onRecordingChange(recording != null) }
@@ -275,9 +301,16 @@ private fun CameraContent(
             }) {
                 FigmaAsset("14-588_imgIconFlip", "Changer de caméra", tint = Color.White)
             }
-            IconButton(onClick = {
+            val toggleFlash = {
                 flash = !flash
                 analytics.capture(AnalyticsEvents.FLASH_TOGGLED, mapOf("on" to flash))
+            }
+            // TalkBack : un interrupteur « Flash, activé / désactivé » plutôt qu'un libellé qui change.
+            IconButton(onClick = toggleFlash, modifier = Modifier.clearAndSetSemantics {
+                contentDescription = "Flash"
+                role = Role.Switch
+                stateDescription = if (flash) "Activé" else "Désactivé"
+                onClick(if (flash) "désactiver le flash" else "activer le flash") { toggleFlash(); true }
             }) {
                 // Mêmes icônes Figma de 30 que la recherche et l'ajout d'amis : la taille ne change pas au clic.
                 if(flash) FigmaAsset("14-588_imgIconFlashOn", "Désactiver le flash", tint = Color.White)
@@ -286,11 +319,13 @@ private fun CameraContent(
         }
 
         cameraKitBlocked?.let {
-            Text(it, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(32.dp))
+            Text(it, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(32.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite })
         }
 
         error?.let {
-            Text(it, color = Color.White, modifier = Modifier.align(Alignment.Center).background(Color(0x99000000)).padding(12.dp))
+            Text(it, color = Color.White, modifier = Modifier.align(Alignment.Center).background(Color(0x99000000)).padding(12.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite })
             LaunchedEffect(it) {
                 delay(3000)
                 error = null
@@ -305,6 +340,8 @@ private fun CameraContent(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = .6f), blurRadius = 8f)),
+                // TalkBack annonce la Lens qui vient de s'appliquer.
+                modifier = Modifier.semantics { contentDescription = "Lens : ${selectedLens?.name.orEmpty()}"; liveRegion = LiveRegionMode.Polite },
             )
         }
 
@@ -316,7 +353,11 @@ private fun CameraContent(
                         lenses,
                         lensList,
                         scrollEnabled = recording == null,
-                        onTap = { index -> scope.launch { lensList.animateScrollToItem(index) } },
+                        onTap = { index ->
+                            if (lensScreenReader) { chosenLensIndex = index; applyLens(index) }
+                            scope.launch { lensList.animateScrollToItem(index) }
+                        },
+                        selectedIndex = if (lensScreenReader) chosenLensIndex else null,
                         // Pendant l'enregistrement, seul le bouton de capture reste à l'écran, comme dans Snapchat.
                         modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = if (recording != null) 0f else 1f },
                     )
@@ -325,15 +366,18 @@ private fun CameraContent(
                     Text(if (handsFree) "Appuie sur le bouton pour arrêter" else "Glisse vers la gauche pour filmer en mode mains libres",
                         color = Color.White, fontSize = 14.sp, textAlign = TextAlign.Center,
                         style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = .5f), blurRadius = 6f)),
-                        modifier = Modifier.align(Alignment.TopCenter).offset(y = (-64).dp).padding(horizontal = 48.dp))
+                        modifier = Modifier.align(Alignment.TopCenter).offset(y = (-64).dp).padding(horizontal = 48.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite })
                     // Cadenas à gauche du bouton : y glisser le doigt passe en mode mains libres.
                     if (!handsFree) Box(Modifier.offset(x = -LOCK_OFFSET).size(44.dp).background(Color.Black.copy(alpha = .35f), CircleShape), Alignment.Center) {
-                        FigmaAsset("17-1301_imgIconLock", "Mode mains libres", Modifier.size(22.dp), tint = Color.White)
+                        // Repère visuel du geste : le déclencheur porte déjà l'action pour TalkBack.
+                        FigmaAsset("17-1301_imgIconLock", null, Modifier.size(22.dp), tint = Color.White)
                     }
                 }
                 // Au-dessus du carrousel : la Lens au centre apparaît dans l'anneau de capture.
                 CaptureButton(recording != null, handsFree, recordProgress, busy, lensLoading, ::takePhoto, ::startRecording,
-                    onStopVideo = { recording?.close() }, onHandsFree = { handsFree = true }, onZoom = camera::setZoom)
+                    onStopVideo = { recording?.close() }, onHandsFree = { handsFree = true }, onZoom = camera::setZoom,
+                    modifier = Modifier.screenReaderFocusWhen(screenReaderFocus))
             }
         }
 
@@ -356,6 +400,7 @@ private fun CaptureButton(
     onStopVideo: () -> Unit,
     onHandsFree: () -> Unit,
     onZoom: (Float) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val longPressTimeout = LocalViewConfiguration.current.longPressTimeoutMillis
     val density = LocalDensity.current
@@ -372,10 +417,31 @@ private fun CaptureButton(
     val diameter by animateDpAsState(if (recording) 104.dp else CAPTURE_RING, label = "captureSize")
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier
+        modifier = modifier
             .size(diameter)
             .then(if (recording) Modifier.background(SnapColors.Yellow, CircleShape) else Modifier.border(5.dp, Color.White, CircleShape))
-            .semantics { contentDescription = "Prendre un snap ; maintenir pour filmer" }
+            // TalkBack (ADR-033) : double appui = photo ; la vidéo se lance et s'arrête par les actions
+            // « Démarrer une vidéo » / « Arrêter la vidéo », sans maintenir l'appui (mode mains libres).
+            .semantics {
+                role = Role.Button
+                if (busy) disabled()
+                if (recording) {
+                    contentDescription = "Arrêter la vidéo"
+                    stateDescription = "Enregistrement en cours"
+                    onClick("arrêter la vidéo") { stop(); true }
+                    customActions = listOf(CustomAccessibilityAction("Arrêter la vidéo") { stop(); true })
+                } else {
+                    contentDescription = "Prendre une photo"
+                    onClick("prendre une photo") { if (!busy) photo(); !busy }
+                    customActions = listOf(CustomAccessibilityAction("Démarrer une vidéo") {
+                        if (!busy) {
+                            start()
+                            lock()
+                        }
+                        !busy
+                    })
+                }
+            }
             .pointerInput(busy) {
                 if (busy) return@pointerInput
                 awaitEachGesture {

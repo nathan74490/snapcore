@@ -6,6 +6,21 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -38,7 +53,7 @@ private fun Conversation.unread(myId: String) = headline?.let { !it.isFrom(myId)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAddFriends: () -> Unit, onSnapTo: (Friend) -> Unit, modifier: Modifier = Modifier,
-    onOpenGroup: (Group) -> Unit = {}, onSnapToGroup: (Group) -> Unit = {}, onNewChat: () -> Unit = onAddFriends) {
+    onOpenGroup: (Group, snapId: String?) -> Unit = { _, _ -> }, onSnapToGroup: (Group) -> Unit = {}, onNewChat: () -> Unit = onAddFriends) {
     val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events, myId, it.outbox.items, it.outbox::retry, groupService = it.groups) }
     val state by vm.state.collectAsStateWithLifecycle()
     // Au retour d'une conversation : le snap ouvert ou les chats lus ne déclenchent un événement temps
@@ -58,37 +73,46 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
     SnapRefresh(state.loading && state.conversations.isNotEmpty(), vm::refresh, modifier.fillMaxSize()) {
       Column(Modifier.fillMaxSize()) {
         // Même marge latérale (12) que l'en-tête et les lignes de conversation.
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+        // Filtres : des onglets pour TalkBack (« Non lus, 3 conversations, onglet, sélectionné ») (ADR-033).
+        Row(Modifier.fillMaxWidth().selectableGroup().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("Tous", "Non lus", "Nouveaux").forEachIndexed { index, label ->
                 Row(Modifier.clip(RoundedCornerShape(18.dp)).background(if(filter == index) SnapColors.Selected else Color.Transparent)
-                    .clickable { filter = index }.heightIn(min = 36.dp).padding(horizontal = 14.dp, vertical = 6.dp),
+                    .selectable(selected = filter == index, role = Role.Tab) { filter = index }.heightIn(min = 36.dp).padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(label, fontSize = 16.sp, fontWeight = if(filter == index) FontWeight.Bold else FontWeight.SemiBold,
                         color = if(filter == index) Color(0xFF0A6EA8) else SnapColors.Grey)
-                    if(index == 1 && unread > 0) Box(Modifier.size(22.dp).background(Color(0xFF0D4B70), CircleShape), Alignment.Center) {
+                    if(index == 1 && unread > 0) Box(Modifier.size(22.dp).background(Color(0xFF0D4B70), CircleShape)
+                        .clearAndSetSemantics { contentDescription = if (unread > 1) "$unread conversations" else "1 conversation" }, Alignment.Center) {
                         Text(unread.toString(), color = Color.White, style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
         }
-        Box(Modifier.weight(1f)) {
+        // Le bouton « Nouveau chat » est lu juste après les filtres, avant la liste, et non tout à la fin (ADR-033).
+        Box(Modifier.weight(1f).semantics { isTraversalGroup = true }) {
             // Une conversation qui remonte en tête (message reçu) s'insère au-dessus de l'écran : la liste
             // garde sinon sa ligne de référence. En haut de liste, on remonte pour la montrer.
             val listState = rememberLazyListState()
             val first = visible.firstOrNull()?.key
             LaunchedEffect(first) { if (first != null && listState.firstVisibleItemIndex <= 1) listState.animateScrollToItem(0) }
             LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 90.dp)) {
-                state.error?.let { error -> item { TextButton(onClick = vm::refresh) { Text("$error · Réessayer", color = SnapColors.SnapRed) } } }
+                state.error?.let { error -> item {
+                    TextButton(onClick = vm::refresh, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+                        Text("$error · Réessayer", color = SnapColors.SnapRed)
+                    }
+                } }
                 if(state.loading && state.conversations.isEmpty()) item {
-                    Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }
+                    Box(Modifier.fillMaxWidth().padding(32.dp).semantics { contentDescription = "Chargement des conversations" }, Alignment.Center) { CircularProgressIndicator() }
                 }
                 items(visible, key = { it.key }) { row ->
                     if (row is ChatRow.OfGroup) {
                         val summary = row.summary
                         GroupRow(summary, myId, onSnap = { onSnapToGroup(summary.group) }) {
                             val last = summary.headline
-                            if (last?.failed == true) vm.retryGroup(last) else onOpenGroup(summary.group)
+                            // Nouveau snap reçu : il s'ouvre directement, comme pour un ami (BUG-024 d'ADR-023).
+                            val snap = last?.takeIf { canTryToOpen(it, myId) && !it.openedByMe }
+                            if (last?.failed == true) vm.retryGroup(last) else onOpenGroup(summary.group, snap?.id)
                         }
                         return@items
                     }
@@ -107,12 +131,14 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
                 }
                 if(visible.isEmpty() && !state.loading) item {
                     Text(if(filter == 1) "Tous tes chats sont lus." else if(filter == 2) "Aucune nouvelle conversation." else "Retrouve tes amis ici pour commencer à discuter.",
-                        modifier = Modifier.fillMaxWidth().padding(24.dp), color = SnapColors.Grey, textAlign = TextAlign.Center)
+                        modifier = Modifier.fillMaxWidth().padding(24.dp).semantics { liveRegion = LiveRegionMode.Polite }, color = SnapColors.Grey, textAlign = TextAlign.Center)
                 }
                 item {
-                    Text("Ajouter des amis", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, top = 24.dp, bottom = 8.dp))
+                    Text("Ajouter des amis", style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(start = 12.dp, top = 24.dp, bottom = 8.dp).semantics { heading() })
                     // Toute la ligne est cliquable : rien à droite, là où passe le bouton flottant (BUG-010).
-                    Row(Modifier.fillMaxWidth().clickable(onClick = onAddFriends).padding(horizontal = 12.dp, vertical = 12.dp),
+                    Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "rechercher un pseudo", onClick = onAddFriends)
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(Modifier.size(48.dp).background(SnapColors.Control, CircleShape), Alignment.Center) { FigmaAsset("17-1301_imgIconAddFriend", modifier = Modifier.size(ICON)) }
                         Column(Modifier.weight(1f)) {
@@ -125,7 +151,8 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
             // Jaune et icône noire, comme le bouton « Nouveau chat » de Snapchat.
             // Il ouvre « Nouveau chat » : un ami, ou plusieurs pour créer un groupe (ADR-032).
             FloatingActionButton(onClick = onNewChat, containerColor = SnapColors.Yellow, contentColor = SnapColors.Ink,
-                shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(60.dp)) {
+                shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(60.dp)
+                    .semantics { traversalIndex = -1f }) {
                 FigmaAsset("15-925_imgIconEdit", "Nouveau chat", tint = SnapColors.Ink)
             }
         }
@@ -139,7 +166,24 @@ private fun ConversationRow(conversation: Conversation, myId: String, onSnap: ()
     val unread = conversation.unread(myId)
     // Chat Row 11:281 : nom toujours en Regular 18 ; seul le statut non lu passe en gras et en couleur,
     // l'horodatage reste à part en gris clair.
-    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick).padding(start = 12.dp, end = 4.dp),
+    // TalkBack (ADR-033) : la ligne entière est un seul élément, « Léa, nouveau snap, il y a 5 minutes », dont le
+    // double appui ouvre la conversation ; le snap en réponse est une action personnalisée.
+    val name = conversation.friend.displayName
+    val spoken = if (last == null) "$name, pas encore de message"
+        else "$name, ${statusOf(last, myId).spoken()}, ${spokenRelativeTime(last.createdAt)}"
+    val action = when {
+        last?.failed == true -> "réessayer l'envoi"
+        last != null && canTryToOpen(last, myId) && last.openedAt == null -> "voir le snap"
+        else -> "ouvrir la conversation"
+    }
+    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick)
+        .clearAndSetSemantics {
+            contentDescription = spoken
+            role = Role.Button
+            this.onClick(action) { onClick(); true }
+            customActions = listOf(CustomAccessibilityAction("Envoyer un snap à $name") { onSnap(); true })
+        }
+        .padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Avatar(conversation.friend.displayName, conversation.friend.pictureUrl, 48.dp)
         Column(Modifier.weight(1f)) {
@@ -208,7 +252,23 @@ private fun GroupRow(summary: GroupSummary, myId: String, onSnap: () -> Unit, on
     val group = summary.group
     val last = summary.headline
     val unread = summary.unread(myId)
-    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick).padding(start = 12.dp, end = 4.dp),
+    // Un seul élément pour TalkBack (ADR-033) : « Groupe Soirée samedi, snap de Léa, il y a 5 minutes ».
+    val title = group.title(myId)
+    val spoken = if (last == null) "Groupe $title, groupe créé, pas encore de message"
+        else "Groupe $title, ${statusOf(last, group, myId, unread).spoken()}, ${spokenRelativeTime(last.createdAt)}"
+    val action = when {
+        last?.failed == true -> "réessayer l'envoi"
+        last != null && canTryToOpen(last, myId) && !last.openedByMe -> "voir le snap"
+        else -> "ouvrir la conversation"
+    }
+    Row(Modifier.fillMaxWidth().height(60.dp).clickable(onClick = onClick)
+        .clearAndSetSemantics {
+            contentDescription = spoken
+            role = Role.Button
+            this.onClick(action) { onClick(); true }
+            customActions = listOf(CustomAccessibilityAction("Envoyer un snap au groupe") { onSnap(); true })
+        }
+        .padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         GroupAvatar(group, myId, 48.dp)
         Column(Modifier.weight(1f)) {
