@@ -36,7 +36,7 @@ L'écran « Utiliser un numéro de téléphone à la place » de Snapchat n'est 
 - Chaque écran arrive en glissant (depuis la gauche au retour en arrière).
 - L'écran des notifications montre un aperçu de notification, avec « Activer les notifications » et « Plus tard », au lieu de la fausse boîte de dialogue iOS.
 - Les textes de l'expérience onboarding-contacts-copy (ADR-030) sont conservés : le fantôme dit le titre de la variante.
-- **Accueil** : fond jaune SnapCore, le fantôme animé au centre (le toucher change son humeur), « snapcore » et une accroche, puis deux boutons en relief qui s'enfoncent à l'appui : « C'est parti ! » (inscription) et « J'ai déjà un compte » (connexion).
+- **Accueil** : fond jaune SnapCore, le fantôme animé au centre (le toucher change son humeur), « snapcore » et une accroche, puis deux boutons en relief qui s'enfoncent à l'appui : « Je m'inscris » (inscription) et « J'ai déjà un compte » (connexion).
 - **Connexion** : même style. Le fantôme accueille (« Content de te revoir ! »), se cache les yeux pendant la saisie du mot de passe, réfléchit pendant la vérification, et annonce lui-même l'erreur (« Oups ! Email ou mot de passe incorrect. »).
 - **SnapCore+ proposé à la fin** (ADR-025) : à la fin des premiers pas, le paywall s'ouvre une fois par-dessus la caméra, sauf pour un compte déjà abonné. « Plus tard » (ou la flèche) le ferme et ramène à la caméra. Mesuré par `paywall_opened { source: onboarding }`.
 

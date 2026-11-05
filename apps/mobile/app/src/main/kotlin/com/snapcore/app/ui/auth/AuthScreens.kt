@@ -117,7 +117,7 @@ fun WelcomeScreen(onLogin: () -> Unit, onSignUp: () -> Unit) {
         Text("Tes snaps, tes stories et tes amis.\nAu même endroit.", fontSize = 19.sp, lineHeight = 26.sp,
             color = SnapColors.Ink.copy(alpha = .62f), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
         Spacer(Modifier.weight(1.3f))
-        ChunkyButton("C'est parti !", onSignUp, container = SnapColors.ChatBlue, edge = Color(0xFF0A87C8), content = Color.White)
+        ChunkyButton("Je m'inscris", onSignUp, container = SnapColors.ChatBlue, edge = Color(0xFF0A87C8), content = Color.White)
         Spacer(Modifier.height(14.dp))
         ChunkyButton("J'ai déjà un compte", onLogin, container = SnapColors.SnapRed, edge = Color(0xFFC42A43), content = Color.White)
         Spacer(Modifier.height(20.dp))
