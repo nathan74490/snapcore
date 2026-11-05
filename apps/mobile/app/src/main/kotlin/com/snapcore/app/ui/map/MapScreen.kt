@@ -38,12 +38,12 @@ import com.mapbox.geojson.Point
 import com.mapbox.maps.Style
 import com.mapbox.maps.dsl.cameraOptions
 import com.mapbox.maps.extension.compose.MapboxMap
+import com.mapbox.maps.extension.compose.MapEffect
 import com.mapbox.maps.extension.compose.animation.viewport.MapViewportState
 import com.mapbox.maps.extension.compose.animation.viewport.rememberMapViewportState
 import com.mapbox.maps.extension.compose.annotation.ViewAnnotation
 import com.mapbox.maps.extension.compose.style.MapStyle
 import com.mapbox.maps.plugin.animation.MapAnimationOptions
-import androidx.compose.ui.platform.LocalDensity
 import com.mapbox.maps.ViewAnnotationAnchor
 import com.mapbox.maps.viewannotation.annotationAnchor
 import com.mapbox.maps.viewannotation.geometry
@@ -54,7 +54,10 @@ import com.snapcore.app.ui.components.Avatar
 import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 
 private val RefreshInterval = 30_000L
 private const val CityZoom = 13.0
@@ -91,15 +94,38 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
     LaunchedEffect(state.me, state.friends, state.pins) {
         val me = state.me
         if (me != null) {
-            if (!centeredOnMe) { viewport.flyToPoint(me, CityZoom); centeredOnMe = true; centeredOnFriends = true }
+            // Moi et mes amis proches dans le même cadre : centrer sur moi seul laissait hors de l'écran des
+            // amis à 2 km (BUG-026 d'ADR-023).
+            if (!centeredOnMe) {
+                val focus = focusAround(me, state.friends.map { it.position } + state.pins.map { it.position })
+                viewport.flyToPoint(focus.center, focus.zoom)
+                centeredOnMe = true
+                centeredOnFriends = true
+            }
         } else if (!centeredOnFriends) {
             val focus = focusOn(state.friends.map { it.position } + state.pins.map { it.position }) ?: return@LaunchedEffect
             viewport.flyToPoint(focus.center, focus.zoom)
             centeredOnFriends = true
         }
     }
-    val slots = remember(state.pins, state.friends) { pinSlots(state.pins, state.friends) }
-    val density = LocalDensity.current
+    // Moi d'abord : mon emplacement reste fixe, les amis et stories s'en écartent.
+    val markerPositions = listOfNotNull(state.me) + state.friends.map { it.position } + state.pins.map { it.position }
+    val markerKeys = listOfNotNull(state.me?.let { "me" }) + state.friends.map { "friend:${it.friend.id}" } +
+        state.pins.map { "pin:${it.author.id}:${it.position.latitude},${it.position.longitude}" }
+    val friendStart = if (state.me == null) 0 else 1
+    val pinStart = friendStart + state.friends.size
+    // Écartement des marqueurs qui se recouvrent : calculé seulement quand la carte s'immobilise, et
+    // indépendant du centre. Glisser la carte ne déplace donc aucun avatar ; après un zoom, ils glissent
+    // vers leur nouvelle place au lieu de sauter.
+    var layoutFrom by remember { mutableStateOf<Map<String, GeoPoint>>(emptyMap()) }
+    var layoutTo by remember { mutableStateOf<Map<String, GeoPoint>>(emptyMap()) }
+    val layoutProgress = remember { Animatable(1f) }
+    fun displayed(key: String, actual: GeoPoint): GeoPoint {
+        val to = layoutTo[key] ?: actual
+        val from = layoutFrom[key] ?: to
+        val t = layoutProgress.value.toDouble()
+        return GeoPoint(from.latitude + (to.latitude - from.latitude) * t, from.longitude + (to.longitude - from.longitude) * t)
+    }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var turnOffGhost by remember { mutableStateOf(false) }
     // Liste d'amis (« sauf… », « seulement… ») chargée à chaque ouverture des réglages, quel que soit le
@@ -117,24 +143,44 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
                 scaleBar = {},
                 onMapClickListener = { vm.select(null); false },
             ) {
+                MapEffect(listOf(markerPositions, markerKeys, pinStart)) { mapView ->
+                    suspend fun layOut() {
+                        val target = markerLayout(mapView, markerPositions, markerKeys, pinStart)
+                        if (target == layoutTo) return
+                        // Chaque marqueur part de là où il est affiché, même au milieu d'une animation.
+                        layoutFrom = markerKeys.indices.associate { i -> markerKeys[i] to displayed(markerKeys[i], markerPositions[i]) }
+                        layoutTo = target
+                        layoutProgress.snapTo(0f)
+                        layoutProgress.animateTo(1f, tween(280))
+                    }
+                    layOut()
+                    val idle = Channel<Unit>(Channel.CONFLATED)
+                    val subscription = mapView.mapboxMap.subscribeMapIdle { idle.trySend(Unit) }
+                    try {
+                        for (event in idle) layOut()
+                    } finally {
+                        subscription.cancel()
+                    }
+                }
                 state.pins.forEachIndexed { index, pin ->
-                    val (dx, dy) = with(density) { pinOffset(slots[index]).let { (x, y) -> x.toPx() to y.toPx() } }
                     ViewAnnotation(options = viewAnnotationOptions {
-                        geometry(pin.position.toPoint())
+                        geometry(displayed(markerKeys[pinStart + index], pin.position).toPoint())
                         allowOverlap(true)
-                        annotationAnchor { anchor(ViewAnnotationAnchor.CENTER); offsetX(dx.toDouble()); offsetY(dy.toDouble()) }
+                        annotationAnchor { anchor(ViewAnnotationAnchor.CENTER) }
                     }) { StoryPinMarker(pin) { onPlayStory(pin.asFriendStory()) } }
                 }
-                state.friends.forEach { friend ->
+                state.friends.forEachIndexed { index, friend ->
                     ViewAnnotation(options = viewAnnotationOptions {
-                        geometry(friend.position.toPoint())
+                        geometry(displayed(markerKeys[friendStart + index], friend.position).toPoint())
                         allowOverlap(true)
+                        annotationAnchor { anchor(ViewAnnotationAnchor.CENTER) }
                     }) { FriendMarker(friend.friend.displayName, friend.friend.pictureUrl, friend.friend.displayName, selected = state.selected?.friend?.id == friend.friend.id) { vm.select(friend) } }
                 }
                 state.me?.let { me ->
                     ViewAnnotation(options = viewAnnotationOptions {
                         geometry(me.toPoint())
                         allowOverlap(true)
+                        annotationAnchor { anchor(ViewAnnotationAnchor.CENTER) }
                     }) {
                         val ghost = state.sharing?.ghost != false
                         FriendMarker(account.displayName, account.pictureUrl, if (ghost) "$Ghost Moi" else "Moi", mine = true,
@@ -197,19 +243,15 @@ fun MapScreen(account: Account, visible: Boolean, onOpenProfile: () -> Unit, onO
 
 val LocationPermissions = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
 
-/**
- * Décalage d'un pin de story selon son rang ([pinSlots]) : 0 sur son point, puis en cercle autour, en
- * commençant en haut à droite (6 places par tour, un tour plus large ensuite). Mapbox compte offsetY vers le haut.
- */
-private fun pinOffset(slot: Int): Pair<androidx.compose.ui.unit.Dp, androidx.compose.ui.unit.Dp> {
-    if (slot <= 0) return 0.dp to 0.dp
-    val ring = (slot - 1) / 6 + 1
-    val angle = Math.toRadians(40.0 + ((slot - 1) % 6) * 60.0)
-    val radius = 58.0 * ring
-    return (radius * kotlin.math.cos(angle)).dp to (radius * kotlin.math.sin(angle)).dp
-}
-
 private fun GeoPoint.toPoint(): Point = Point.fromLngLat(longitude, latitude)
+
+/** Places écartées des marqueurs qui se recouvrent, au zoom et à l'orientation actuels ([mapMarkerLayout]). */
+private fun markerLayout(mapView: com.mapbox.maps.MapView, positions: List<GeoPoint>, keys: List<String>, pinStart: Int): Map<String, GeoPoint> {
+    val camera = mapView.mapboxMap.cameraState
+    val sizes = positions.indices.map { if (it < pinStart) FRIEND_MARKER_SIZE_DP else STORY_MARKER_SIZE_DP }
+    val placed = mapMarkerLayout(positions, sizes, camera.zoom, camera.bearing)
+    return buildMap { placed.forEachIndexed { i, point -> if (point != positions[i]) put(keys[i], point) } }
+}
 
 private fun MapViewportState.flyToPoint(point: GeoPoint, zoom: Double) = flyTo(
     cameraOptions { center(point.toPoint()); zoom(zoom) },
@@ -247,12 +289,13 @@ private fun FloatingRound(description: String, icon: androidx.compose.ui.graphic
 @Composable
 private fun FriendMarker(name: String, pictureUrl: String?, label: String, selected: Boolean = false, mine: Boolean = false,
     modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier.clickable(onClick = onClick)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+        modifier = modifier.size(FRIEND_MARKER_SIZE_DP.dp).clickable(onClick = onClick)) {
         val ring = when { mine -> SnapColors.Yellow; selected -> SnapColors.ChatBlue; else -> Color.White }
         Avatar(name, pictureUrl, if (selected) 60.dp else 52.dp, Modifier.shadow(6.dp, CircleShape).border(3.dp, ring, CircleShape))
         Spacer(Modifier.height(3.dp))
         Text(label, Modifier.shadow(2.dp, RoundedCornerShape(10.dp)).background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
-            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, maxLines = 1)
+            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -260,7 +303,7 @@ private fun FriendMarker(name: String, pictureUrl: String?, label: String, selec
 @Composable
 private fun StoryPinMarker(pin: StoryPin, onClick: () -> Unit) {
     val ring = if (pin.hasUnviewed) SnapColors.SnapPurple else SnapColors.Muted
-    Box(Modifier.size(50.dp).shadow(6.dp, CircleShape).background(Color.White, CircleShape).border(3.dp, ring, CircleShape).padding(5.dp).clip(CircleShape).clickable(onClick = onClick)) {
+    Box(Modifier.size(STORY_MARKER_SIZE_DP.dp).shadow(6.dp, CircleShape).background(Color.White, CircleShape).border(3.dp, ring, CircleShape).padding(5.dp).clip(CircleShape).clickable(onClick = onClick)) {
         val thumbnail = pin.thumbnailUrl
         if (thumbnail != null) AsyncImage(thumbnail, "Story de ${pin.author.displayName}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Avatar(pin.author.displayName, pin.author.pictureUrl, 40.dp)

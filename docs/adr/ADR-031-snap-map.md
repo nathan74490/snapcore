@@ -67,7 +67,7 @@ Toucher un pin ouvre le lecteur de stories habituel, à partir du premier élém
 - toucher un ami ouvre une fiche (fraîcheur « Il y a 12 min », bouton Chat) ;
 - bouton pour recentrer la carte sur ma position ;
 - premier cadrage sur ma position ; sans elle (localisation non activée), sur mes amis et leurs stories, puis sur moi si j'active la localisation ensuite ;
-- un pin de story à moins de 500 m de l'avatar d'un ami ou d'un autre pin s'écarte en cercle autour de son point, pour ne pas le cacher ;
+- les avatars et les pins qui se recouvriraient à l'écran s'écartent les uns des autres, ma position restant fixe. L'écartement ne dépend que du zoom et de l'orientation, jamais du centre : faire glisser la carte ne déplace aucun marqueur. Il est recalculé quand la carte s'immobilise, et les marqueurs glissent vers leur nouvelle place ;
 - bandeaux pour activer la localisation ou sortir du mode fantôme.
 
 Désactiver le mode fantôme fait d'abord choisir l'audience (« Désactiver le mode fantôme ? »). Les modes « sauf » et « seulement » ouvrent la liste des amis. Les réglages s'appliquent tout de suite à l'écran et reviennent en arrière en cas d'échec.

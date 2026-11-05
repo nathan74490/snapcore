@@ -21,7 +21,15 @@ import com.snapcore.app.domain.StoryPin
 import com.snapcore.app.domain.focusOn
 import com.snapcore.app.domain.lastSeenLabel
 import com.snapcore.app.domain.metersTo
-import com.snapcore.app.domain.pinSlots
+import com.snapcore.app.domain.MapMarker
+import com.snapcore.app.domain.MapMarkerArea
+import com.snapcore.app.domain.ScreenOffset
+import com.snapcore.app.domain.FRIEND_MARKER_SIZE_DP
+import com.snapcore.app.domain.MAP_MARKER_GAP_DP
+import com.snapcore.app.domain.STORY_MARKER_SIZE_DP
+import com.snapcore.app.domain.focusAround
+import com.snapcore.app.domain.mapMarkerOffsets
+import com.snapcore.app.domain.mapMarkerLayout
 import com.snapcore.app.domain.storyPins
 import com.snapcore.app.ui.map.MapViewModel
 import kotlinx.coroutines.CompletableDeferred
@@ -136,16 +144,64 @@ class SnapMapRulesTest {
     }
 
     @Test
-    fun `un pin s'ecarte de l'avatar de son auteur et des autres pins au meme endroit`() {
-        val annecy = GeoPoint(45.908, 6.102)
-        val nathan = FriendLocation(friend("nathan"), GeoPoint(45.9083, 6.1024), t0) // ~40 m du pin arrondi
-        val pins = listOf(
-            StoryPin(friend("nathan"), annecy, listOf(item("a", 1))),
-            StoryPin(friend("rober"), annecy, listOf(item("b", 2))),
-            StoryPin(friend("lea"), paris, listOf(item("c", 3))),
-        )
-        assertEquals(listOf(1, 2, 0), pinSlots(pins, listOf(nathan)))
-        assertEquals(listOf(0, 1, 0), pinSlots(pins, emptyList()))
+    fun `moi, amis et stories restent distincts meme dans un amas dense (BUG-027 et BUG-028)`() {
+        val markers = List(50) { i ->
+            val size = if (i < 25) FRIEND_MARKER_SIZE_DP else STORY_MARKER_SIZE_DP
+            MapMarker(ScreenOffset(100.0 + i % 3, 200.0 + i % 5), size, size)
+        }
+        val offsets = mapMarkerOffsets(markers)
+        assertEquals("je reste sur ma position", ScreenOffset(0.0, 0.0), offsets.first())
+        for (i in markers.indices) for (j in 0 until i) {
+            val a = markers[i]; val b = markers[j]
+            val dx = kotlin.math.abs(a.center.x + offsets[i].x - b.center.x - offsets[j].x)
+            val dy = kotlin.math.abs(a.center.y + offsets[i].y - b.center.y - offsets[j].y)
+            assertTrue("marqueurs $i et $j, libellés compris", dx >= (a.width + b.width) / 2 + MAP_MARKER_GAP_DP ||
+                dy >= (a.height + b.height) / 2 + MAP_MARKER_GAP_DP)
+        }
+    }
+
+    @Test
+    fun `un ami superpose a moi au bord de l'ecran reste visible et selectionnable (BUG-028)`() {
+        val markers = List(2) { MapMarker(ScreenOffset(32.0, 200.0), 96.0, 96.0) }
+        val offsets = mapMarkerOffsets(markers, MapMarkerArea(0.0, 96.0, 384.0, 700.0))
+        assertEquals(ScreenOffset(0.0, 0.0), offsets.first())
+        assertTrue(markers[1].center.x + offsets[1].x - 48.0 >= 0.0)
+        assertTrue(markers[1].center.x + offsets[1].x + 48.0 <= 384.0)
+        assertTrue(offsets[1].x >= 102.0)
+    }
+
+    @Test
+    fun `l'ecartement depend du zoom, pas du centre, et separe des amis au meme endroit (BUG-027 et BUG-028)`() {
+        val annecy = GeoPoint(45.8992, 6.1294)
+        val positions = listOf(annecy, annecy, GeoPoint(45.8993, 6.1295), GeoPoint(48.8606, 2.3376))
+        val sizes = listOf(FRIEND_MARKER_SIZE_DP, FRIEND_MARKER_SIZE_DP, STORY_MARKER_SIZE_DP, FRIEND_MARKER_SIZE_DP)
+        val placed = mapMarkerLayout(positions, sizes, zoom = 13.0, bearing = 30.0)
+        assertEquals("je reste sur ma position", annecy, placed[0])
+        assertEquals("un ami isolé ne bouge pas", positions[3], placed[3])
+        // À ce zoom et à cette latitude, 1 dp vaut environ 6,6 m : les trois marqueurs ne se recouvrent plus
+        // (au moins 102 dp entre deux avatars, 79 dp entre un avatar et une story).
+        assertTrue(placed[0].metersTo(placed[1]) > 102 * 6.6 * 0.9)
+        assertTrue(placed[1].metersTo(placed[2]) > 79 * 6.6 * 0.9)
+        assertEquals("même calcul, même résultat", placed, mapMarkerLayout(positions, sizes, zoom = 13.0, bearing = 30.0))
+        val zoomedIn = mapMarkerLayout(positions, sizes, zoom = 16.0)
+        assertTrue("de près, l'écart en mètres se resserre", zoomedIn[0].metersTo(zoomedIn[1]) < placed[0].metersTo(placed[1]))
+    }
+
+    @Test
+    fun `les marqueurs isoles ne quittent pas leur point et une carte vide reste vide`() {
+        assertTrue(mapMarkerOffsets(emptyList()).isEmpty())
+        val markers = listOf(MapMarker(ScreenOffset(0.0, 0.0), 96.0, 96.0), MapMarker(ScreenOffset(500.0, 0.0), 50.0, 50.0))
+        assertEquals(listOf(ScreenOffset(0.0, 0.0), ScreenOffset(0.0, 0.0)), mapMarkerOffsets(markers))
+    }
+
+    @Test
+    fun `premier cadrage, moi et mes amis proches, sans les amis d'une autre ville (BUG-026)`() {
+        val annecy = GeoPoint(45.9077, 6.1020)
+        val lac = GeoPoint(45.9005, 6.1305) // ~2,3 km
+        val focus = focusAround(annecy, listOf(lac, paris))
+        assertTrue("centre entre moi et le lac", focus.center.longitude > annecy.longitude && focus.center.longitude < lac.longitude)
+        assertTrue("zoom ville : ${focus.zoom}", focus.zoom in 11.0..13.0)
+        assertEquals("seul : zoom ville sur moi", 13.0, focusAround(annecy, listOf(paris)).zoom, 0.0)
     }
 }
 
