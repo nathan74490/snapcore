@@ -105,9 +105,10 @@ private fun Group.colorOf(userId: String, myId: String): Color {
 /** Conversation de groupe (ADR-032) : chats et snaps, prénom et couleur de chaque expéditeur, « Vu par ». */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GroupConversationScreen(groupId: String, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit, onOpenCamera: (Group) -> Unit) {
+fun GroupConversationScreen(groupId: String, myId: String, onBack: () -> Unit, onOpenPlus: () -> Unit, onOpenCamera: (Group) -> Unit,
+    openSnapId: String? = null) {
     val vm = containerViewModel {
-        GroupConversationViewModel(groupId, myId, it.groups, it.realtime.events, it.outbox.items, it.outbox::retry)
+        GroupConversationViewModel(groupId, myId, it.groups, it.realtime.events, it.outbox.items, it.outbox::retry, openOnLoad = openSnapId)
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -150,30 +151,40 @@ fun GroupConversationScreen(groupId: String, myId: String, onBack: () -> Unit, o
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            Row(
-                Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().imePadding().heightIn(min = 60.dp).padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Box(Modifier.size(44.dp).background(SnapColors.Ink, CircleShape).clickable(enabled = group != null) { group?.let(onOpenCamera) },
-                    Alignment.Center) {
-                    FigmaAsset("17-1301_imgIconCamera", "Envoyer un snap au groupe", Modifier.size(24.dp), tint = Color.White)
+            if (group != null) {
+                Row(
+                    Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().imePadding().heightIn(min = 60.dp).padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(Modifier.size(44.dp).background(SnapColors.Ink, CircleShape).clickable { onOpenCamera(group) },
+                        Alignment.Center) {
+                        FigmaAsset("17-1301_imgIconCamera", "Envoyer un snap au groupe", Modifier.size(24.dp), tint = Color.White)
+                    }
+                    BasicTextField(
+                        value = state.draft, onValueChange = vm::onDraft, maxLines = 4,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { if (state.draft.isNotBlank()) vm.send() }),
+                        cursorBrush = SolidColor(SnapColors.ChatBlue),
+                        modifier = Modifier.weight(1f).heightIn(min = 44.dp).border(1.5.dp, SnapColors.Grey, RoundedCornerShape(22.dp))
+                            .padding(horizontal = 16.dp, vertical = 11.dp),
+                        decorationBox = { field -> Box { if (state.draft.isEmpty()) Text("Envoyer un Chat au groupe", color = SnapColors.Muted); field() } },
+                    )
+                    if (state.draft.isNotBlank()) IconButton(onClick = vm::send) { Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = SnapColors.ChatBlue) }
                 }
-                BasicTextField(
-                    value = state.draft, onValueChange = vm::onDraft, maxLines = 4,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = SnapColors.Ink),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { if (state.draft.isNotBlank()) vm.send() }),
-                    cursorBrush = SolidColor(SnapColors.ChatBlue),
-                    modifier = Modifier.weight(1f).heightIn(min = 44.dp).border(1.5.dp, SnapColors.Grey, RoundedCornerShape(22.dp))
-                        .padding(horizontal = 16.dp, vertical = 11.dp),
-                    decorationBox = { field -> Box { if (state.draft.isEmpty()) Text("Envoyer un Chat au groupe", color = SnapColors.Muted); field() } },
-                )
-                if (state.draft.isNotBlank()) IconButton(onClick = vm::send) { Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = SnapColors.ChatBlue) }
             }
         },
     ) { padding ->
-        if (group == null || (state.loading && state.messages.isEmpty())) {
-            Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) { CircularProgressIndicator() }
+        if (group == null) {
+            Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
+                if (state.loading) CircularProgressIndicator()
+                else Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(state.initialLoadError ?: "Impossible de charger le groupe. Réessaie.",
+                        textAlign = TextAlign.Center, color = SnapColors.Grey)
+                    PrimaryButton("Réessayer", vm::refresh)
+                }
+            }
             return@Scaffold
         }
         val listState = rememberLazyListState()
@@ -210,9 +221,11 @@ fun GroupConversationScreen(groupId: String, myId: String, onBack: () -> Unit, o
         }
     }
 
+    // Snap ouvert depuis la liste Chat : le fermer y ramène directement, comme pour un ami.
+    val closeViewer = { vm.closeViewer(); if (openSnapId != null) onBack() }
     state.viewer?.let { viewer ->
-        BackHandler(onBack = vm::closeViewer)
-        SnapViewer(viewer, onClose = vm::closeViewer)
+        BackHandler(onBack = closeViewer)
+        SnapViewer(viewer, onClose = closeViewer)
     }
 }
 

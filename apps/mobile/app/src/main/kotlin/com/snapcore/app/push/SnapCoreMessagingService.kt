@@ -36,7 +36,8 @@ class SnapCoreMessagingService : FirebaseMessagingService() {
         val data = message.data
         val details = runBlocking { withTimeoutOrNull(5_000) { container.pushDetails.resolve(data) } }
         val notification = notificationFor(data, details ?: PushDetails()) ?: return
-        Notifications.show(this, (data["messageId"] ?: data["friendshipId"] ?: data["type"]).hashCode(), notification)
+        val avatar = runBlocking { loadNotificationAvatar(this@SnapCoreMessagingService, notification) }
+        Notifications.show(this, (data["messageId"] ?: data["friendshipId"] ?: data["type"]).hashCode(), notification, avatar)
     }
 
     override fun onDestroy() {

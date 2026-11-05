@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
@@ -20,9 +21,9 @@ import com.snapcore.app.data.api.DeviceTokenRequest
 import com.snapcore.app.data.api.SnapCoreApi
 import com.snapcore.app.data.api.apiCall
 import com.snapcore.app.domain.DeviceRegistry
+import com.snapcore.app.data.toDomain
 import com.snapcore.app.data.toFriend
 import com.snapcore.app.domain.LaunchTarget
-import com.snapcore.app.domain.memberNames
 import com.snapcore.app.domain.PushDetails
 import com.snapcore.app.domain.PushNotification
 import kotlinx.coroutines.tasks.await
@@ -58,22 +59,33 @@ class PushDetailsResolver(private val api: SnapCoreApi) {
     suspend fun resolve(data: Map<String, String>): PushDetails = runCatching {
         when (data["type"]) {
             "message.received" -> {
-                val conversation = api.conversations().firstOrNull { it.lastMessage?.id == data["messageId"] }
-                PushDetails(conversation?.friend?.toFriend()?.displayName, conversation?.lastMessage?.let { it.contentType != "TEXT" })
+                val id = data["messageId"]
+                val conversation = if (id == null) null else api.conversations().firstOrNull { it.lastMessage?.id == id || it.unopenedSnap?.id == id }
+                val friend = conversation?.friend?.toFriend()
+                val message = conversation?.lastMessage?.takeIf { it.id == id } ?: conversation?.unopenedSnap?.takeIf { it.id == id }
+                PushDetails(friend?.displayName, message?.let { it.contentType != "TEXT" },
+                    avatarUrl = friend?.pictureUrl, isVideo = message?.contentType == "SNAP_PHOTO_VIDEO")
             }
-            // Le push d'un groupe porte déjà le prénom de l'expéditeur, le nom du groupe et le type (ADR-032) ;
-            // sans nom, le titre reprend les prénoms des membres, lus via l'API.
-            "group.message.received" -> PushDetails(
-                senderName = data["senderName"],
-                isSnap = data["contentType"]?.let { it != "TEXT" },
-                groupName = data["groupName"] ?: api.groups().firstOrNull { it.group.id == data["groupId"] }?.group?.let { g ->
-                    memberNames(g.members.map { it.toFriend().displayName }.filter { it != data["senderName"] }.take(4))
-                },
-            )
+            // Le push d'un groupe porte déjà le prénom de l'expéditeur, le nom du groupe et le type (ADR-032).
+            // Sans nom, le titre est celui de la liste Chat : les prénoms des autres membres, moi exclu, et non
+            // l'expéditeur exclu (BUG-023 d'ADR-023).
+            "group.message.received" -> {
+                val group = data["groupId"]?.let { runCatching { api.group(it) }.getOrNull() }
+                val sender = group?.members?.firstOrNull { it.id == data["senderId"] }?.toFriend()
+                PushDetails(
+                    senderName = data["senderName"] ?: sender?.displayName,
+                    isSnap = data["contentType"]?.let { it != "TEXT" },
+                    groupName = data["groupName"] ?: group?.let { g -> runCatching { g.toDomain().title(api.me().id) }.getOrNull() },
+                    avatarUrl = sender?.pictureUrl,
+                    isVideo = data["contentType"] == "SNAP_PHOTO_VIDEO",
+                )
+            }
             "friend_request.received" ->
-                PushDetails(api.incomingRequests().firstOrNull { it.friendshipId == data["friendshipId"] }?.user?.toFriend()?.displayName)
+                api.incomingRequests().firstOrNull { it.friendshipId == data["friendshipId"] }?.user?.toFriend()
+                    ?.let { PushDetails(it.displayName, avatarUrl = it.pictureUrl) } ?: PushDetails()
             "friend_request.accepted" ->
-                PushDetails(api.friends().firstOrNull { it.friendshipId == data["friendshipId"] }?.user?.toFriend()?.displayName)
+                api.friends().firstOrNull { it.friendshipId == data["friendshipId"] }?.user?.toFriend()
+                    ?.let { PushDetails(it.displayName, avatarUrl = it.pictureUrl) } ?: PushDetails()
             else -> PushDetails()
         }
     }.getOrDefault(PushDetails())
@@ -110,7 +122,7 @@ object Notifications {
     private const val PREFS = "notifications"
     private const val KEY_PERMISSION_ASKED = "permission_asked"
 
-    fun show(context: Context, id: Int, notification: PushNotification) {
+    fun show(context: Context, id: Int, notification: PushNotification, avatar: Bitmap? = null, tag: String? = null) {
         if (!canNotify(context)) return
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -121,16 +133,32 @@ object Notifications {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val built = NotificationCompat.Builder(context, MESSAGES_CHANNEL_ID)
+        val appearance = notification.kind.appearance()
+        val picture = notificationAvatar(notification, avatar)
+        val publicVersion = NotificationCompat.Builder(context, MESSAGES_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(notification.title)
-            .setContentText(notification.text)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
+            .setContentTitle("SnapCore")
+            .setContentText("Tu as une nouvelle notification")
             .setContentIntent(pending)
             .build()
+        val builder = NotificationCompat.Builder(context, MESSAGES_CHANNEL_ID)
+            .setSmallIcon(appearance.icon)
+            .setColor(appearance.color)
+            .setContentTitle(notification.title)
+            .setContentText(notification.previewText)
+            .setLargeIcon(picture)
+            .setCategory(if (notification.target == LaunchTarget.FRIENDS) NotificationCompat.CATEGORY_SOCIAL else NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .setAllowSystemGeneratedContextualActions(false)
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .addAction(appearance.icon, if (notification.target == LaunchTarget.FRIENDS) "Voir mes amis" else "Ouvrir les chats", pending)
+        // Le titre développé est explicite : certains habillages Android masquent sinon le prénom.
+        builder.setStyle(NotificationCompat.BigTextStyle().setBigContentTitle(notification.title).bigText(notification.previewText))
         @Suppress("MissingPermission") // vérifiée par canNotify()
-        NotificationManagerCompat.from(context).notify(id, built)
+        NotificationManagerCompat.from(context).notify(tag, id, builder.build())
     }
 
     fun launchTargetOf(intent: Intent?): LaunchTarget? =

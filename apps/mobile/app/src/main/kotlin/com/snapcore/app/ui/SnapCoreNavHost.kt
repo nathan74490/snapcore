@@ -97,7 +97,7 @@ private val HOME_TAB_SCREENS = listOf("Map", "Chat", "Camera", "Stories")
 @Serializable private object MyStoryRoute
 @Serializable private object BlockedUsersRoute
 @Serializable private object NewChatRoute
-@Serializable private data class GroupConversationRoute(val groupId: String)
+@Serializable private data class GroupConversationRoute(val groupId: String, val openSnapId: String? = null)
 @Serializable private object AvatarEditorRoute
 // Paywall SnapCore+ ; returnedFromCheckout = ouvert par le lien de retour du paiement (ADR-025).
 @Serializable private data class PaywallRoute(val returnedFromCheckout: Boolean = false)
@@ -297,7 +297,7 @@ fun SnapCoreNavHost(
                         homeTab = CAMERA_TAB
                     },
                     onClearSnapRecipient = { snapRecipient = null },
-                    onOpenGroup = { group -> navController.navigate(GroupConversationRoute(group.id)) },
+                    onOpenGroup = { group, snapId -> navController.navigate(GroupConversationRoute(group.id, snapId)) },
                     onNewChat = { navController.navigate(NewChatRoute) },
                     onOpenProfile = { navController.navigate(ProfileRoute) },
                     onOpenFriends = { navController.navigate(FriendsRoute) },
@@ -425,6 +425,7 @@ fun SnapCoreNavHost(
             if (me == null) StartScreen(onSession = ::go)
             else GroupConversationScreen(
                 groupId = entry.toRoute<GroupConversationRoute>().groupId,
+                openSnapId = entry.toRoute<GroupConversationRoute>().openSnapId,
                 myId = me.id,
                 onBack = navController::popBackStack,
                 onOpenPlus = { navController.navigate(PaywallRoute()) },

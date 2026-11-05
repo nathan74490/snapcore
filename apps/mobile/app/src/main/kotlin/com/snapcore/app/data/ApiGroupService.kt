@@ -58,7 +58,7 @@ class ApiGroupService(private val api: SnapCoreApi) : GroupService {
         }
 }
 
-private fun GroupDto.toDomain() =
+internal fun GroupDto.toDomain() =
     Group(id, name?.takeIf { it.isNotBlank() }, members.map { it.toFriend() }, Instant.parse(createdAt), formerMembers.map { it.toFriend() })
 
 private fun GroupMessageDto.toDomain() = GroupMessage(

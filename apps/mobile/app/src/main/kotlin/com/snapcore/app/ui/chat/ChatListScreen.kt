@@ -38,7 +38,7 @@ private fun Conversation.unread(myId: String) = headline?.let { !it.isFrom(myId)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAddFriends: () -> Unit, onSnapTo: (Friend) -> Unit, modifier: Modifier = Modifier,
-    onOpenGroup: (Group) -> Unit = {}, onSnapToGroup: (Group) -> Unit = {}, onNewChat: () -> Unit = onAddFriends) {
+    onOpenGroup: (Group, snapId: String?) -> Unit = { _, _ -> }, onSnapToGroup: (Group) -> Unit = {}, onNewChat: () -> Unit = onAddFriends) {
     val vm = containerViewModel { ChatListViewModel(it.chat, it.realtime.events, myId, it.outbox.items, it.outbox::retry, groupService = it.groups) }
     val state by vm.state.collectAsStateWithLifecycle()
     // Au retour d'une conversation : le snap ouvert ou les chats lus ne déclenchent un événement temps
@@ -88,7 +88,9 @@ fun ChatListScreen(myId: String, onOpen: (Friend, snapId: String?) -> Unit, onAd
                         val summary = row.summary
                         GroupRow(summary, myId, onSnap = { onSnapToGroup(summary.group) }) {
                             val last = summary.headline
-                            if (last?.failed == true) vm.retryGroup(last) else onOpenGroup(summary.group)
+                            // Nouveau snap reçu : il s'ouvre directement, comme pour un ami (BUG-024 d'ADR-023).
+                            val snap = last?.takeIf { canTryToOpen(it, myId) && !it.openedByMe }
+                            if (last?.failed == true) vm.retryGroup(last) else onOpenGroup(summary.group, snap?.id)
                         }
                         return@items
                     }
