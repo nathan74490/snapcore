@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { UnauthenticatedError } from "../../../shared/domain/errors";
+import { UnauthenticatedError, ValidationError } from "../../../shared/domain/errors";
 import type { IdentityProvider, VerifiedIdentity } from "../application/ports/identity-provider.port";
 
 @Injectable()
@@ -15,7 +15,7 @@ export class FirebaseIdentityProvider implements IdentityProvider {
       // Avec checkRevoked = true, le SDK Admin relit le compte (getUser) : un compte supprimé
       // échoue avec auth/user-not-found, un compte désactivé avec auth/user-disabled (ADR-015).
       const decoded = await getAuth(this.app).verifyIdToken(idToken, options.checkRevoked);
-      return { firebaseUid: decoded.uid, email: decoded.email ?? null };
+      return { firebaseUid: decoded.uid, email: decoded.email ?? null, phoneNumber: decoded.phone_number ?? null };
     } catch (error) {
       // Seules les erreurs d'authentification deviennent un 401 : une erreur de configuration
       // (projet Firebase absent, identifiants manquants) doit rester visible en 500.
@@ -33,6 +33,30 @@ export class FirebaseIdentityProvider implements IdentityProvider {
       if (isUserNotFound(error)) throw new UnauthenticatedError("Session invalide ou expirée");
       throw error;
     }
+  }
+
+  async signInWithPhoneNumber(phoneNumber: string): Promise<string> {
+    const auth = getAuth(this.app);
+    let uid: string;
+    try {
+      uid = (await auth.getUserByPhoneNumber(phoneNumber)).uid;
+    } catch (error) {
+      if (!isUserNotFound(error)) throw error;
+      // Premier code vérifié pour ce numéro : le compte Firebase naît ici, sans email ni mot de passe.
+      // L'inscription SnapCore (POST /auth/register) suit, avec ce même compte.
+      try {
+        uid = (await auth.createUser({ phoneNumber })).uid;
+      } catch (creation) {
+        // Filet de sécurité : le numéro est déjà validé à la demande de code (libphonenumber).
+        if (isFirebaseAuthError(creation) && creation.code === "auth/invalid-phone-number") {
+          throw new ValidationError("Ce numéro n'existe pas : vérifie le pays et le nombre de chiffres");
+        }
+        throw creation;
+      }
+    }
+    // Jeton personnalisé, gratuit (l'envoi de SMS par Firebase exige le plan Blaze, ADR-010) : l'app l'échange
+    // contre une session Firebase ordinaire, dont l'ID token porte phone_number.
+    return auth.createCustomToken(uid);
   }
 
   async deleteAccount(firebaseUid: string): Promise<void> {

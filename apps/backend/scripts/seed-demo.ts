@@ -754,8 +754,11 @@ class DemoSeeder {
       return new RegisterUser(this.userRepository, this.identity, noAnalytics).execute({ ...input, idToken });
     }
     const trusted: IdentityProvider = {
-      verifyIdToken: async () => ({ firebaseUid, email: demo.email }),
+      verifyIdToken: async () => ({ firebaseUid, email: demo.email, phoneNumber: null }),
       getCurrentEmail: async () => demo.email,
+      signInWithPhoneNumber: async () => {
+        throw new Error("Connexion par téléphone indisponible dans le seed");
+      },
       deleteAccount: async () => undefined,
     };
     return new RegisterUser(this.userRepository, trusted, noAnalytics).execute({ ...input, idToken: "seed" });

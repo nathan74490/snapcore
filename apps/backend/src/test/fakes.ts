@@ -17,7 +17,7 @@ export class FixedClock implements Clock {
 // Simule Firebase : un token est de la forme "token-<uid>". Un compte supprimé côté Firebase
 // garde un token à la signature valide, mais échoue dès que checkRevoked est demandé (ADR-015).
 export class FakeIdentityProvider implements IdentityProvider {
-  readonly accounts = new Map<string, { email: string | null }>();
+  readonly accounts = new Map<string, { email: string | null; phoneNumber?: string | null }>();
   readonly deletedAccounts = new Set<string>();
   readonly calls: Array<{ checkRevoked: boolean }> = [];
 
@@ -39,7 +39,17 @@ export class FakeIdentityProvider implements IdentityProvider {
     if (options.checkRevoked && this.deletedAccounts.has(firebaseUid)) {
       throw new UnauthenticatedError("Session invalide ou expirée");
     }
-    return { firebaseUid, email: account.email };
+    return { firebaseUid, email: account.email, phoneNumber: account.phoneNumber ?? null };
+  }
+
+  /** Comme Firebase : retrouve le compte lié au numéro, ou le crée ; renvoie un jeton « custom-<uid> ». */
+  async signInWithPhoneNumber(phoneNumber: string): Promise<string> {
+    let uid = [...this.accounts].find(([, account]) => account.phoneNumber === phoneNumber)?.[0];
+    if (!uid) {
+      uid = `phone-${this.accounts.size + 1}`;
+      this.accounts.set(uid, { email: null, phoneNumber });
+    }
+    return `custom-${uid}`;
   }
 
   async getCurrentEmail(firebaseUid: string): Promise<string | null> {

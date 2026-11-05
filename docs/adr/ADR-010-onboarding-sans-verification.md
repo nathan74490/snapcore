@@ -26,6 +26,7 @@ Collecter le numéro de téléphone et l'email pendant l'onboarding, comme dans 
 - Version initiale : aucune vérification, ni email ni téléphone.
 - Révision (adoption de Firebase Authentication, ADR-015) : l'email est désormais vérifié gratuitement via Firebase, sans bloquer l'accès ; le téléphone reste non vérifié.
 - Révision (onboarding façon Snapchat, ADR-029) : le téléphone n'est plus demandé dans le formulaire d'inscription mais juste après, à l'écran facultatif « Ton numéro » ; il sert à retrouver ses amis par les contacts et reste non vérifié.
+- Révision (connexion par SMS, ADR-034) : le téléphone est désormais **vérifié**, par un code SMS géré par le backend, avec un opérateur SMS simulé (pas de plan Blaze). Il sert à se connecter. L'email n'est plus demandé à l'inscription, et l'écran « Ton numéro » des premiers pas disparaît.
 
 ## Liens
 - ADR liés : ADR-015, ADR-029
