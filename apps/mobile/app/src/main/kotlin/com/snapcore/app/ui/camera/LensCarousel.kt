@@ -1,8 +1,10 @@
 package com.snapcore.app.ui.camera
 
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
@@ -29,12 +31,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,8 +81,11 @@ fun LensCarousel(
     scrollEnabled: Boolean,
     onTap: (index: Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** Lens appliquée, quand elle ne dépend pas du centre du carrousel (TalkBack, ADR-033). */
+    selectedIndex: Int? = null,
 ) {
-    BoxWithConstraints(modifier) {
+    // Pendant l'enregistrement, le carrousel est invisible : TalkBack ne doit pas le lire non plus.
+    BoxWithConstraints(if (scrollEnabled) modifier else modifier.clearAndSetSemantics {}) {
         val side = (maxWidth - SLOT) / 2
         LazyRow(
             state = state,
@@ -81,18 +93,19 @@ fun LensCarousel(
             contentPadding = PaddingValues(horizontal = side),
             userScrollEnabled = scrollEnabled,
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().height(SLOT),
+            modifier = Modifier.fillMaxWidth().height(SLOT).selectableGroup(),
         ) {
             item(key = "none") {
-                LensSlot(state, 0, onTap) {
+                LensSlot(state, 0, "Sans Lens", onTap, selectedIndex) {
                     Box(Modifier.fillMaxSize().border(3.dp, Color.White, CircleShape))
                 }
             }
             itemsIndexed(lenses, key = { _, lens -> lens.id }) { i, lens ->
-                LensSlot(state, i + 1, onTap) {
+                LensSlot(state, i + 1, "Lens " + lens.name.orEmpty(), onTap, selectedIndex) {
                     AsyncImage(
                         model = lens.iconUri,
-                        contentDescription = lens.name,
+                        // Le nom est porté par la position du carrousel (choix exclusif pour TalkBack).
+                        contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize().clip(CircleShape).background(Color(0x55000000)),
                     )
@@ -103,7 +116,11 @@ fun LensCarousel(
 }
 
 @Composable
-private fun LensSlot(state: LazyListState, index: Int, onTap: (Int) -> Unit, content: @Composable () -> Unit) {
+private fun LensSlot(state: LazyListState, index: Int, label: String, onTap: (Int) -> Unit, selectedIndex: Int?,
+    content: @Composable () -> Unit) {
+    // Choix exclusif pour TalkBack : « Lens Chien, sélectionné » pour celle qui est appliquée (ADR-033).
+    val centered by remember(state, index) { derivedStateOf { state.centeredIndex() == index } }
+    val selected = selectedIndex?.let { it == index } ?: centered
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -125,7 +142,9 @@ private fun LensSlot(state: LazyListState, index: Int, onTap: (Int) -> Unit, con
                 // L'anneau « sans Lens » se confond avec le bouton de capture au centre : visible seulement à côté.
                 if (index == 0) alpha = distance
             }
-            .clickable(interactionSource = null, indication = null) { onTap(index) },
+            .selectable(selected, interactionSource = null, indication = null, role = Role.RadioButton) { onTap(index) }
+            .semantics { onClick(if (index == 0) "retirer la Lens" else "appliquer cette Lens") { onTap(index); true } }
+            .semantics { contentDescription = label },
     ) {
         Box(Modifier.size(ICON).clip(CircleShape)) { content() }
     }

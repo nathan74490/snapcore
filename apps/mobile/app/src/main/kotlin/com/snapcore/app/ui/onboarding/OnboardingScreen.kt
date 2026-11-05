@@ -1,5 +1,23 @@
 package com.snapcore.app.ui.onboarding
 
+import com.snapcore.app.ui.components.screenReaderFocusOnAppear
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.runtime.CompositionLocalProvider
+import com.snapcore.app.ui.onboarding.LocalJourneyStep
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.EnterTransition
+import com.snapcore.app.ui.components.rememberScreenReaderOn
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
@@ -85,8 +103,7 @@ fun OnboardingScreen(
 ) {
     val context = LocalContext.current
     val vm = containerViewModel {
-        val sim = context.getSystemService(TelephonyManager::class.java)?.simCountryIso?.takeIf { code -> code.isNotBlank() }
-        OnboardingViewModel(it.accounts, it.friends, it.contacts, sim ?: java.util.Locale.getDefault().country, needsNotificationPrompt = {
+        OnboardingViewModel(it.accounts, it.friends, it.contacts, needsNotificationPrompt = {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifications.canNotify(context) &&
                 Notifications.claimFirstPermissionRequest(context)
         }, analytics = it.analytics, experiments = it.experiments)
@@ -100,18 +117,13 @@ fun OnboardingScreen(
     BackHandler { if (state.step != OnboardingStep.DONE) vm.finish() }
 
     StatusBarIcons(dark = true)
-    var pickingCountry by remember { mutableStateOf(false) }
-    if (pickingCountry) {
-        CountryPicker(onPick = { vm.onCountry(it); pickingCountry = false }, onClose = { pickingCountry = false })
-        BackHandler { pickingCountry = false }
-        return
-    }
     val background = if (state.step == OnboardingStep.ADD_FRIENDS || state.step == OnboardingStep.INVITE) SnapColors.Background else Color.White
+    val screenReader = rememberScreenReaderOn()
     Box(Modifier.fillMaxSize().background(background)) {
-        Column(Modifier.fillMaxSize()) {
+        // TalkBack : question, contenu, puis « Passer » en fin de lecture.
+        Column(Modifier.fillMaxSize().semantics { isTraversalGroup = true }) {
             // Le fantôme accompagne chaque écran ; la barre continue celle de l'inscription.
             JourneyBar(Journey.firstSteps(state.step.ordinal), onSkip = when (state.step) {
-                OnboardingStep.PHONE -> vm::skipPhone
                 OnboardingStep.FIND_FRIENDS -> vm::skipFindFriends
                 OnboardingStep.ADD_FRIENDS -> vm::skipAddFriends
                 OnboardingStep.INVITE -> vm::skipInvites
@@ -119,10 +131,11 @@ fun OnboardingScreen(
                 else -> null
             })
             AnimatedContent(state.step, Modifier.weight(1f), transitionSpec = {
-                (slideInHorizontally { it / 2 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 2 } + fadeOut())
+                if (screenReader) EnterTransition.None togetherWith ExitTransition.None
+                else (slideInHorizontally { it / 2 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 2 } + fadeOut())
             }, label = "étape") { step ->
+                CompositionLocalProvider(LocalJourneyStep provides Journey.firstStepsLabel(step.ordinal)) {
                 when (step) {
-                    OnboardingStep.PHONE -> PhoneStep(state, vm) { pickingCountry = true }
                     OnboardingStep.FIND_FRIENDS -> FindFriendsStep(vm)
                     OnboardingStep.ADD_FRIENDS -> AddFriendsStep(state, vm)
                     OnboardingStep.INVITE -> InviteStep(state, vm, username)
@@ -130,92 +143,10 @@ fun OnboardingScreen(
                     OnboardingStep.NOTIFICATIONS -> NotificationsStep(vm::finish)
                     OnboardingStep.DONE -> Unit
                 }
+                }
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
-    }
-}
-
-// --- Numéro de téléphone ------------------------------------------------------------------------
-
-@Composable
-private fun PhoneStep(state: OnboardingState, vm: OnboardingViewModel, onPickCountry: () -> Unit) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
-        Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-            val line = GhostLines.phone(error = state.phoneError != null)
-            GhostSays(line.text, line.mood, Modifier.padding(top = 8.dp, bottom = 28.dp), ghostSize = 88.dp)
-            FieldLabel("Pays")
-            Box(Modifier.clickable(onClick = onPickCountry)) {
-                FieldBox {
-                    Text("${state.country.flag}  ${state.country.name}", fontSize = 17.sp, color = SnapColors.Ink, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.KeyboardArrowDown, null, tint = SnapColors.Muted, modifier = Modifier.padding(end = 12.dp))
-                }
-            }
-            Spacer(Modifier.height(24.dp))
-            FieldLabel("Numéro de téléphone")
-            FieldBox(error = state.phoneError != null) {
-                Text("+${state.country.dialCode}", fontSize = 17.sp, color = SnapColors.ChatBlue)
-                Box(Modifier.padding(horizontal = 14.dp).width(1.dp).height(24.dp).background(SnapColors.Hairline))
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    if (state.national.isEmpty()) Text("Numéro de téléphone", fontSize = 17.sp, color = SnapColors.Muted)
-                    BasicTextField(state.national, vm::onNational, singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, color = SnapColors.Ink),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), cursorBrush = SolidColor(SnapColors.ChatBlue),
-                        modifier = Modifier.fillMaxWidth().focusRequester(focus))
-                }
-            }
-            FieldStatus(state.phoneError, ok = false)
-            Text("Facultatif. Ton numéro n'est jamais montré aux autres et n'est pas vérifié.",
-                fontSize = 13.sp, color = SnapColors.Grey, modifier = Modifier.padding(top = 10.dp))
-            Spacer(Modifier.weight(1f))
-            PrimaryButton("Continuer", vm::savePhone, enabled = vm.phoneComplete || state.savingPhone, loading = state.savingPhone,
-                modifier = Modifier.padding(vertical = 16.dp), height = 46.dp)
-        }
-    }
-}
-
-/** Liste des pays avec recherche et index alphabétique (« Country or Region » de Snapchat). */
-@Composable
-private fun CountryPicker(onPick: (Country) -> Unit, onClose: () -> Unit) {
-    val all = remember { Countries.all() }
-    var query by remember { mutableStateOf("") }
-    val shown = remember(query) { all.filter { it.name.contains(query, ignoreCase = true) || it.dialCode.startsWith(query.trimStart('+')) } }
-    val groups = remember(shown) { shown.groupBy { it.name.first().uppercaseChar().let { c -> java.text.Normalizer.normalize("$c", java.text.Normalizer.Form.NFD).first() } } }
-    val list = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    // Position de chaque lettre dans la liste (en-tête + pays), pour l'index de droite.
-    val headerIndex = remember(groups) {
-        var position = 0
-        groups.mapValues { (_, countries) -> position.also { position += countries.size + 1 } }
-    }
-    Column(Modifier.fillMaxSize().background(SnapColors.Background).statusBarsPadding().navigationBarsPadding().imePadding()) {
-        Box(Modifier.fillMaxWidth().height(56.dp)) {
-            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) { Icon(Icons.Filled.KeyboardArrowDown, "Fermer", tint = SnapColors.Ink) }
-            Text("Pays ou région", style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp), modifier = Modifier.align(Alignment.Center))
-        }
-        SnapSearchBar(query, { query = it }, "Rechercher", Modifier.fillMaxWidth().padding(horizontal = 12.dp))
-        Row(Modifier.weight(1f)) {
-            LazyColumn(Modifier.weight(1f).padding(start = 12.dp, top = 8.dp), state = list) {
-                groups.forEach { (letter, countries) ->
-                    item(key = "h$letter") { Text("$letter", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp)) }
-                    items(countries, key = { it.code }) { country ->
-                        Row(Modifier.fillMaxWidth().background(Color.White).clickable { onPick(country) }.padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Text("${country.flag}  ${country.name}", fontSize = 16.sp, modifier = Modifier.weight(1f))
-                            Text("+${country.dialCode}", color = SnapColors.Muted, fontSize = 14.sp)
-                        }
-                    }
-                }
-            }
-            Column(Modifier.fillMaxHeight().padding(horizontal = 4.dp), verticalArrangement = Arrangement.Center) {
-                headerIndex.forEach { (letter, index) ->
-                    Text("$letter", fontSize = 11.sp, color = SnapColors.Grey,
-                        modifier = Modifier.clickable { scope.launch { list.scrollToItem(index) } }.padding(horizontal = 4.dp, vertical = 1.dp))
-                }
-            }
-        }
     }
 }
 
@@ -231,7 +162,7 @@ private fun FindFriendsStep(vm: OnboardingViewModel) {
         GhostSays(line.text, line.mood, Modifier.padding(top = 8.dp), ghostSize = 88.dp)
         Text(copy.text,
             fontSize = 16.sp, color = SnapColors.Grey, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp))
-        Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 24.dp), Alignment.Center) { ContactsIllustration() }
+        Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 24.dp).clearAndSetSemantics {}, Alignment.Center) { ContactsIllustration() }
         PrimaryButton(copy.button, { permission.launch(Manifest.permission.READ_CONTACTS) }, container = SnapColors.Yellow,
             content = SnapColors.Ink, height = 50.dp, modifier = Modifier.padding(bottom = 16.dp))
     }
@@ -262,6 +193,13 @@ private fun ContactsIllustration() {
 
 @Composable
 private fun AddFriendsStep(state: OnboardingState, vm: OnboardingViewModel) {
+    // TalkBack : la liste est un seul bouton, qui s'ouvre dans sa propre fenêtre (voir ContactListButton).
+    val screenReader = rememberScreenReaderOn()
+    var listOpen by remember { mutableStateOf(false) }
+    val checkedCount = state.addable.count { it.user.id in state.selected }
+    if (listOpen) ContactListDialog("Contacts à ajouter", checkedCount, onDone = { listOpen = false }) {
+        state.matches.forEach { match -> item(key = match.user.id) { MatchRow(match, state, vm) } }
+    }
     Box(Modifier.fillMaxSize().background(SnapColors.Background)) {
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
             LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
@@ -277,7 +215,9 @@ private fun AddFriendsStep(state: OnboardingState, vm: OnboardingViewModel) {
                             FriendRow(result.user.displayName, result.user.username, result.user.pictureUrl) {
                                 when (result.relation) {
                                     Relation.NONE, Relation.INCOMING_REQUEST ->
-                                        Text("Ajouter", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = vm::addSearchResult).padding(8.dp))
+                                        Text("Ajouter", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, modifier = Modifier
+                                            .clickable(role = Role.Button, onClickLabel = "envoyer une demande d'ami", onClick = vm::addSearchResult)
+                                            .semantics { contentDescription = "Ajouter ${result.user.displayName}" }.padding(8.dp))
                                     Relation.OUTGOING_REQUEST -> Text("Demande envoyée", color = SnapColors.Grey, fontSize = 13.sp)
                                     Relation.FRIENDS -> Text("Ami", color = SnapColors.Grey, fontSize = 13.sp)
                                 }
@@ -293,20 +233,13 @@ private fun AddFriendsStep(state: OnboardingState, vm: OnboardingViewModel) {
                             else "Recherche tes amis par leur pseudo.", color = SnapColors.Grey, textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth().padding(24.dp))
                     }
+                    screenReader -> item {
+                        ContactListButton(
+                            "Contacts déjà sur SnapCore : ${state.matches.size}, dont $checkedCount ${if (checkedCount > 1) "cochés" else "coché"} pour une demande d'ami.",
+                        ) { listOpen = true }
+                    }
                     else -> item {
-                        SnapCard {
-                            state.matches.forEach { match ->
-                                val user = match.user
-                                FriendRow(user.displayName, user.username, user.pictureUrl, subtitle = "Dans mes contacts",
-                                    onClick = { vm.toggle(user.id) }.takeIf { match in state.addable }) {
-                                    when (match.relation) {
-                                        Relation.FRIENDS -> Text("Ami", color = SnapColors.Grey, fontSize = 13.sp)
-                                        Relation.OUTGOING_REQUEST -> Text("Demande envoyée", color = SnapColors.Grey, fontSize = 13.sp)
-                                        else -> SnapCheckbox(user.id in state.selected)
-                                    }
-                                }
-                            }
-                        }
+                        SnapCard { state.matches.forEach { match -> MatchRow(match, state, vm) } }
                     }
                 }
             }
@@ -323,14 +256,76 @@ private fun AddFriendsStep(state: OnboardingState, vm: OnboardingViewModel) {
 }
 
 @Composable
-private fun FriendRow(name: String, username: String?, picture: String?, subtitle: String? = null, onClick: (() -> Unit)? = null, trailing: @Composable () -> Unit) {
-    Row(Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 14.dp, vertical = 8.dp),
+private fun MatchRow(match: com.snapcore.app.domain.ContactMatch, state: OnboardingState, vm: OnboardingViewModel) {
+    val user = match.user
+    FriendRow(user.displayName, user.username, user.pictureUrl, subtitle = "Dans mes contacts",
+        onClick = { vm.toggle(user.id) }.takeIf { match in state.addable },
+        checked = (user.id in state.selected).takeIf { match in state.addable }) {
+        when (match.relation) {
+            Relation.FRIENDS -> Text("Ami", color = SnapColors.Grey, fontSize = 13.sp)
+            Relation.OUTGOING_REQUEST -> Text("Demande envoyée", color = SnapColors.Grey, fontSize = 13.sp)
+            else -> SnapCheckbox(user.id in state.selected)
+        }
+    }
+}
+
+/**
+ * Avec TalkBack, une longue liste de contacts obligeait à passer chaque contact pour atteindre « Passer » ou
+ * « Continuer ». La liste devient un seul bouton qui la résume (« 12 contacts, dont 3 cochés ») : un double
+ * appui l'ouvre dans sa propre fenêtre ; sinon, on passe directement à la suite de l'écran (ADR-033).
+ */
+@Composable
+private fun ContactListButton(summary: String, onOpen: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White)
+        .clickable(role = Role.Button, onClick = onOpen)
+        .clearAndSetSemantics {
+            contentDescription = summary
+            role = Role.Button
+            onClick("parcourir et choisir les contacts") { onOpen(); true }
+        }
+        .padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(summary, fontSize = 16.sp, color = SnapColors.Ink, modifier = Modifier.weight(1f))
+        Text("Choisir", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
+/** La liste de contacts ouverte depuis [ContactListButton] : plein écran, avec « Terminé » en haut et en bas. */
+@Composable
+private fun ContactListDialog(title: String, checkedCount: Int, onDone: () -> Unit,
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDone,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.fillMaxSize().background(SnapColors.Background).statusBarsPadding().navigationBarsPadding()) {
+            Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
+                    modifier = Modifier.weight(1f).semantics { heading() }.screenReaderFocusOnAppear())
+                Text("Terminé", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 16.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onDone).padding(8.dp))
+            }
+            LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) { content() }
+            PrimaryButton(if (checkedCount == 0) "Terminé" else "Terminé, $checkedCount ${if (checkedCount > 1) "cochés" else "coché"}",
+                onDone, height = 50.dp, modifier = Modifier.padding(horizontal = 48.dp, vertical = 16.dp))
+        }
+    }
+}
+
+@Composable
+private fun FriendRow(name: String, username: String?, picture: String?, subtitle: String? = null, onClick: (() -> Unit)? = null,
+    checked: Boolean? = null, trailing: @Composable () -> Unit) {
+    // Une ligne = un seul élément pour TalkBack : « Léa, lea.martin, dans mes contacts, coché ».
+    val action = when {
+        onClick != null && checked != null -> Modifier.toggleable(checked, role = Role.Checkbox) { onClick() }
+        onClick != null -> Modifier.clickable(role = Role.Button, onClick = onClick)
+        else -> Modifier.semantics(mergeDescendants = true) {}
+    }
+    Row(Modifier.fillMaxWidth().then(action).padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Avatar(name, picture, 48.dp)
         Column(Modifier.weight(1f)) {
             Text(name, fontSize = 17.sp, maxLines = 1)
             username?.let { Text(it, fontSize = 13.sp, color = SnapColors.Grey, maxLines = 1) }
-            subtitle?.let { Text(it.uppercase(), fontSize = 10.sp, color = SnapColors.Muted, letterSpacing = .5.sp) }
+            subtitle?.let { Text(it.uppercase(), fontSize = 10.sp, color = SnapColors.Muted, letterSpacing = .5.sp,
+                modifier = Modifier.semantics { contentDescription = it }) }
         }
         trailing()
     }
@@ -343,6 +338,11 @@ private fun InviteStep(state: OnboardingState, vm: OnboardingViewModel, username
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     val shown = state.invitable.filter { it.name.contains(query, ignoreCase = true) }
+    val screenReader = rememberScreenReaderOn()
+    var listOpen by remember { mutableStateOf(false) }
+    if (listOpen) ContactListDialog("Contacts à inviter", state.invited.size, onDone = { listOpen = false }) {
+        shown.forEach { contact -> item(key = contact.name) { InviteRow(contact.name, state, vm) } }
+    }
     Box(Modifier.fillMaxSize().background(SnapColors.Background)) {
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
             LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
@@ -353,11 +353,10 @@ private fun InviteStep(state: OnboardingState, vm: OnboardingViewModel, username
                         color = SnapColors.Grey, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
                 }
                 item {
-                    SnapCard {
-                        shown.forEach { contact ->
-                            FriendRow(contact.name, null, null, onClick = { vm.toggleInvite(contact.name) }) { SnapCheckbox(contact.name in state.invited) }
-                        }
-                    }
+                    if (screenReader) {
+                        val checked = state.invited.size
+                        ContactListButton("Contacts à inviter : ${shown.size}, dont $checked ${if (checked > 1) "cochés" else "coché"}.") { listOpen = true }
+                    } else SnapCard { shown.forEach { contact -> InviteRow(contact.name, state, vm) } }
                 }
             }
         }
@@ -381,6 +380,13 @@ private fun InviteStep(state: OnboardingState, vm: OnboardingViewModel, username
     }
 }
 
+@Composable
+private fun InviteRow(name: String, state: OnboardingState, vm: OnboardingViewModel) {
+    FriendRow(name, null, null, onClick = { vm.toggleInvite(name) }, checked = name in state.invited) {
+        SnapCheckbox(name in state.invited)
+    }
+}
+
 // --- Avatar -------------------------------------------------------------------------------------
 
 @Composable
@@ -389,7 +395,8 @@ private fun AvatarStep(state: OnboardingState, onCreate: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally) {
         GhostSays(GhostLines.avatar.text, GhostLines.avatar.mood, Modifier.padding(top = 8.dp), ghostSize = 88.dp)
         Spacer(Modifier.weight(1f))
-        Box(Modifier.size(240.dp).clip(CircleShape).background(SnapColors.Background), Alignment.Center) {
+        Box(Modifier.size(240.dp).clip(CircleShape).background(SnapColors.Background)
+            .clearAndSetSemantics { contentDescription = "Aperçu de ton avatar" }, Alignment.Center) {
             state.avatarPreview?.let { AsyncImage(avatarImageUrl(it, size = 512), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
                 ?: FigmaAsset("13-241_imgImageGhostLogo")
         }
@@ -418,7 +425,9 @@ private fun NotificationsStep(onDone: () -> Unit) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else onDone()
         }, height = 50.dp, modifier = Modifier.padding(horizontal = 24.dp))
         Text("Plus tard", color = SnapColors.Grey, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-            modifier = Modifier.padding(vertical = 12.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onDone).padding(horizontal = 16.dp, vertical = 10.dp))
+            modifier = Modifier.padding(vertical = 12.dp).clip(RoundedCornerShape(8.dp))
+                .clickable(role = Role.Button, onClickLabel = "terminer sans activer les notifications", onClick = onDone)
+                .padding(horizontal = 16.dp, vertical = 10.dp))
     }
 }
 
@@ -426,7 +435,9 @@ private fun NotificationsStep(onDone: () -> Unit) {
 @Composable
 private fun NotificationPreview() {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(SnapColors.Background)
-        .border(1.dp, SnapColors.Border, RoundedCornerShape(18.dp)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        .border(1.dp, SnapColors.Border, RoundedCornerShape(18.dp))
+        .clearAndSetSemantics { contentDescription = "Exemple de notification : SnapCore, un ami t'a envoyé un snap" }
+        .padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         FigmaAsset("13-241_imgImageGhostLogo", modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)))
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text("SnapCore", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = SnapColors.Ink)

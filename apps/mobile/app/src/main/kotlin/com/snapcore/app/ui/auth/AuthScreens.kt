@@ -1,5 +1,13 @@
 package com.snapcore.app.ui.auth
 
+import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.semantics.isTraversalGroup
+import com.snapcore.app.ui.components.rememberScreenReaderOn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +65,11 @@ import com.snapcore.app.ui.components.SnapTextField
 import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
+import android.telephony.TelephonyManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import com.snapcore.app.ui.onboarding.GhostLines
 import com.snapcore.app.ui.components.ChunkyButton
 import com.snapcore.app.ui.components.GhostMascot
@@ -110,10 +123,10 @@ fun WelcomeScreen(onLogin: () -> Unit, onSignUp: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.weight(1f))
         GhostMascot(moods[mood], Modifier.size(220.dp).clickable(
-            interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = "Faire réagir le fantôme",
-        ) { mood = (mood + 1) % moods.size })
+            interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClickLabel = "le faire réagir",
+        ) { mood = (mood + 1) % moods.size }.clearAndSetSemantics {})
         Text("snapcore", fontFamily = WordmarkFont, fontWeight = FontWeight.Black, fontSize = 46.sp, color = SnapColors.Ink,
-            modifier = Modifier.padding(top = 8.dp))
+            modifier = Modifier.padding(top = 8.dp).semantics { heading(); contentDescription = "SnapCore" })
         Text("Tes snaps, tes stories et tes amis.\nAu même endroit.", fontSize = 19.sp, lineHeight = 26.sp,
             color = SnapColors.Ink.copy(alpha = .62f), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
         Spacer(Modifier.weight(1.3f))
@@ -134,35 +147,68 @@ private val WordmarkFont = FontFamily(Font(com.snapcore.app.R.font.nunito_sans, 
  */
 @Composable
 fun LoginScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
-    val vm = containerViewModel { LoginViewModel(it.auth, it.sessionResolver, it.analytics) }
+    val context = LocalContext.current
+    val vm = containerViewModel {
+        val sim = context.getSystemService(TelephonyManager::class.java)?.simCountryIso?.takeIf { code -> code.isNotBlank() }
+        LoginViewModel(it.auth, it.sessionResolver, it.analytics, countryCode = sim ?: java.util.Locale.getDefault().country)
+    }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.session) { state.session?.let(onSession) }
+    val goBack = { if (!vm.back()) onBack() }
+    BackHandler(onBack = goBack)
     var passwordFocused by remember { mutableStateOf(false) }
     var reveal by remember { mutableStateOf(false) }
-    val emailFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { emailFocus.requestFocus() }
+    var pickingCountry by remember { mutableStateOf(false) }
+    if (pickingCountry) {
+        CountryPicker(onPick = { vm.onCountry(it); pickingCountry = false }, onClose = { pickingCountry = false })
+        BackHandler { pickingCountry = false }
+        return
+    }
 
     StatusBarIcons(dark = true)
-    Column(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding().imePadding()) {
-        Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour", tint = SnapColors.Muted) }
-            Text("Connexion", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink)
+    // TalkBack : la phrase du fantôme, les champs et le bouton d'abord, le retour en dernier.
+    Column(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding().imePadding().semantics { isTraversalGroup = true }) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp).semantics { traversalIndex = 2f },
+            verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = goBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour", tint = SnapColors.Muted) }
+            Text("Connexion", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, modifier = Modifier.semantics { heading() })
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             val line = GhostLines.login(state, passwordFocused)
             GhostSays(line.text, line.mood, Modifier.padding(top = 8.dp, bottom = 24.dp), ghostSize = 88.dp)
-            SignUpField("Email", state.email, vm::onEmail, "ton.email@exemple.fr", keyboardType = KeyboardType.Email,
-                modifier = Modifier.focusRequester(emailFocus))
-            Spacer(Modifier.height(20.dp))
-            SignUpField("Mot de passe", state.password, vm::onPassword, "Ton mot de passe", keyboardType = KeyboardType.Password,
-                password = !reveal, modifier = Modifier.onFocusChanged { passwordFocused = it.isFocused }) {
-                if (state.password.isNotEmpty()) IconButton(onClick = { reveal = !reveal }) {
-                    Icon(if (reveal) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        if (reveal) "Masquer le mot de passe" else "Afficher le mot de passe", tint = SnapColors.Muted)
+            when (state.mode) {
+                LoginMode.PHONE -> {
+                    PhoneNumberFields(state.phone, { pickingCountry = true }, vm::onNational)
+                    // Comptes créés avec un email, avant la connexion par SMS (ADR-034).
+                    Text("Se connecter avec un email", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 20.dp).clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button) { vm.useEmail(true) }.padding(vertical = 6.dp))
+                }
+                LoginMode.CODE -> {
+                    SimulatedSms(state.phone.simulatedCode, vm::useSimulatedCode, Modifier.padding(bottom = 20.dp))
+                    PhoneCodeFields(state.phone, vm::onCode, vm::resendCode, enabled = !state.loading)
+                }
+                LoginMode.EMAIL -> {
+                    SignUpField("Email", state.email, vm::onEmail, "ton.email@exemple.fr", keyboardType = KeyboardType.Email)
+                    Spacer(Modifier.height(20.dp))
+                    SignUpField("Mot de passe", state.password, vm::onPassword, "Ton mot de passe", keyboardType = KeyboardType.Password,
+                        password = !reveal, modifier = Modifier.onFocusChanged { passwordFocused = it.isFocused }) {
+                        if (state.password.isNotEmpty()) IconButton(onClick = { reveal = !reveal }) {
+                            Icon(if (reveal) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                if (reveal) "Masquer le mot de passe" else "Afficher le mot de passe", tint = SnapColors.Muted)
+                        }
+                    }
+                    Text("Se connecter avec mon numéro", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 20.dp).clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button) { vm.useEmail(false) }.padding(vertical = 6.dp))
                 }
             }
         }
-        PrimaryButton("Connexion", vm::submit, enabled = state.email.isNotBlank() && state.password.isNotBlank(),
+        PrimaryButton(when (state.mode) {
+            LoginMode.PHONE -> "Recevoir le code par SMS"
+            LoginMode.CODE -> "Valider"
+            LoginMode.EMAIL -> "Connexion"
+        }, vm::submit, enabled = state.canSubmit || state.loading,
             loading = state.loading, modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp), height = 46.dp)
     }
 }

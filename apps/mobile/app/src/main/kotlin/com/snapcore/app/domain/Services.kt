@@ -9,8 +9,19 @@ interface AuthService {
     val isSignedIn: Boolean
     val currentEmail: String?
 
-    /** Crée le compte Firebase puis envoie l'email de vérification, sans bloquer (ADR-010). */
-    suspend fun signUp(email: String, password: String)
+    /**
+     * Demande un code de connexion par SMS pour ce numéro international (« +33612345678 », ADR-034).
+     * @throws com.snapcore.app.data.api.ApiException 400 si le numéro est invalide ou si un code vient d'être envoyé.
+     */
+    suspend fun requestPhoneCode(phoneNumber: String): PhoneCodeSent
+
+    /**
+     * Vérifie le code reçu par SMS et ouvre la session Firebase du compte lié au numéro (créé au premier code).
+     * @throws com.snapcore.app.data.api.ApiException 400 si le code est faux ou expiré.
+     */
+    suspend fun signInWithPhoneCode(phoneNumber: String, code: String)
+
+    /** Connexion des comptes créés avec un email, avant la connexion par SMS (ADR-034). */
     suspend fun signIn(email: String, password: String)
     fun signOut()
 
@@ -64,3 +75,9 @@ fun centeredSquare(width: Int, height: Int): SquareCrop {
 
 /** Taille fixe de la photo de profil envoyée (ADR-014). */
 const val PROFILE_PHOTO_SIZE = 512
+
+/**
+ * Code envoyé par SMS (ADR-034). [simulatedCode] n'est présent qu'avec l'opérateur SMS fictif : l'app le montre
+ * alors comme un SMS reçu, puisqu'aucun vrai SMS ne part.
+ */
+data class PhoneCodeSent(val phoneNumber: String, val resendInSeconds: Int, val simulatedCode: String? = null)

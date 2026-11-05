@@ -7,20 +7,30 @@ import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
+import com.snapcore.app.data.api.PhoneCodeRequest
+import com.snapcore.app.data.api.PhoneCodeVerification
+import com.snapcore.app.data.api.SnapCoreApi
+import com.snapcore.app.data.api.apiCall
 import com.snapcore.app.domain.AuthService
+import com.snapcore.app.domain.PhoneCodeSent
 import com.snapcore.app.domain.UserFacingException
 import kotlinx.coroutines.tasks.await
 
-// Firebase Authentication, fournisseur email/mot de passe uniquement (ADR-015).
-class FirebaseAuthService(private val auth: FirebaseAuth) : AuthService {
+// Firebase Authentication (ADR-015). Connexion par code SMS (ADR-034) : le backend vérifie le code et renvoie
+// un jeton personnalisé, échangé ici contre une session Firebase. L'email et le mot de passe ne servent plus
+// qu'aux comptes créés avant.
+class FirebaseAuthService(private val auth: FirebaseAuth, private val api: SnapCoreApi) : AuthService {
     override val isSignedIn get() = auth.currentUser != null
     override val currentEmail get() = auth.currentUser?.email
 
-    override suspend fun signUp(email: String, password: String) = translated {
-        val user = auth.createUserWithEmailAndPassword(email.trim(), password).await().user
-        // Gratuit et non bloquant : l'app reste utilisable sans confirmation (ADR-010).
-        runCatching { user?.sendEmailVerification()?.await() }
-        Unit
+    override suspend fun requestPhoneCode(phoneNumber: String): PhoneCodeSent = apiCall {
+        val sent = api.sendPhoneCode(PhoneCodeRequest(phoneNumber))
+        PhoneCodeSent(sent.phoneNumber, sent.resendInSeconds, sent.simulatedCode)
+    }
+
+    override suspend fun signInWithPhoneCode(phoneNumber: String, code: String) {
+        val token = apiCall { api.verifyPhoneCode(PhoneCodeVerification(phoneNumber, code)) }.customToken
+        translated { auth.signInWithCustomToken(token).await(); Unit }
     }
 
     override suspend fun signIn(email: String, password: String) = translated {

@@ -112,11 +112,9 @@ class AppExperimentsTest {
         val experiments = TrackedExperiments(mapOf(OnboardingContactsCopy.FLAG to "social"))
         val analytics = RecordingAnalytics()
         val contacts = object : ContactsReader { override suspend fun read() = emptyList<com.snapcore.app.domain.PhoneContact>() }
-        val vm = OnboardingViewModel(FakeAccounts(), StaticFriends(emptyList()), contacts, "FR", analytics, experiments)
+        // Les premiers pas s'ouvrent sur l'écran testé (le numéro est vérifié à l'inscription, ADR-034).
+        val vm = OnboardingViewModel(FakeAccounts(), StaticFriends(emptyList()), contacts, analytics, experiments)
         advanceUntilIdle()
-        assertTrue("pas encore à l'écran testé", experiments.exposures.isEmpty())
-
-        vm.skipPhone()
         assertEquals(OnboardingStep.FIND_FRIENDS, vm.state.value.step)
         assertEquals(OnboardingContactsCopy.SOCIAL, vm.state.value.contactsCopy)
         assertEquals(listOf(OnboardingContactsCopy.FLAG), experiments.exposures)

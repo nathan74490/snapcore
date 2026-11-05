@@ -1,5 +1,8 @@
 package com.snapcore.app.ui.components
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -45,13 +48,14 @@ fun ChunkyButton(
     val sink by animateDpAsState(if (pressed) depth else 0.dp, tween(70), label = "enfoncement")
     val shape = RoundedCornerShape(16.dp)
     Box(modifier.fillMaxWidth().height(52.dp + depth)
-        .clickable(interaction, indication = null, role = Role.Button, onClickLabel = text, onClick = onClick)) {
+        .clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
+        .semantics { contentDescription = text }) {
         // La tranche, visible sous le bouton tant qu'il n'est pas enfoncé.
         Box(Modifier.fillMaxWidth().height(52.dp).offset(y = depth).background(edge, shape))
         Box(Modifier.fillMaxWidth().height(52.dp).offset(y = sink).background(container, shape)
             .then(if (border) Modifier.border(2.dp, edge, shape) else Modifier), Alignment.Center) {
             Text(text.uppercase(), color = content, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
-                modifier = Modifier.padding(horizontal = 16.dp))
+                modifier = Modifier.padding(horizontal = 16.dp).clearAndSetSemantics {})
         }
     }
 }

@@ -82,7 +82,7 @@ class AppContainer(context: Context) {
         .build()
         .create(SnapCoreApi::class.java)
 
-    val auth: AuthService = FirebaseAuthService(firebaseAuth)
+    val auth: AuthService = FirebaseAuthService(firebaseAuth, api)
     val accounts: AccountService = ApiAccountService(api)
     val subscriptions: SubscriptionService = ApiSubscriptionService(api)
     val pendingRegistration: PendingRegistrationStore = DataStorePendingRegistrationStore(context.applicationContext)

@@ -1,5 +1,24 @@
 package com.snapcore.app.ui.auth
 
+import androidx.compose.runtime.CompositionLocalProvider
+import com.snapcore.app.ui.onboarding.LocalJourneyStep
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.EnterTransition
+import com.snapcore.app.ui.components.rememberScreenReaderOn
+import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.semantics.isTraversalGroup
+import kotlin.math.roundToInt
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,6 +77,8 @@ import com.snapcore.app.domain.Session
 import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
+import android.telephony.TelephonyManager
+import androidx.compose.ui.platform.LocalContext
 import com.snapcore.app.ui.onboarding.GhostLines
 import com.snapcore.app.ui.onboarding.GhostSays
 import com.snapcore.app.ui.onboarding.Journey
@@ -88,24 +109,40 @@ import kotlin.math.abs
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit, resuming: Boolean = false) {
-    val vm = containerViewModel { SignUpViewModel(it.auth, it.accounts, it.pendingRegistration, resuming, analytics = it.analytics) }
+    val context = LocalContext.current
+    val vm = containerViewModel {
+        val sim = context.getSystemService(TelephonyManager::class.java)?.simCountryIso?.takeIf { code -> code.isNotBlank() }
+        SignUpViewModel(it.auth, it.accounts, it.pendingRegistration, resuming, analytics = it.analytics,
+            countryCode = sim ?: java.util.Locale.getDefault().country)
+    }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.session) { state.session?.let(onSession) }
     val goBack = { if (!vm.back() && !resuming) onBack() }
     BackHandler(onBack = goBack)
 
+    val screenReader = rememberScreenReaderOn()
     StatusBarIcons(dark = true)
-    Column(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding().imePadding()) {
+    var pickingCountry by remember { mutableStateOf(false) }
+    if (pickingCountry) {
+        CountryPicker(onPick = { vm.onCountry(it); pickingCountry = false }, onClose = { pickingCountry = false })
+        BackHandler { pickingCountry = false }
+        return
+    }
+    // TalkBack : le bouton Continuer est lu en dernier, après la roue de la date.
+    Column(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding().imePadding().semantics { isTraversalGroup = true }) {
         JourneyBar(Journey.signUp(state.step, state.steps), onBack = goBack)
         Column(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp)) {
             // Chaque question arrive en glissant depuis la droite (depuis la gauche au retour).
+            // Avec TalkBack, sans animation : l'écran précédent resterait lisible pendant la transition.
             AnimatedContent(state.step, Modifier.fillMaxWidth().weight(1f), transitionSpec = {
                 val forward = targetState > initialState
-                (slideInHorizontally { if (forward) it / 2 else -it / 2 } + fadeIn()) togetherWith
+                if (screenReader) EnterTransition.None togetherWith ExitTransition.None
+                else (slideInHorizontally { if (forward) it / 2 else -it / 2 } + fadeIn()) togetherWith
                     (slideOutHorizontally { if (forward) -it / 2 else it / 2 } + fadeOut())
             }, label = "étape") { step ->
                 // Clavier ouvert : la question et ses champs défilent plutôt que d'être coupés.
                 val keyboard = WindowInsets.isImeVisible
+                CompositionLocalProvider(LocalJourneyStep provides Journey.signUpLabel(step, state.steps)) {
                 Column(Modifier.fillMaxSize().then(if (keyboard) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
                     val line = GhostLines.signUp(state, step)
                     GhostSays(line.text, line.mood, Modifier.padding(top = 8.dp, bottom = if (keyboard) 16.dp else 28.dp), ghostSize = 88.dp)
@@ -113,22 +150,27 @@ fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit, resuming: Boo
                         SignUpStep.NAME -> NameStep(state, vm)
                         SignUpStep.BIRTHDAY -> BirthdayField(state)
                         SignUpStep.USERNAME -> UsernameStep(state, vm, if (keyboard) Modifier else Modifier.weight(1f))
-                        SignUpStep.PASSWORD -> PasswordStep(state, vm)
-                        else -> EmailStep(state, vm)
+                        SignUpStep.PHONE -> PhoneNumberFields(state.phone, { pickingCountry = true }, vm::onNational)
+                        else -> CodeStep(state, vm)
                     }
+                }
                 }
             }
             state.error?.let { Text(it, color = SnapColors.SnapRed, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) }
             if (state.step == SignUpStep.NAME) LegalNotice()
             PrimaryButton(
-                if (state.isLastStep) "Terminer" else "Continuer", vm::next,
+                when {
+                    state.isLastStep && state.step == SignUpStep.CODE -> "Valider"
+                    state.isLastStep -> "Terminer"
+                    state.step == SignUpStep.PHONE -> "Recevoir le code par SMS"
+                    else -> "Continuer"
+                }, vm::next,
                 enabled = state.canContinue || state.loading, loading = state.loading,
-                modifier = Modifier.padding(top = 12.dp, bottom = 16.dp), height = 46.dp,
+                modifier = Modifier.padding(top = 12.dp, bottom = 16.dp).semantics { traversalIndex = 1f }, height = 46.dp,
             )
         }
         when (state.step) {
             SignUpStep.BIRTHDAY -> BirthdayWheel(state.birthday, vm::onBirthday)
-            SignUpStep.EMAIL -> EmailDomains(vm::completeEmail)
             else -> Unit
         }
     }
@@ -136,16 +178,19 @@ fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit, resuming: Boo
 
 @Composable
 private fun NameStep(state: SignUpState, vm: SignUpViewModel) {
-    // Reprise d'inscription : on rappelle avec quel compte on est connecté.
-    vm.email?.takeIf { state.resuming }?.let {
-        Text("Connecté avec $it", color = SnapColors.Grey, fontSize = 13.sp, modifier = Modifier.padding(bottom = 16.dp))
-    }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    // Avec TalkBack, pas de clavier ouvert d'office : le focus va d'abord à la question du fantôme.
+    val screenReaderOn = rememberScreenReaderOn()
+    LaunchedEffect(Unit) { if (!screenReaderOn) focus.requestFocus() }
     SignUpField("Prénom", state.firstName, vm::onFirstName, "Prénom", error = state.firstNameError,
         capitalize = true, modifier = Modifier.focusRequester(focus))
-    Spacer(Modifier.height(24.dp))
-    SignUpField("Nom", state.lastName, vm::onLastName, "Nom (facultatif)", error = state.lastNameError, capitalize = true)
+}
+
+/** Code reçu par SMS (ADR-034) : le SMS simulé, puis les six cases. */
+@Composable
+private fun CodeStep(state: SignUpState, vm: SignUpViewModel) {
+    SimulatedSms(state.phone.simulatedCode, vm::useSimulatedCode, Modifier.padding(bottom = 20.dp))
+    PhoneCodeFields(state.phone, vm::onCode, vm::resendCode, enabled = !state.loading)
 }
 
 // Comme Snapchat : l'accord aux conditions se donne en touchant Continuer, à la première étape.
@@ -166,9 +211,13 @@ private val BIRTHDAY_FORMAT = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.
 
 @Composable
 private fun BirthdayField(state: SignUpState) {
-    FieldLabel("Date de naissance")
-    FieldBox(error = state.birthdayError != null) {
-        Text(state.birthday?.format(BIRTHDAY_FORMAT).orEmpty(), fontSize = 17.sp, color = SnapColors.Ink)
+    Column(Modifier.clearAndSetSemantics {
+        contentDescription = "Date de naissance : " + (state.birthday?.format(BIRTHDAY_FORMAT) ?: "pas encore choisie. Règle le mois, le jour et l'année plus bas.")
+    }) {
+        FieldLabel("Date de naissance")
+        FieldBox(error = state.birthdayError != null) {
+            Text(state.birthday?.format(BIRTHDAY_FORMAT).orEmpty(), fontSize = 17.sp, color = SnapColors.Ink)
+        }
     }
     FieldStatus(state.birthdayError, ok = false)
 }
@@ -197,9 +246,9 @@ private fun BirthdayWheel(value: LocalDate?, onChange: (LocalDate) -> Unit) {
     Box(Modifier.fillMaxWidth().height(WHEEL_ITEM * WHEEL_VISIBLE).padding(horizontal = 8.dp)) {
         Box(Modifier.align(Alignment.Center).fillMaxWidth().height(WHEEL_ITEM).background(Color(0xFFF2F2F7), RoundedCornerShape(8.dp)))
         Row(Modifier.fillMaxSize()) {
-            Wheel(months, month - 1, { emit(m = it + 1) }, Modifier.weight(1.6f))
-            Wheel((1..daysInMonth).map(Int::toString), day - 1, { emit(d = it + 1) }, Modifier.weight(.8f))
-            Wheel(years.map(Int::toString), years.indexOf(year), { emit(y = years[it]) }, Modifier.weight(1f))
+            Wheel(months, month - 1, { emit(m = it + 1) }, Modifier.weight(1.6f), "Mois")
+            Wheel((1..daysInMonth).map(Int::toString), day - 1, { emit(d = it + 1) }, Modifier.weight(.8f), "Jour")
+            Wheel(years.map(Int::toString), years.indexOf(year), { emit(y = years[it]) }, Modifier.weight(1f), "Année")
         }
     }
 }
@@ -208,7 +257,7 @@ private val WHEEL_ITEM = 36.dp
 private const val WHEEL_VISIBLE = 5
 
 @Composable
-private fun Wheel(items: List<String>, selected: Int, onSelected: (Int) -> Unit, modifier: Modifier) {
+private fun Wheel(items: List<String>, selected: Int, onSelected: (Int) -> Unit, modifier: Modifier, label: String) {
     val list = rememberLazyListState(initialFirstVisibleItemIndex = selected.coerceIn(0, items.lastIndex))
     val latest by rememberUpdatedState(onSelected)
     // Fin du défilement : l'élément au centre est choisi (la roue s'y cale grâce au snapping).
@@ -222,8 +271,16 @@ private fun Wheel(items: List<String>, selected: Int, onSelected: (Int) -> Unit,
     LaunchedEffect(selected, items.size) {
         if (!list.isScrollInProgress && list.firstVisibleItemIndex != selected) list.scrollToItem(selected.coerceIn(0, items.lastIndex))
     }
+    // TalkBack : une seule commande réglable par roue (« Mois, Novembre »), qu'on change en balayant vers le
+    // haut ou le bas, au lieu d'une liste qu'il faudrait faire défiler à l'aveugle.
+    val current = selected.coerceIn(0, items.lastIndex)
     LazyColumn(
-        modifier.fillMaxHeight(),
+        modifier.fillMaxHeight().clearAndSetSemantics {
+            contentDescription = label
+            stateDescription = items[current]
+            progressBarRangeInfo = ProgressBarRangeInfo(current.toFloat(), 0f..items.lastIndex.toFloat(), (items.size - 2).coerceAtLeast(0))
+            setProgress { value -> latest(value.roundToInt().coerceIn(0, items.lastIndex)); true }
+        },
         state = list,
         flingBehavior = rememberSnapFlingBehavior(list),
         contentPadding = PaddingValues(vertical = WHEEL_ITEM * (WHEEL_VISIBLE / 2)),
@@ -245,16 +302,21 @@ private fun UsernameStep(state: SignUpState, vm: SignUpViewModel, modifier: Modi
     if (!state.editingUsername) {
         // Pseudo proposé d'office, modifiable d'un appui (Snapchat : « Your username is… »).
         Column(modifier.fillMaxWidth().padding(bottom = 48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text("Ton pseudo est", color = SnapColors.Grey, fontSize = 15.sp)
-            Text(state.username, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, modifier = Modifier.padding(vertical = 6.dp))
+            Column(Modifier.clearAndSetSemantics { contentDescription = "Ton pseudo est ${state.username}" },
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Ton pseudo est", color = SnapColors.Grey, fontSize = 15.sp)
+                Text(state.username, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, modifier = Modifier.padding(vertical = 6.dp))
+            }
             Text("Changer mon pseudo", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp,
-                modifier = Modifier.clickable(onClick = vm::editUsername).padding(6.dp))
+                modifier = Modifier.clickable(role = Role.Button, onClick = vm::editUsername).padding(6.dp))
             Text("Tu pourras le changer plus tard dans les paramètres", color = SnapColors.Muted, fontSize = 13.sp)
         }
         return
     }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    // Avec TalkBack, pas de clavier ouvert d'office : le focus va d'abord à la question du fantôme.
+    val screenReaderOn = rememberScreenReaderOn()
+    LaunchedEffect(Unit) { if (!screenReaderOn) focus.requestFocus() }
     SignUpField("Pseudo", state.username, vm::onUsername, "Pseudo", modifier = Modifier.focusRequester(focus),
         error = (state.usernameStatus as? UsernameStatus.Unavailable)?.reason) {
         IconButton(onClick = vm::suggestAnother) { Icon(Icons.Filled.Refresh, "Proposer un autre pseudo", tint = SnapColors.Muted) }
@@ -270,57 +332,12 @@ private fun UsernameStep(state: SignUpState, vm: SignUpViewModel, modifier: Modi
     }
 }
 
-// --- Mot de passe -------------------------------------------------------------------------------
-
-@Composable
-private fun PasswordStep(state: SignUpState, vm: SignUpViewModel) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    var reveal by remember { mutableStateOf(false) }
-    SignUpField("Choisis un mot de passe", state.password, vm::onPassword, "Ton mot de passe",
-        keyboardType = KeyboardType.Password, password = !reveal, error = if (state.passwordHint == PasswordHint.TOO_SHORT) "" else null,
-        modifier = Modifier.focusRequester(focus)) {
-        if (state.password.isNotEmpty()) IconButton(onClick = { reveal = !reveal }) {
-            Icon(if (reveal) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                if (reveal) "Masquer le mot de passe" else "Afficher le mot de passe", tint = SnapColors.Muted)
-        }
-    }
-    when (state.passwordHint) {
-        PasswordHint.EMPTY -> FieldStatus("Ton mot de passe doit contenir au moins 8 caractères", ok = null)
-        PasswordHint.TOO_SHORT -> FieldStatus("Ton mot de passe doit contenir au moins 8 caractères.", ok = false)
-        PasswordHint.OK -> FieldStatus("Mot de passe correct", ok = true)
-    }
-}
-
-// --- Email --------------------------------------------------------------------------------------
-
-@Composable
-private fun EmailStep(state: SignUpState, vm: SignUpViewModel) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    SignUpField("Email", state.email, vm::onEmail, "", keyboardType = KeyboardType.Email, error = state.emailError,
-        modifier = Modifier.focusRequester(focus))
-    Text("Un email de confirmation te sera envoyé.", fontSize = 13.sp, color = SnapColors.Grey, modifier = Modifier.padding(top = 8.dp))
-}
-
-/** Raccourcis de domaine au-dessus du clavier, comme les suggestions du clavier iOS de Snapchat. */
-@Composable
-private fun EmailDomains(onPick: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        EMAIL_DOMAINS.forEach { domain ->
-            Text(domain, fontSize = 14.sp, color = SnapColors.Ink,
-                modifier = Modifier.background(SnapColors.Control, RoundedCornerShape(8.dp)).clickable { onPick(domain) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp))
-        }
-    }
-}
-
 // --- Champ façon Snapchat -----------------------------------------------------------------------
 
 @Composable
-fun FieldLabel(text: String) {
-    Text(text, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, modifier = Modifier.padding(bottom = 8.dp))
+fun FieldLabel(text: String, readAloud: Boolean = false) {
+    Text(text, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink,
+        modifier = Modifier.padding(bottom = 8.dp).then(if (readAloud) Modifier else Modifier.clearAndSetSemantics {}))
 }
 
 /** Cadre arrondi gris, noir à la saisie, rouge en erreur. */
@@ -355,7 +372,7 @@ fun SignUpField(
     FieldLabel(label)
     FieldBox(error = error != null, focused = focused) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            if (value.isEmpty()) Text(placeholder, fontSize = 17.sp, color = SnapColors.Muted)
+            if (value.isEmpty()) Text(placeholder, fontSize = 17.sp, color = SnapColors.Muted, modifier = Modifier.clearAndSetSemantics {})
             BasicTextField(
                 field, { field = it; if (it.text != value) onChange(it.text) }, singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, color = SnapColors.Ink),
@@ -363,7 +380,10 @@ fun SignUpField(
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardType,
                     capitalization = if (capitalize) KeyboardCapitalization.Words else KeyboardCapitalization.None, autoCorrectEnabled = false),
                 cursorBrush = SolidColor(SnapColors.ChatBlue),
-                modifier = modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+                modifier = modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }.semantics {
+                    contentDescription = label
+                    if (!error.isNullOrEmpty()) { val message: String = error; this.error(message) }
+                },
             )
         }
         trailing()
@@ -380,7 +400,8 @@ fun FieldStatus(text: String?, ok: Boolean?) {
         false -> SnapColors.SnapRed
         null -> SnapColors.Muted
     }
-    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.padding(top = 8.dp).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically) {
         Icon(if (ok == false) Icons.Filled.Error else Icons.Filled.CheckCircle, null, tint = color, modifier = Modifier.size(15.dp))
         Text(text, fontSize = 13.sp, color = if (ok == false) SnapColors.SnapRed else SnapColors.Grey, modifier = Modifier.padding(start = 6.dp))
     }

@@ -1,5 +1,9 @@
 package com.snapcore.app.ui.components
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.getValue
@@ -115,21 +119,29 @@ fun SnapTextField(
 // Avatar par défaut généré à l'affichage : initiales sur fond coloré, aucune image stockée (ADR-014).
 @Composable
 fun Avatar(username: String, photoUrl: String?, size: Dp, modifier: Modifier = Modifier) {
+    // Décoratif pour TalkBack : le nom est lu à côté, ou par le bouton qui contient l'avatar.
     val palette = listOf(SnapColors.ChatBlue, SnapColors.SnapRed, SnapColors.SnapPurple, Color(0xFF2ECC71), Color(0xFFFF9F1C))
     val background = palette[Math.floorMod(username.hashCode(), palette.size)]
     Box(
         contentAlignment = Alignment.Center,
+        // Seul le contenu est masqué : un bouton posé sur l'avatar (profileButton…) garde son nom et son action.
         modifier = modifier.size(size).clip(CircleShape).background(background),
     ) {
         if (photoUrl != null) {
-            AsyncImage(model = photoUrl, contentDescription = "Photo de profil", contentScale = ContentScale.Crop, modifier = Modifier.size(size))
+            AsyncImage(model = photoUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size))
         } else {
             Text(
                 text = username.take(2).uppercase(),
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = (size.value * 0.38f).sp,
+                modifier = Modifier.clearAndSetSemantics {},
             )
         }
     }
 }
+
+/** Avatar de l'en-tête qui ouvre le profil : un bouton nommé pour TalkBack (l'avatar lui-même est décoratif). */
+fun Modifier.profileButton(onClick: () -> Unit): Modifier =
+    clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .semantics { contentDescription = "Mon profil" }

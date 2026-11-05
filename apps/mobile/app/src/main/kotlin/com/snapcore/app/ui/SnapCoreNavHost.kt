@@ -1,5 +1,6 @@
 package com.snapcore.app.ui
 
+import com.snapcore.app.ui.components.AccessibleScreen
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.slideInHorizontally
@@ -229,17 +230,17 @@ fun SnapCoreNavHost(
         },
     ) {
         composable<StartRoute>(exitTransition = { fadeOut(tween(180)) }) { StartScreen(onSession = ::go) }
-        composable<WelcomeRoute> {
+        composable<WelcomeRoute> { AccessibleScreen("Bienvenue sur SnapCore") {
             WelcomeScreen(
                 onLogin = { navController.navigate(LoginRoute) },
                 onSignUp = { navController.navigate(SignUpRoute) },
             )
-        }
-        composable<LoginRoute> { LoginScreen(onBack = navController::popBackStack, onSession = ::go) }
-        composable<SignUpRoute> { SignUpScreen(onBack = navController::popBackStack, onSession = ::afterSignUp) }
+        }}
+        composable<LoginRoute> { AccessibleScreen("Connexion") { LoginScreen(onBack = navController::popBackStack, onSession = ::go) }}
+        composable<SignUpRoute> { AccessibleScreen("Inscription") { SignUpScreen(onBack = navController::popBackStack, onSession = ::afterSignUp) }}
         // Compte Firebase sans compte SnapCore : on reprend l'inscription aux étapes nom, naissance, pseudo.
-        composable<CompleteRegistrationRoute> { SignUpScreen(onBack = {}, onSession = ::afterSignUp, resuming = true) }
-        composable<OnboardingRoute> {
+        composable<CompleteRegistrationRoute> { AccessibleScreen("Inscription") { SignUpScreen(onBack = {}, onSession = ::afterSignUp, resuming = true) }}
+        composable<OnboardingRoute> { AccessibleScreen("Premiers pas") {
             val me = account
             if (me == null) StartScreen(onSession = ::go)
             else OnboardingScreen(
@@ -258,7 +259,7 @@ fun SnapCoreNavHost(
                     }
                 },
             )
-        }
+        }}
         composable<HomeRoute>(
             enterTransition = {
                 if (initialState.destination.hasRoute<StartRoute>()) fadeIn(tween(180))
@@ -329,7 +330,7 @@ fun SnapCoreNavHost(
                 )
             }
         }
-        composable<PreviewRoute> { entry ->
+        composable<PreviewRoute> { entry -> AccessibleScreen("Aperçu du snap") {
             val route = entry.toRoute<PreviewRoute>()
             PreviewScreen(
                 media = route.media(),
@@ -337,8 +338,8 @@ fun SnapCoreNavHost(
                 // Média déjà filtré (ADR-022) : un nouveau fichier, l'original restant à l'aperçu.
                 onSendTo = { filtered -> navController.navigate(SendToRoute(filtered.file.absolutePath, filtered.kind, snapRecipient?.id)) },
             )
-        }
-        composable<SendToRoute> { entry ->
+        }}
+        composable<SendToRoute> { entry -> AccessibleScreen("Envoyer à") {
             SendToScreen(
                 media = entry.toRoute<SendToRoute>().media(),
                 recipientId = entry.toRoute<SendToRoute>().recipientId,
@@ -352,13 +353,13 @@ fun SnapCoreNavHost(
                 },
                 onAddFriends = { navController.navigate(FriendsRoute) },
             )
-        }
+        }}
         composable<ConversationRoute>(
             enterTransition = { slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { it } },
             exitTransition = { slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 } },
             popEnterTransition = { slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 } },
             popExitTransition = { if (swipeDismissed) ExitTransition.None else slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { it } },
-        ) { entry ->
+        ) { entry -> AccessibleScreen("Conversation avec " + entry.toRoute<ConversationRoute>().let { it.firstName ?: it.username }) {
             val route = entry.toRoute<ConversationRoute>()
             val me = account
             if (me == null) StartScreen(onSession = ::go)
@@ -376,8 +377,8 @@ fun SnapCoreNavHost(
                 onOpenPlus = { navController.navigate(PaywallRoute()) },
                 openSnapId = route.openSnapId,
             )
-        }
-        composable<MyStoryRoute> {
+        }}
+        composable<MyStoryRoute> { AccessibleScreen("Ma story") {
             MyStoryScreen(
                 onBack = navController::popBackStack,
                 onPlay = { item ->
@@ -385,13 +386,13 @@ fun SnapCoreNavHost(
                     navController.navigate(StoryPlayerRoute("Ma story", authorId = null, startItemId = item.id))
                 },
             )
-        }
-        composable<StoryPlayerRoute> { entry ->
+        }}
+        composable<StoryPlayerRoute> { entry -> AccessibleScreen("Story : " + entry.toRoute<StoryPlayerRoute>().title) {
             val route = entry.toRoute<StoryPlayerRoute>()
             StoryPlayerScreen(route.title, route.authorId, route.startItemId, onClose = navController::popBackStack)
-        }
-        composable<FriendsRoute> { FriendsScreen(onBack = navController::popBackStack) }
-        composable<ProfileRoute> {
+        }}
+        composable<FriendsRoute> { AccessibleScreen("Amis") { FriendsScreen(onBack = navController::popBackStack) }}
+        composable<ProfileRoute> { AccessibleScreen("Mon profil") {
             ProfileScreen(
                 onBack = navController::popBackStack,
                 onSignedOut = { go(Session.SignedOut) },
@@ -409,10 +410,10 @@ fun SnapCoreNavHost(
                 avatarChange = avatarChange,
                 onAvatarChangeApplied = { avatarChange = null },
             )
-        }
-        composable<BlockedUsersRoute> { BlockedUsersScreen(onBack = navController::popBackStack) }
+        }}
+        composable<BlockedUsersRoute> { AccessibleScreen("Utilisateurs bloqués") { BlockedUsersScreen(onBack = navController::popBackStack) }}
         // Groupes de discussion (ADR-032).
-        composable<NewChatRoute> {
+        composable<NewChatRoute> { AccessibleScreen("Nouveau chat") {
             NewGroupScreen(
                 onBack = navController::popBackStack,
                 onOpenFriend = { f ->
@@ -420,13 +421,13 @@ fun SnapCoreNavHost(
                 },
                 onOpenGroup = { group -> navController.navigate(GroupConversationRoute(group.id)) { popUpTo<NewChatRoute> { inclusive = true } } },
             )
-        }
+        }}
         composable<GroupConversationRoute>(
             enterTransition = { slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { it } },
             exitTransition = { slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 } },
             popEnterTransition = { slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 4 } },
             popExitTransition = { slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { it } },
-        ) { entry ->
+        ) { entry -> AccessibleScreen("Conversation de groupe") {
             val me = account
             if (me == null) StartScreen(onSession = ::go)
             else GroupConversationScreen(
@@ -441,16 +442,16 @@ fun SnapCoreNavHost(
                     backToHome()
                 },
             )
-        }
-        composable<AvatarEditorRoute> {
+        }}
+        composable<AvatarEditorRoute> { AccessibleScreen("Mon avatar") {
             val me = account
             if (me == null) StartScreen(onSession = ::go)
             else AvatarEditorScreen(me, onBack = navController::popBackStack, onSaved = {
                 avatarChange = it
                 navController.popBackStack()
             })
-        }
-        composable<PaywallRoute> { entry ->
+        }}
+        composable<PaywallRoute> { entry -> AccessibleScreen("SnapCore+") {
             val route = entry.toRoute<PaywallRoute>()
             PaywallScreen(
                 returnedFromCheckout = route.returnedFromCheckout,
@@ -459,7 +460,7 @@ fun SnapCoreNavHost(
                 onAccountChanged = { account = it },
                 initialAccount = account,
             )
-        }
+        }}
     }
 }
 

@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +24,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,11 +59,18 @@ fun BlockedUsersScreen(onBack: () -> Unit) {
     var unblocking by remember { mutableStateOf<Friend?>(null) }
     StatusBarIcons(dark = true)
 
+    // Même fenêtre que ConfirmActionDialog, avec un titre lu comme tel par TalkBack.
     unblocking?.let { user ->
-        ConfirmActionDialog(
-            title = "Débloquer ${user.displayName} ?",
-            text = "Vous ne serez plus amis : il faudra renvoyer une demande pour vous écrire à nouveau.",
-            confirm = "Débloquer", onConfirm = { vm.unblock(user) }, onDismiss = { unblocking = null },
+        AlertDialog(
+            onDismissRequest = { unblocking = null },
+            title = { Text("Débloquer ${user.displayName} ?", Modifier.semantics { heading() }) },
+            text = { Text("Vous ne serez plus amis : il faudra renvoyer une demande pour vous écrire à nouveau.") },
+            confirmButton = {
+                TextButton(onClick = { unblocking = null; vm.unblock(user) }) {
+                    Text("Débloquer", color = SnapColors.SnapRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { TextButton(onClick = { unblocking = null }) { Text("Annuler") } },
         )
     }
 
@@ -59,14 +78,17 @@ fun BlockedUsersScreen(onBack: () -> Unit) {
         SnapHeader("Utilisateurs bloqués", onBack)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            state.error?.let { Text(it, color = SnapColors.SnapRed) }
+            state.error?.let { Text(it, color = SnapColors.SnapRed, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
             when {
-                state.loading -> Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }
+                state.loading -> Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
+                    CircularProgressIndicator(modifier = Modifier.semantics { contentDescription = "Chargement" })
+                }
                 state.users.isEmpty() -> Text("Tu n'as bloqué personne.", color = SnapColors.Grey, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 32.dp))
                 else -> SnapCard {
                     state.users.forEach { user ->
-                        Row(Modifier.fillMaxWidth().heightIn(min = 66.dp).padding(horizontal = 16.dp, vertical = 5.dp),
+                        // TalkBack : « Léa, @lea », puis le bouton « Débloquer Léa ».
+                        Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}.heightIn(min = 66.dp).padding(horizontal = 16.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Avatar(user.displayName, user.pictureUrl, size = 48.dp)
                             Column(Modifier.weight(1f)) {
@@ -74,7 +96,11 @@ fun BlockedUsersScreen(onBack: () -> Unit) {
                                 Text("@${user.username}", style = MaterialTheme.typography.bodySmall, color = SnapColors.Grey,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            ChipButton("Débloquer", { unblocking = user }, style = ChipStyle.Gray)
+                            Box(Modifier.semantics(mergeDescendants = true) {}.clearAndSetSemantics {
+                                contentDescription = "Débloquer ${user.displayName}"
+                                role = Role.Button
+                                onClick("confirmer le déblocage") { unblocking = user; true }
+                            }) { ChipButton("Débloquer", { unblocking = user }, style = ChipStyle.Gray) }
                         }
                     }
                 }

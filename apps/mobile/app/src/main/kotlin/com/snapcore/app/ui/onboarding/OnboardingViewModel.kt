@@ -15,8 +15,6 @@ import com.snapcore.app.domain.expose
 import com.snapcore.app.domain.NoAnalytics
 import com.snapcore.app.domain.ContactMatch
 import com.snapcore.app.domain.ContactsReader
-import com.snapcore.app.domain.Countries
-import com.snapcore.app.domain.Country
 import com.snapcore.app.domain.FriendsService
 import com.snapcore.app.domain.PhoneContact
 import com.snapcore.app.domain.Relation
@@ -32,16 +30,13 @@ import kotlinx.coroutines.launch
 // Premiers pas après l'inscription, comme Snapchat (ADR-029) : numéro (facultatif), amis retrouvés par
 // les contacts, invitations, avatar, puis notifications. Chaque écran se passe.
 
-enum class OnboardingStep { PHONE, FIND_FRIENDS, ADD_FRIENDS, INVITE, AVATAR, NOTIFICATIONS, DONE }
+// Le numéro n'est plus demandé ici : il est vérifié par code SMS à l'inscription (ADR-034).
+enum class OnboardingStep { FIND_FRIENDS, ADD_FRIENDS, INVITE, AVATAR, NOTIFICATIONS, DONE }
 
 data class OnboardingState(
-    val step: OnboardingStep = OnboardingStep.PHONE,
-    val country: Country,
+    val step: OnboardingStep = OnboardingStep.FIND_FRIENDS,
     /** Texte de l'écran « Trouve tous tes amis » (expérience onboarding-contacts-copy, ADR-030). */
     val contactsCopy: OnboardingContactsCopy = OnboardingContactsCopy.CONTROL,
-    val national: String = "",
-    val phoneError: String? = null,
-    val savingPhone: Boolean = false,
     /** null tant que l'accès aux contacts n'a pas été demandé. */
     val contactsGranted: Boolean? = null,
     val loadingContacts: Boolean = false,
@@ -71,13 +66,12 @@ class OnboardingViewModel(
     private val accounts: AccountService,
     private val friends: FriendsService,
     private val contactsReader: ContactsReader,
-    countryCode: String?,
     private val analytics: Analytics = NoAnalytics,
     private val experiments: Experiments = NoExperiments,
     /** Notifications à demander à la fin (Android 13+, permission pas encore accordée ni demandée). */
     private val needsNotificationPrompt: () -> Boolean = { false },
 ) : ViewModel() {
-    private val _state = MutableStateFlow(OnboardingState(country = Countries.byCode(countryCode)))
+    private val _state = MutableStateFlow(OnboardingState())
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
     /** Variante vue de l'expérience onboarding-contacts-copy, lue une fois à l'affichage de l'écran. */
@@ -102,30 +96,6 @@ class OnboardingViewModel(
         viewModelScope.launch { runCatching { accounts.avatarCatalog() }.onSuccess { c -> update { it.copy(avatarPreview = c.defaults) } } }
     }
 
-    // --- Numéro de téléphone -------------------------------------------------------------------
-
-    fun onCountry(country: Country) = update { it.copy(country = country, phoneError = null) }
-    fun onNational(value: String) = update { it.copy(national = value.filter { c -> c.isDigit() || c == ' ' }, phoneError = null) }
-
-    val phoneComplete get() = _state.value.national.count(Char::isDigit) >= 6
-
-    // Le numéro n'est pas vérifié (ADR-010) : il sert à ce que tes amis te retrouvent par leurs contacts.
-    fun savePhone() {
-        val s = _state.value
-        val number = s.country.international(s.national)
-        AccountRules.phoneError(number)?.let { e -> update { it.copy(phoneError = e) }; return }
-        update { it.copy(savingPhone = true, phoneError = null) }
-        viewModelScope.launch {
-            try {
-                accounts.updateProfile(username = null, phoneNumber = number)
-                update { it.copy(savingPhone = false, step = OnboardingStep.FIND_FRIENDS) }
-            } catch (e: ApiException) {
-                update { it.copy(savingPhone = false, phoneError = e.message) }
-            }
-        }
-    }
-
-    fun skipPhone() = skip(OnboardingStep.FIND_FRIENDS)
 
     // --- Contacts et amis ----------------------------------------------------------------------
 

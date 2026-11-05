@@ -1,5 +1,10 @@
 package com.snapcore.app.ui.components
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -48,8 +53,9 @@ fun FigmaAsset(key: String, description: String? = null, modifier: Modifier = Mo
 fun RoundAction(asset: String, description: String, onClick: () -> Unit, dark: Boolean = false, modifier: Modifier = Modifier, highlighted: Boolean = false) {
     // highlighted : fond jaune, pour une action qui attend l'utilisateur (demandes d'ami en attente).
     Box(modifier.size(40.dp).clip(CircleShape).background(if(highlighted) SnapColors.Yellow else if(dark) Color.Black.copy(alpha=.25f) else SnapColors.Control)
-        .clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        FigmaAsset(asset, description, tint = if(dark) Color.White else SnapColors.Ink)
+        .clickable(role = Role.Button, onClick = onClick).semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
+        // Le nom est porté par le bouton (ADR-033) : l'icône elle-même est décorative.
+        FigmaAsset(asset, null, tint = if(dark) Color.White else SnapColors.Ink)
     }
 }
 
@@ -62,7 +68,9 @@ fun SnapHeader(title: String, onBack: () -> Unit, subtitle: String? = null, back
             }
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 // Nav Header 10:42 : titre Snap/Title (Bold 20/26), sous-titre Snap/Caption Bold.
-                Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp))
+                // TalkBack : le titre de l'écran est un titre de section, et le focus s'y pose à l'ouverture (ADR-033).
+                Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
+                    modifier = Modifier.semantics { heading() }.screenReaderFocusOnAppear())
                 subtitle?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = SnapColors.Muted) }
             }
             Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, content = actions)
@@ -88,7 +96,7 @@ enum class ChipStyle(val container: Color, val content: Color) {
 fun ChipButton(label: String, onClick: () -> Unit, style: ChipStyle = ChipStyle.Yellow, showIcon: Boolean = false, enabled: Boolean = true) {
     Row(
         Modifier.heightIn(min = 36.dp).clip(RoundedCornerShape(18.dp)).background(style.container)
-            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (showIcon) FigmaAsset("9-64_imgIconAddFriend", tint = style.content)
@@ -110,8 +118,9 @@ fun SnapSearchBar(value: String, onValueChange: (String) -> Unit, placeholder: S
             cursorBrush = SolidColor(SnapColors.ChatBlue),
             keyboardOptions = KeyboardOptions(imeAction = if (onSearch != null) ImeAction.Search else ImeAction.Default),
             keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }),
-            modifier = Modifier.weight(1f),
-            decorationBox = { field -> Box { if (value.isEmpty()) Text(placeholder, color = SnapColors.Muted, style = MaterialTheme.typography.bodyLarge); field() } },
+            modifier = Modifier.weight(1f).semantics { contentDescription = placeholder },
+            decorationBox = { field -> Box { if (value.isEmpty()) Text(placeholder, color = SnapColors.Muted, style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.clearAndSetSemantics {}); field() } },
         )
     }
 }

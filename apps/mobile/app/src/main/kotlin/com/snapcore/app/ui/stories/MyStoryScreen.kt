@@ -44,6 +44,15 @@ import androidx.compose.runtime.setValue
 import com.snapcore.app.ui.safety.ConfirmActionDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -77,7 +86,7 @@ fun MyStoryScreen(onBack: () -> Unit, onPlay: (StoryItem) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Ma story") },
+                title = { Text("Ma story", modifier = Modifier.semantics { heading() }) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") } },
             )
         },
@@ -88,13 +97,25 @@ fun MyStoryScreen(onBack: () -> Unit, onPlay: (StoryItem) -> Unit) {
                 item { Text("Ta story est vide. Publie un snap depuis la caméra (« Ma story »).", color = SnapColors.Grey, modifier = Modifier.padding(16.dp)) }
             }
             items(state.items, key = { it.id }) { item ->
+                val kind = if (item.kind == MediaKind.VIDEO) "Vidéo" else "Photo"
+                val views = viewsLabel(item.viewCount)
                 Row(
-                    modifier = Modifier.fillMaxWidth().clickable { onPlay(item) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    // TalkBack (ADR-033) : « Photo, publié il y a 3 h, expire dans 21 h, 2 vues » ; voir les vues et
+                    // supprimer existent aussi en actions personnalisées, en plus des deux boutons de la ligne.
+                    modifier = Modifier.fillMaxWidth()
+                        .clickable(role = Role.Button, onClickLabel = "regarder ce snap") { onPlay(item) }
+                        .semantics(mergeDescendants = true) {
+                            customActions = listOf(
+                                CustomAccessibilityAction("Voir qui l'a vu") { vm.showViewers(item); true },
+                                CustomAccessibilityAction("Supprimer de ma story") { deleting = item; true },
+                            )
+                        }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     // Vignette de l'élément (ADR-026), sinon l'icône de son type, à la même place.
-                    Box(Modifier.size(width = 40.dp, height = 56.dp), Alignment.Center) {
+                    Box(Modifier.size(width = 40.dp, height = 56.dp).semantics { contentDescription = kind }, Alignment.Center) {
                         if (item.thumbnailUrl != null) {
                             AsyncImage(item.thumbnailUrl, null, contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).background(SnapColors.Control))
@@ -105,12 +126,16 @@ fun MyStoryScreen(onBack: () -> Unit, onPlay: (StoryItem) -> Unit) {
                         // Chaque élément expire 24 h après SA publication (ADR-013).
                         Text("Expire dans ${remaining(item.expiresAt)}", color = SnapColors.Grey, style = MaterialTheme.typography.bodyMedium)
                     }
-                    TextButton(onClick = { vm.showViewers(item) }) {
+                    TextButton(onClick = { vm.showViewers(item) }, modifier = Modifier.clearAndSetSemantics {
+                        contentDescription = views
+                        role = Role.Button
+                        onClick("voir qui l'a vu") { vm.showViewers(item); true }
+                    }) {
                         Icon(Icons.Filled.Visibility, null)
                         Text(" ${item.viewCount}")
                     }
                     // Confirmation d'abord : la suppression est définitive (BUG-020 d'ADR-023).
-                    IconButton(onClick = { deleting = item }) { Icon(Icons.Filled.Delete, "Retirer", tint = MaterialTheme.colorScheme.error) }
+                    IconButton(onClick = { deleting = item }) { Icon(Icons.Filled.Delete, "Supprimer ce snap de ta story", tint = MaterialTheme.colorScheme.error) }
                 }
                 HorizontalDivider()
             }
@@ -132,7 +157,7 @@ fun MyStoryScreen(onBack: () -> Unit, onPlay: (StoryItem) -> Unit) {
             text = {
                 val viewers = state.viewers
                 when {
-                    viewers == null -> CircularProgressIndicator()
+                    viewers == null -> CircularProgressIndicator(Modifier.semantics { contentDescription = "Chargement des vues" })
                     viewers.isEmpty() -> Text("Personne pour l'instant.")
                     else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         viewers.forEach { friend ->
@@ -148,6 +173,9 @@ fun MyStoryScreen(onBack: () -> Unit, onPlay: (StoryItem) -> Unit) {
         )
     }
 }
+
+/** « 0 vue », « 1 vue », « 3 vues ». */
+private fun viewsLabel(count: Int): String = "$count " + if (count > 1) "vues" else "vue"
 
 private fun publishedLabel(createdAt: Instant): String =
     relativeTime(createdAt).let { if (it == "à l'instant") "Publié à l'instant" else "Publié il y a $it" }

@@ -222,3 +222,22 @@ const val NEARBY_FOCUS_RADIUS_METERS = 20_000.0
  */
 fun focusAround(me: GeoPoint, others: List<GeoPoint>, radiusMeters: Double = NEARBY_FOCUS_RADIUS_METERS): MapFocus =
     focusOn(listOf(me) + others.filter { me.metersTo(it) <= radiusMeters }, minZoom = 9.0, maxZoom = 13.0)!!
+
+/** Distance lue par TalkBack sur un marqueur : « à 300 m », « à 2,4 km », « à 35 km ». */
+fun distanceLabel(meters: Double): String = when {
+    meters < 50 -> "tout près de toi"
+    meters < 1_000 -> "à ${(meters / 50).roundToLong() * 50} m"
+    meters < 10_000 -> "à ${"%.1f".format(java.util.Locale.FRENCH, meters / 1_000)} km"
+    else -> "à ${(meters / 1_000).roundToLong()} km"
+}
+
+/** Ce que TalkBack annonce sur la carte : ce qui s'y trouve, et comment l'explorer. */
+fun mapSummary(friends: Int, stories: Int, meKnown: Boolean): String {
+    val parts = listOfNotNull(
+        when (friends) { 0 -> "aucun ami visible"; 1 -> "1 ami visible"; else -> "$friends amis visibles" },
+        when (stories) { 0 -> null; 1 -> "1 story"; else -> "$stories stories" },
+        if (meKnown) null else "ta position n'est pas connue",
+    )
+    return "Carte. " + parts.joinToString(", ").replaceFirstChar(Char::uppercase) +
+        ". Glisse ton doigt sur l'écran pour trouver tes amis, ou utilise le bouton Me recentrer."
+}

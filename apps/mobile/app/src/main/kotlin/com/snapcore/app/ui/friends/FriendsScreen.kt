@@ -46,6 +46,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import com.snapcore.app.ui.components.ChipStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.Friend
@@ -87,13 +97,16 @@ fun FriendsScreen(onBack: () -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             item {
                 SnapSearchBar(state.query, vm::onQuery, "Rechercher un pseudo", Modifier.fillMaxWidth().padding(top = 4.dp), onSearch = vm::search)
-                state.searchError?.let { Text(it, color = SnapColors.SnapRed, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 12.dp, top = 6.dp)) }
+                // TalkBack : l'erreur et le résultat de la recherche sont annoncés dès qu'ils arrivent.
+                state.searchError?.let { Text(it, color = SnapColors.SnapRed, style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(start = 12.dp, top = 6.dp).semantics { liveRegion = LiveRegionMode.Polite }) }
                 state.result?.let { result ->
                     SnapCard(Modifier.padding(top = 12.dp)) {
-                        PersonRow(result.user) {
+                        PersonRow(result.user, live = true) {
+                            val name = result.user.displayName
                             when (result.relation) {
-                                Relation.NONE -> ChipButton("Ajouter", vm::addResult, showIcon = true)
-                                Relation.INCOMING_REQUEST -> ChipButton("Accepter", vm::addResult)
+                                Relation.NONE -> NamedChip("Ajouter", "Ajouter $name", "envoyer une demande d'ami", vm::addResult, showIcon = true)
+                                Relation.INCOMING_REQUEST -> NamedChip("Accepter", "Accepter $name", "accepter sa demande d'ami", vm::addResult)
                                 Relation.OUTGOING_REQUEST -> Status("Demande envoyée")
                                 Relation.FRIENDS -> Status("Ami")
                             }
@@ -108,9 +121,11 @@ fun FriendsScreen(onBack: () -> Unit) {
                         state.incoming.forEach { request ->
                             // Comme Snapchat : « Accepter » et une petite croix, pour laisser la place au nom
                             // et au pseudo, qui étaient coupés (BUG-016 d'ADR-023).
+                            // TalkBack : la ligne lit « Léa, @lea », puis « Accepter Léa » et « Refuser Léa ».
+                            val name = request.user.displayName
                             PersonRow(request.user) {
-                                ChipButton("Accepter", { vm.accept(request) })
-                                DeclineButton { vm.decline(request) }
+                                NamedChip("Accepter", "Accepter $name", "devenir amis", { vm.accept(request) })
+                                DeclineButton(name) { vm.decline(request) }
                             }
                         }
                     }
@@ -120,19 +135,39 @@ fun FriendsScreen(onBack: () -> Unit) {
                 item { Section("Demandes envoyées") }
                 item { SnapCard { state.outgoing.forEach { request -> PersonRow(request.user) { Status("En attente") } } } }
             }
-            item { Section("Mes amis (${state.friends.size})") }
+            item { Section("Mes amis (${state.friends.size})", spoken = when (state.friends.size) {
+                0 -> "Mes amis : aucun pour l'instant"
+                1 -> "Mes amis : 1 ami"
+                else -> "Mes amis : ${state.friends.size} amis"
+            }) }
             if (state.friends.isNotEmpty()) item { SnapCard { state.friends.forEach { friend -> PersonRow(friend) {} } } }
             item { Spacer(Modifier.navigationBarsPadding().height(16.dp)) }
         }
     }
 }
 
-/** Refuser une demande : croix dans un rond gris, comme Snapchat. */
+/** Refuser une demande : croix dans un rond gris, comme Snapchat. TalkBack lit « Refuser Léa ». */
 @Composable
-private fun DeclineButton(onClick: () -> Unit) {
-    Box(Modifier.size(36.dp).clip(CircleShape).background(SnapColors.Control).clickable(onClick = onClick), Alignment.Center) {
-        Icon(Icons.Filled.Close, contentDescription = "Refuser", tint = SnapColors.Ink, modifier = Modifier.size(18.dp))
+private fun DeclineButton(name: String, onClick: () -> Unit) {
+    Box(Modifier.size(36.dp).clip(CircleShape).background(SnapColors.Control)
+        .clickable(role = Role.Button, onClickLabel = "refuser sa demande d'ami", onClick = onClick)
+        .semantics { contentDescription = "Refuser $name" }, Alignment.Center) {
+        Icon(Icons.Filled.Close, contentDescription = null, tint = SnapColors.Ink, modifier = Modifier.size(18.dp))
     }
+}
+
+/**
+ * Chip Button nommé pour TalkBack avec la personne concernée (« Ajouter Léa », « Accepter Léa ») :
+ * à l'écran, rien ne change.
+ */
+@Composable
+private fun NamedChip(label: String, description: String, actionLabel: String, action: () -> Unit,
+    style: ChipStyle = ChipStyle.Yellow, showIcon: Boolean = false) {
+    Box(Modifier.semantics(mergeDescendants = true) {}.clearAndSetSemantics {
+        contentDescription = description
+        role = Role.Button
+        onClick(actionLabel) { action(); true }
+    }) { ChipButton(label, action, style = style, showIcon = showIcon) }
 }
 
 @Composable
@@ -141,14 +176,20 @@ private fun Status(text: String) {
 }
 
 @Composable
-private fun Section(title: String) {
-    SectionTitle(title, Modifier.padding(top = 20.dp, bottom = 6.dp))
+private fun Section(title: String, spoken: String? = null) {
+    // TalkBack : titres de section, pour sauter de l'un à l'autre.
+    SectionTitle(title, Modifier.padding(top = 20.dp, bottom = 6.dp).semantics {
+        heading()
+        spoken?.let { contentDescription = it }
+    })
 }
 
 @Composable
-private fun PersonRow(user: Friend, actions: @Composable () -> Unit) {
+private fun PersonRow(user: Friend, live: Boolean = false, actions: @Composable () -> Unit) {
+    // TalkBack : nom, pseudo et statut (« En attente », « Ami ») lus en une fois ; les boutons restent à part.
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 66.dp).padding(horizontal = 16.dp, vertical = 5.dp),
+        modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { if (live) liveRegion = LiveRegionMode.Polite }
+            .heightIn(min = 66.dp).padding(horizontal = 16.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

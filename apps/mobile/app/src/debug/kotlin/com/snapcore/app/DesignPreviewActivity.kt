@@ -45,6 +45,9 @@ class DesignPreviewActivity : ComponentActivity() {
                         "onboarding" -> OnboardingScreen("nathan", onOpenAvatarEditor = {}, avatarChange = null, onAvatarChangeApplied = {}, onDone = { finish() })
                         // Toutes les humeurs du fantôme de l'onboarding, animées côte à côte.
                         "ghosts" -> GhostGallery()
+                        // Éditeur d'avatar : rien n'est enregistré depuis l'aperçu (le choix revient à l'appelant, ignoré ici).
+                        "avatar" -> com.snapcore.app.ui.profile.AvatarEditorScreen(
+                            com.snapcore.app.domain.Account("apercu", "apercu", null, null, null, false), onBack = { finish() }, onSaved = { finish() })
                         // Paywall proposé en fin d'onboarding (ne pas toucher le bouton d'abonnement).
                         "paywall-onboarding" -> com.snapcore.app.ui.plus.PaywallScreen(returnedFromCheckout = false, onBack = { finish() },
                             onAccountChanged = {}, fromOnboarding = true)

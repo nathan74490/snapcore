@@ -30,6 +30,8 @@ import com.snapcore.app.domain.STORY_MARKER_SIZE_DP
 import com.snapcore.app.domain.focusAround
 import com.snapcore.app.domain.mapMarkerOffsets
 import com.snapcore.app.domain.mapMarkerLayout
+import com.snapcore.app.domain.distanceLabel
+import com.snapcore.app.domain.mapSummary
 import com.snapcore.app.domain.storyPins
 import com.snapcore.app.ui.map.MapViewModel
 import kotlinx.coroutines.CompletableDeferred
@@ -192,6 +194,17 @@ class SnapMapRulesTest {
         assertTrue(mapMarkerOffsets(emptyList()).isEmpty())
         val markers = listOf(MapMarker(ScreenOffset(0.0, 0.0), 96.0, 96.0), MapMarker(ScreenOffset(500.0, 0.0), 50.0, 50.0))
         assertEquals(listOf(ScreenOffset(0.0, 0.0), ScreenOffset(0.0, 0.0)), mapMarkerOffsets(markers))
+    }
+
+    @Test
+    fun `TalkBack, distances et resume de la carte lisibles`() {
+        assertEquals("tout près de toi", distanceLabel(20.0))
+        assertEquals("à 300 m", distanceLabel(310.0))
+        assertEquals("à 2,4 km", distanceLabel(2_420.0))
+        assertEquals("à 35 km", distanceLabel(35_200.0))
+        assertEquals("Carte. 3 amis visibles, 1 story. Glisse ton doigt sur l'écran pour trouver tes amis, ou utilise le bouton Me recentrer.",
+            mapSummary(3, 1, meKnown = true))
+        assertTrue(mapSummary(0, 0, meKnown = false).startsWith("Carte. Aucun ami visible, ta position n'est pas connue."))
     }
 
     @Test

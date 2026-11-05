@@ -30,6 +30,8 @@ L'écran « Utiliser un numéro de téléphone à la place » de Snapchat n'est 
 5. **Crée ton avatar** : ouvre l'éditeur d'avatar (ADR-028), enregistré en arrière-plan.
 6. **Active les notifications** : explication avant la demande d'Android 13+. Elle n'apparaît que si la permission n'a jamais été demandée (BUG-007 d'ADR-023). Pendant les premiers pas, la demande automatique de `PushRegistration` est suspendue.
 
+**Révision (ADR-034)** : l'inscription devient prénom, date de naissance, pseudo, numéro de téléphone et code reçu par SMS (simulé). Ni nom de famille, ni mot de passe, ni email. Le pseudo est proposé à partir du prénom. Les premiers pas commencent à « Trouve tous tes amis » : l'écran « Ton numéro » n'existe plus.
+
 **Parcours guidé par le fantôme** (ajout du 2026-11-05) : l'inscription et les premiers pas forment un seul parcours, façon Duolingo.
 - Le fantôme de SnapCore (celui du tirer-pour-actualiser) pose la question de chaque écran dans une bulle, avec un texte qui s'écrit lettre par lettre. Il est dessiné en vectoriel et animé (`GhostMascot`) : une humeur par écran (il salue, est curieux, cherche, réfléchit, est content, se cache les yeux au mot de passe, a des cœurs, fait la fête), et un air inquiet quand une réponse est refusée.
 - Une barre de progression unique remplace « Étape X sur 5 » : elle avance pendant l'inscription, puis continue pendant les premiers pas. « Passer » reste en haut à droite des écrans facultatifs.

@@ -65,6 +65,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import com.snapcore.app.domain.ChatContentType
+import com.snapcore.app.ui.chat.Announcement
+import com.snapcore.app.ui.chat.ScreenReaderAnnouncer
+import com.snapcore.app.ui.chat.clockTime
+import com.snapcore.app.ui.components.screenReaderFocusOnAppear
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.domain.Friend
 import com.snapcore.app.domain.Group
@@ -116,6 +128,33 @@ fun GroupConversationScreen(groupId: String, myId: String, onBack: () -> Unit, o
     LaunchedEffect(state.closed) { if (state.closed) onBack() }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
     StatusBarIcons(dark = state.viewer == null)
+    // Expéditeur du snap ouvert, pour que TalkBack le décrive (« Snap photo de Léa ») (ADR-033).
+    var viewedFrom by remember { mutableStateOf<String?>(null) }
+
+    // TalkBack (ADR-033) : un message reçu, un membre qui se met à écrire et son propre envoi sont annoncés,
+    // une fois chacun, sans relire l'historique à l'ouverture.
+    var announcement by remember { mutableStateOf<Announcement?>(null) }
+    var lastNewestId by remember { mutableStateOf<String?>(null) }
+    val newestMessage = state.messages.firstOrNull()
+    LaunchedEffect(newestMessage?.id, newestMessage?.pending, state.group != null) {
+        val g = state.group ?: return@LaunchedEffect
+        if (newestMessage == null && state.loading) return@LaunchedEffect
+        val previous = lastNewestId
+        lastNewestId = newestMessage?.id.orEmpty()
+        if (previous == null || newestMessage == null || newestMessage.id == previous || newestMessage.pending) return@LaunchedEffect
+        announcement = Announcement(
+            if (newestMessage.isFrom(myId)) (if (newestMessage.isSnap) "Snap envoyé" else "Message envoyé")
+            else spokenGroupMessage(newestMessage, g, myId),
+        )
+    }
+    var typingBefore by remember { mutableStateOf(emptyList<String>()) }
+    LaunchedEffect(state.typing) {
+        val started = state.typing.filter { it !in typingBefore }
+        typingBefore = state.typing
+        val names = started.map { state.group?.member(it)?.displayName ?: "Quelqu'un" }
+        if (names.isNotEmpty()) announcement = Announcement(
+            com.snapcore.app.domain.memberNames(names) + if (names.size > 1) " écrivent…" else " écrit…")
+    }
 
     if (state.offerPlus) {
         AlertDialog(
@@ -131,13 +170,17 @@ fun GroupConversationScreen(groupId: String, myId: String, onBack: () -> Unit, o
         GroupSettingsSheet(group, myId, onRename = vm::rename, onAdd = vm::addMembers, onLeave = vm::leave, onDismiss = { settingsOpen = false })
     }
 
+    // Snap ouvert : la conversation dessous est masquée pour TalkBack, seul le snap est lu (ADR-033).
+    Box(Modifier.fillMaxSize().then(if (state.viewer != null) Modifier.clearAndSetSemantics {} else Modifier)) {
     Scaffold(
         topBar = {
             Column(Modifier.background(Color.White).statusBarsPadding()) {
                 Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack) { FigmaAsset("15-1124_imgIconChevronLeft", "Retour") }
                     // Appui sur l'en-tête : réglages du groupe (membres, nom, ajout, quitter).
-                    Row(Modifier.weight(1f).clickable(enabled = group != null) { settingsOpen = true }, verticalAlignment = Alignment.CenterVertically) {
+                    // Pour TalkBack : titre de l'écran (focus à l'ouverture), « Soirée samedi, 4 membres », qui ouvre les réglages.
+                    Row(Modifier.weight(1f).clickable(enabled = group != null, role = Role.Button, onClickLabel = "ouvrir les réglages du groupe") { settingsOpen = true }
+                        .semantics { heading() }.screenReaderFocusOnAppear(group != null), verticalAlignment = Alignment.CenterVertically) {
                         if (group != null) GroupAvatar(group, myId, 40.dp)
                         Column(Modifier.padding(start = 10.dp).weight(1f)) {
                             Text(group?.title(myId).orEmpty(), fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold,
@@ -156,9 +199,14 @@ fun GroupConversationScreen(groupId: String, myId: String, onBack: () -> Unit, o
                     Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().imePadding().heightIn(min = 60.dp).padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Box(Modifier.size(44.dp).background(SnapColors.Ink, CircleShape).clickable { onOpenCamera(group) },
+                    Box(Modifier.size(44.dp).background(SnapColors.Ink, CircleShape).clickable(role = Role.Button) { onOpenCamera(group) }
+                        .clearAndSetSemantics {
+                            contentDescription = "Envoyer un snap au groupe"
+                            role = Role.Button
+                            onClick("ouvrir l'appareil photo") { onOpenCamera(group); true }
+                        },
                         Alignment.Center) {
-                        FigmaAsset("17-1301_imgIconCamera", "Envoyer un snap au groupe", Modifier.size(24.dp), tint = Color.White)
+                        FigmaAsset("17-1301_imgIconCamera", null, Modifier.size(24.dp), tint = Color.White)
                     }
                     BasicTextField(
                         value = state.draft, onValueChange = vm::onDraft, maxLines = 4,
@@ -168,16 +216,20 @@ fun GroupConversationScreen(groupId: String, myId: String, onBack: () -> Unit, o
                         cursorBrush = SolidColor(SnapColors.ChatBlue),
                         modifier = Modifier.weight(1f).heightIn(min = 44.dp).border(1.5.dp, SnapColors.Grey, RoundedCornerShape(22.dp))
                             .padding(horizontal = 16.dp, vertical = 11.dp),
-                        decorationBox = { field -> Box { if (state.draft.isEmpty()) Text("Envoyer un Chat au groupe", color = SnapColors.Muted); field() } },
+                        // Libellé lu par TalkBack même une fois le champ rempli ; le texte indicatif est masqué (ADR-033).
+                        decorationBox = { field -> Box(Modifier.semantics { contentDescription = "Message au groupe" }) {
+                            if (state.draft.isEmpty()) Text("Envoyer un Chat au groupe", color = SnapColors.Muted, modifier = Modifier.clearAndSetSemantics {})
+                            field()
+                        } },
                     )
-                    if (state.draft.isNotBlank()) IconButton(onClick = vm::send) { Icon(Icons.AutoMirrored.Filled.Send, "Envoyer", tint = SnapColors.ChatBlue) }
+                    if (state.draft.isNotBlank()) IconButton(onClick = vm::send) { Icon(Icons.AutoMirrored.Filled.Send, "Envoyer le message", tint = SnapColors.ChatBlue) }
                 }
             }
         },
     ) { padding ->
         if (group == null) {
             Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                if (state.loading) CircularProgressIndicator()
+                if (state.loading) CircularProgressIndicator(Modifier.semantics { contentDescription = "Chargement du groupe" })
                 else Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(state.initialLoadError ?: "Impossible de charger le groupe. Réessaie.",
@@ -216,16 +268,21 @@ fun GroupConversationScreen(groupId: String, myId: String, onBack: () -> Unit, o
                     dayHeader = if (newDay) dayLabel(day, today) else null,
                     showName = newDay || previous?.senderId != message.senderId,
                     seenBy = if (message.id == lastMine) seenByLabel(message, group, myId) else null,
-                ) { vm.open(message) }
+                ) {
+                    viewedFrom = group.author(message.senderId)?.displayName
+                    vm.open(message)
+                }
             }
         }
     }
+    }
+    ScreenReaderAnnouncer(announcement)
 
     // Snap ouvert depuis la liste Chat : le fermer y ramène directement, comme pour un ami.
     val closeViewer = { vm.closeViewer(); if (openSnapId != null) onBack() }
     state.viewer?.let { viewer ->
         BackHandler(onBack = closeViewer)
-        SnapViewer(viewer, onClose = closeViewer)
+        SnapViewer(viewer, onClose = closeViewer, from = viewedFrom)
     }
 }
 
@@ -234,18 +291,33 @@ private fun GroupMessageRow(message: GroupMessage, group: Group, myId: String, d
     val mine = message.isFrom(myId)
     val color = group.colorOf(message.senderId, myId)
     val name = if (mine) "MOI" else (group.author(message.senderId)?.displayName ?: "Ancien membre").uppercase()
+    // TalkBack (ADR-033) : le jour est un titre ; chaque message est un seul élément « Léa : salut, 14:32 »,
+    // avec « vu par » pour mon dernier message ; le nom affiché au-dessus est masqué.
+    val openable = message.isSnap && (canTryToOpen(message, myId) || message.failed)
+    val spoken = spokenGroupMessage(message, group, myId) + (seenBy?.let { ", ${it.replaceFirstChar { c -> c.lowercase() }}" } ?: "")
+    val openLabel = when {
+        message.failed -> "réessayer l'envoi"
+        !message.openedByMe -> "voir le snap"
+        else -> "revoir le snap"
+    }
     Column(Modifier.fillMaxWidth()) {
         dayHeader?.let {
             Text(it, color = SnapColors.Grey, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
-                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp))
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp)
+                    .semantics { heading(); contentDescription = it.lowercase() })
         }
         if (showName) Text(name, color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = if (dayHeader == null) 12.dp else 4.dp, bottom = 2.dp))
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            modifier = Modifier.padding(top = if (dayHeader == null) 12.dp else 4.dp, bottom = 2.dp).clearAndSetSemantics {})
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).clearAndSetSemantics {
+            contentDescription = spoken
+            if (openable) {
+                role = Role.Button
+                onClick(openLabel) { onOpenSnap(); true }
+            }
+        }) {
             Box(Modifier.width(2.dp).fillMaxHeight().background(color))
             if (message.isSnap) {
                 val status = snapStatus(message, mine)
-                val openable = canTryToOpen(message, myId) || message.failed
                 Row(
                     Modifier.weight(1f).then(if (openable) Modifier.clickable(onClick = onOpenSnap) else Modifier).padding(start = 10.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -268,7 +340,7 @@ private fun GroupMessageRow(message: GroupMessage, group: Group, myId: String, d
                     modifier = Modifier.weight(1f).alpha(if (message.pending) .6f else 1f).padding(start = 10.dp, top = 3.dp, bottom = 3.dp))
             }
         }
-        seenBy?.let { Text(it, color = SnapColors.Grey, fontSize = 12.sp, modifier = Modifier.padding(start = 12.dp, top = 2.dp)) }
+        seenBy?.let { Text(it, color = SnapColors.Grey, fontSize = 12.sp, modifier = Modifier.padding(start = 12.dp, top = 2.dp).clearAndSetSemantics {}) }
     }
 }
 
@@ -331,7 +403,7 @@ private fun GroupSettingsSheet(group: Group, myId: String, onRename: (String) ->
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 GroupAvatar(group, myId, 52.dp)
-                Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                Column(Modifier.padding(start = 12.dp).weight(1f).semantics(mergeDescendants = true) { heading() }.screenReaderFocusOnAppear()) {
                     Text(group.title(myId), fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("${group.members.size} membres", color = SnapColors.Grey)
                 }
@@ -341,9 +413,9 @@ private fun GroupSettingsSheet(group: Group, myId: String, onRename: (String) ->
             if (group.members.size < MAX_GROUP_MEMBERS) SettingsAction("Ajouter des membres") { adding = true }
             SettingsAction("Quitter le groupe", color = SnapColors.SnapRed) { leaving = true }
             HorizontalDivider(color = SnapColors.Border, modifier = Modifier.padding(vertical = 8.dp))
-            Text("Membres", fontWeight = FontWeight.Bold, color = SnapColors.Ink)
+            Text("Membres", fontWeight = FontWeight.Bold, color = SnapColors.Ink, modifier = Modifier.semantics { heading() })
             group.members.sortedBy { if (it.id == myId) "" else it.displayName.lowercase() }.forEach { member ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
                     Avatar(member.displayName, member.pictureUrl, 40.dp)
                     Column(Modifier.padding(start = 12.dp)) {
                         Text(if (member.id == myId) "${member.displayName} (moi)" else member.displayName, fontSize = 16.sp)
@@ -358,7 +430,7 @@ private fun GroupSettingsSheet(group: Group, myId: String, onRename: (String) ->
 @Composable
 private fun SettingsAction(label: String, color: Color = SnapColors.Ink, onClick: () -> Unit) {
     Text(label, color = color, fontSize = 17.sp, fontWeight = FontWeight.Medium,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp))
+        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(vertical = 12.dp))
 }
 
 /** Ajouter des amis au groupe : ceux qui y sont déjà ne sont pas proposés. */
@@ -371,15 +443,38 @@ private fun AddMembersPanel(group: Group, onAdd: (List<Friend>) -> Unit, onBack:
     Column(Modifier.fillMaxWidth().heightIn(max = 600.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("Retour") }
-            Text("Ajouter des membres", fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+            Text("Ajouter des membres", fontWeight = FontWeight.Bold, fontSize = 18.sp, textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f).semantics { heading() }.screenReaderFocusOnAppear())
             Box(Modifier.width(72.dp))
         }
-        FriendChecklist(state.friends, state.selected, state.loading,
-            onToggle = { if (it in state.selected || state.selected.size < room) vm.toggle(it) }, modifier = Modifier.weight(1f, fill = false))
+        AccessibleFriendChecklist(state.friends, state.selected, state.loading,
+            onToggle = { if (it in state.selected || state.selected.size < room) vm.toggle(it) }, modifier = Modifier.weight(1f, fill = false),
+            title = "Ajouter des membres")
         PrimaryButton(
             text = if (state.selected.isEmpty()) "Ajouter" else "Ajouter (${state.selected.size})",
             onClick = { onAdd(state.selected) }, enabled = state.selected.isNotEmpty(),
             modifier = Modifier.padding(16.dp),
         )
     }
+}
+
+/** « Léa : salut, 14:32 », « Toi : snap vidéo, envoyé, 14:30 » : un message de groupe tel que TalkBack le lit (ADR-033). */
+private fun spokenGroupMessage(message: GroupMessage, group: Group, myId: String): String {
+    val mine = message.isFrom(myId)
+    val who = if (mine) "Toi" else group.author(message.senderId)?.displayName ?: "Un ancien membre"
+    val kind = if (message.type == ChatContentType.SNAP_PHOTO_VIDEO) "snap vidéo" else "snap photo"
+    val body = when {
+        !message.isSnap -> message.content.orEmpty() + when {
+            message.failed -> ", échec de l'envoi"
+            message.pending -> ", envoi en cours"
+            else -> ""
+        }
+        message.failed -> "$kind, échec de l'envoi"
+        message.pending -> "$kind, envoi en cours"
+        message.mediaPurged -> "$kind, ${if (mine) "ouvert" else "expiré"}"
+        mine -> "$kind, ${if (message.seenBy.isEmpty()) "envoyé" else "ouvert"}"
+        !message.openedByMe -> "$kind, pas encore ouvert"
+        else -> "$kind, déjà vu"
+    }
+    return "$who : $body, ${clockTime(message.createdAt)}"
 }

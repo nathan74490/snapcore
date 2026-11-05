@@ -8,6 +8,7 @@ import com.snapcore.app.domain.AuthService
 import com.snapcore.app.domain.DeviceRegistry
 import com.snapcore.app.domain.PendingRegistration
 import com.snapcore.app.domain.PendingRegistrationStore
+import com.snapcore.app.domain.PhoneCodeSent
 import com.snapcore.app.domain.ProfilePhotoPreparer
 import com.snapcore.app.domain.UserFacingException
 import com.snapcore.app.domain.UsernameAvailability
@@ -15,16 +16,27 @@ import java.io.File
 
 class FakeAuth : AuthService {
     var signedIn = false
-    var failSignUpWith: String? = null
-    val signUps = mutableListOf<String>()
     var signOuts = 0
+    var signedInWithEmail = false
 
     override val isSignedIn get() = signedIn
-    override val currentEmail get() = if (signedIn) "moi@snapcore.test" else null
+    override val currentEmail get() = if (signedIn && signedInWithEmail) "moi@snapcore.test" else null
 
-    override suspend fun signUp(email: String, password: String) {
-        failSignUpWith?.let { throw UserFacingException(it) }
-        signUps += email
+    // Opérateur SMS fictif (ADR-034) : le code envoyé est toujours renvoyé.
+    val codesSentTo = mutableListOf<String>()
+    var code = "482913"
+    var failCodeRequestWith: ApiException? = null
+    val phoneSignIns = mutableListOf<String>()
+
+    override suspend fun requestPhoneCode(phoneNumber: String): PhoneCodeSent {
+        failCodeRequestWith?.let { throw it }
+        codesSentTo += phoneNumber
+        return PhoneCodeSent(phoneNumber, resendInSeconds = 30, simulatedCode = code)
+    }
+
+    override suspend fun signInWithPhoneCode(phoneNumber: String, code: String) {
+        if (code != this.code) throw ApiException(400, "Code incorrect. Vérifie le SMS et réessaie.")
+        phoneSignIns += phoneNumber
         signedIn = true
     }
 
@@ -33,6 +45,7 @@ class FakeAuth : AuthService {
     override suspend fun signIn(email: String, password: String) {
         failSignInWith?.let { throw it }
         signedIn = true
+        signedInWithEmail = true
     }
 
     override fun signOut() {

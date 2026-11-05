@@ -1,5 +1,11 @@
 package com.snapcore.app.ui.plus
 
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -100,7 +106,7 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
             FigmaAsset("14-704_imgImageGoldGhost")
             // En fin d'onboarding, un peu plus serré : « Plus tard » doit rester visible sans défiler.
             Spacer(Modifier.height(if (fromOnboarding) 16.dp else 28.dp))
-            Text("Découvre SnapCore+", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+            Text("Découvre SnapCore+", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
 
             val account = state.account
             val active = account?.isPremium == true
@@ -112,6 +118,8 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                 color = Color(0xFFCFC9BC),
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
+                // TalkBack : « 3,99 € / mois, sans engagement », sans lire le point médian.
+                modifier = if (active) Modifier else Modifier.semantics { contentDescription = "${SnapCorePlus.PRICE_LABEL}, sans engagement" },
             )
             Spacer(Modifier.height(if (fromOnboarding) 20.dp else 32.dp))
 
@@ -120,7 +128,7 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                 val titles = listOf("Relectures illimitées", "Garde tes snaps", "Ton badge SnapCore+")
                 val icons = listOf("14-588_imgIconFlip", "14-588_imgIconMemories", "17-1408_imgIconGhost")
                 SnapCorePlus.BENEFITS.forEachIndexed { index, benefit ->
-                    Row(Modifier.fillMaxWidth().heightIn(min = 74.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF2D2A23))
+                    Row(Modifier.fillMaxWidth().heightIn(min = 74.dp).semantics(mergeDescendants = true) {}.clip(RoundedCornerShape(10.dp)).background(Color(0xFF2D2A23))
                         .then(if(index == 0) Modifier.border(1.5.dp, SnapColors.Gold, RoundedCornerShape(10.dp)) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -135,8 +143,10 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
             Spacer(Modifier.height(20.dp))
 
             when {
-                state.loading -> CircularProgressIndicator(color = Color.White)
-                active -> {
+                state.loading -> CircularProgressIndicator(color = Color.White, modifier = Modifier.semantics { contentDescription = "Chargement" })
+                // TalkBack : l'activation réussie est annoncée sans avoir à chercher le texte.
+                active -> Column(Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                    horizontalAlignment = Alignment.CenterHorizontally) {
                     val until = account?.premiumUntil?.atZone(ZoneId.systemDefault())?.format(DATE)
                     Text(
                         if (until != null) "SnapCore+ actif jusqu'au $until" else "SnapCore+ actif",
@@ -152,16 +162,20 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }
-                state.awaitingActivation -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // TalkBack : « Activation de SnapCore+… » annoncé dès que l'attente commence.
+                state.awaitingActivation -> Column(Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                    horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = SnapColors.Yellow)
                     Text("Activation de SnapCore+…", color = Color.White, modifier = Modifier.padding(top = 12.dp))
                 }
                 else -> {
                     // Button 9:43, style Yellow : pilule 50pt, texte #16191C.
                     // Libellé soumis à l'expérience A/B « paywall-cta » (ADR-030) ; le prix reste affiché plus haut.
+                    // Pendant l'ouverture du paiement, le bouton n'affiche qu'une roue : TalkBack lit son état.
                     PrimaryButton(
                         state.cta.label, vm::subscribe,
                         loading = state.opening, container = SnapColors.Yellow, content = SnapColors.Ink,
+                        modifier = if (state.opening) Modifier.semantics { contentDescription = "Ouverture du paiement…" } else Modifier,
                     )
                     Text(
                         "Paiement sécurisé dans le navigateur. Mode test : aucun débit réel.",
@@ -173,14 +187,16 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                     // Fin de l'onboarding : l'offre se refuse aussi clairement qu'elle s'accepte.
                     if (fromOnboarding) Text(
                         "Plus tard", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                        modifier = Modifier.padding(top = 4.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onBack)
+                        modifier = Modifier.padding(top = 4.dp).clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button, onClickLabel = "fermer l'offre et aller à la caméra", onClick = onBack)
                             .padding(horizontal = 20.dp, vertical = 10.dp),
                     )
                 }
             }
 
             state.error?.let {
-                Text(it, color = SnapColors.Yellow, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 16.dp))
+                Text(it, color = SnapColors.Yellow, textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 16.dp).semantics { liveRegion = LiveRegionMode.Polite })
             }
         }
     }

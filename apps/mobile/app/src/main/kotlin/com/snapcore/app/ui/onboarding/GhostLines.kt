@@ -1,7 +1,9 @@
 package com.snapcore.app.ui.onboarding
 
 import com.snapcore.app.domain.OnboardingContactsCopy
+import com.snapcore.app.ui.auth.LoginMode
 import com.snapcore.app.ui.auth.LoginState
+import com.snapcore.app.ui.auth.formatPhone
 import com.snapcore.app.ui.auth.SignUpState
 import com.snapcore.app.ui.auth.SignUpStep
 import com.snapcore.app.ui.auth.UsernameStatus
@@ -27,37 +29,43 @@ object GhostLines {
             SignUpStep.USERNAME ->
                 if (state.editingUsername) GhostLine("Choisis le pseudo qui te ressemble.", GhostMood.THINKING)
                 else GhostLine("J'ai trouvé un pseudo rien que pour toi !", GhostMood.HAPPY)
-            SignUpStep.PASSWORD -> GhostLine("Choisis un mot de passe. Promis, je ne regarde pas !", GhostMood.SHY)
-            else -> GhostLine("Dernière question : quelle est ton adresse email ?", GhostMood.CURIOUS)
+            SignUpStep.PHONE -> GhostLine("Quel est ton numéro ? Je t'envoie un code par SMS pour vérifier que c'est bien toi.", GhostMood.CURIOUS)
+            else -> codeSent(state.phone.sentTo)
         }
         return if (step == state.step && signUpRefused(state)) line.copy(mood = GhostMood.OOPS) else line
     }
 
     private fun signUpRefused(state: SignUpState): Boolean = state.error != null || when (state.step) {
-        SignUpStep.NAME -> state.firstNameError != null || state.lastNameError != null
+        SignUpStep.NAME -> state.firstNameError != null
         SignUpStep.BIRTHDAY -> state.birthdayError != null
         SignUpStep.USERNAME -> state.usernameStatus is UsernameStatus.Unavailable
-        // Un mot de passe en cours de saisie est encore court : il garde les yeux cachés.
-        SignUpStep.PASSWORD -> false
-        else -> state.emailError != null
+        SignUpStep.PHONE -> state.phone.numberError != null
+        else -> state.phone.codeError != null
     }
 
+    /** Code envoyé par SMS (ADR-034) : il cherche le message des yeux. */
+    private fun codeSent(sentTo: String?) = GhostLine(
+        if (sentTo == null) "Je t'ai envoyé un code par SMS. Tape-le ici !" else "Je t'ai envoyé un code par SMS au ${formatPhone(sentTo)}. Tape-le ici !",
+        GhostMood.SEARCH)
+
     /**
-     * Connexion : il accueille, se cache les yeux pendant la saisie du mot de passe, réfléchit pendant la
-     * vérification, et annonce lui-même l'erreur.
+     * Connexion par code SMS (ADR-034), ou par email pour les anciens comptes : il accueille, cherche le SMS,
+     * se cache les yeux pendant la saisie du mot de passe, réfléchit pendant la vérification, et annonce
+     * lui-même les erreurs qui ne concernent pas un champ.
      */
     fun login(state: LoginState, passwordFocused: Boolean): GhostLine {
         val error = state.error
-        return when {
-            error != null -> GhostLine("Oups ! " + error.trimEnd('.') + ".", GhostMood.OOPS)
-            state.loading -> GhostLine("Je vérifie… Une seconde !", GhostMood.THINKING)
-            passwordFocused -> GhostLine("Ton mot de passe ? Je ne regarde pas, promis !", GhostMood.SHY)
-            else -> GhostLine("Content de te revoir ! Connecte-toi avec ton email et ton mot de passe.", GhostMood.WAVE)
+        val fieldError = state.phone.numberError ?: state.phone.codeError
+        val line = when {
+            error != null -> return GhostLine("Oups ! " + error.trimEnd('.') + ".", GhostMood.OOPS)
+            state.loading -> return GhostLine("Je vérifie… Une seconde !", GhostMood.THINKING)
+            state.mode == LoginMode.CODE -> codeSent(state.phone.sentTo)
+            state.mode == LoginMode.EMAIL && passwordFocused -> GhostLine("Ton mot de passe ? Je ne regarde pas, promis !", GhostMood.SHY)
+            state.mode == LoginMode.EMAIL -> GhostLine("Connecte-toi avec ton email et ton mot de passe.", GhostMood.WAVE)
+            else -> GhostLine("Content de te revoir ! Quel est ton numéro ? Je t'envoie un code par SMS.", GhostMood.WAVE)
         }
+        return if (fieldError != null) line.copy(mood = GhostMood.OOPS) else line
     }
-
-    fun phone(error: Boolean) = GhostLine("Tu me donnes ton numéro ? Tes amis pourront te retrouver grâce à leurs contacts.",
-        if (error) GhostMood.OOPS else GhostMood.CURIOUS)
 
     /** Le titre reste celui de l'expérience onboarding-contacts-copy (ADR-030). */
     fun findFriends(copy: OnboardingContactsCopy) = GhostLine(copy.title, GhostMood.SEARCH)

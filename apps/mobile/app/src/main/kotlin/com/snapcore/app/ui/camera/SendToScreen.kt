@@ -15,6 +15,20 @@ import androidx.compose.ui.unit.sp
 import com.snapcore.app.ui.components.FigmaAsset
 import com.snapcore.app.ui.components.StatusBarIcons
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.snapcore.app.ui.components.rememberScreenReaderOn
+import com.snapcore.app.ui.components.screenReaderFocusOnAppear
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,6 +85,40 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: (Set<SendTarg
 
     var query by remember { mutableStateOf("") }
     StatusBarIcons(dark = true)
+    // TalkBack (ADR-033) : une longue liste se résume en un bouton qui ouvre une fenêtre plein écran,
+    // pour atteindre « Envoyer » en quelques glissements.
+    val screenReader = rememberScreenReaderOn()
+    var openList by remember { mutableStateOf<String?>(null) }
+    val shownGroups = state.groups.filter { it.title(myId).contains(query, ignoreCase = true) }
+    val shownFriends = state.friends.filter { it.displayName.contains(query, ignoreCase = true) || it.username.contains(query, ignoreCase = true) }
+    val selectedCount = state.selected.size
+    val groupRows: @Composable () -> Unit = {
+        shownGroups.forEach { group ->
+            val target = SendTarget.ToGroup(group)
+            TargetRow(
+                label = group.title(myId),
+                subtitle = "${group.members.size} membres",
+                avatar = { GroupAvatar(group, myId, 40.dp) },
+                checked = target in state.selected,
+                onToggle = { vm.toggle(target) },
+            )
+        }
+    }
+    val friendRows: @Composable () -> Unit = {
+        shownFriends.forEach { friend ->
+            val target = SendTarget.ToFriend(friend)
+            TargetRow(
+                label = friend.displayName,
+                avatar = { Avatar(friend.displayName, friend.pictureUrl, size = 40.dp) },
+                checked = target in state.selected,
+                onToggle = { vm.toggle(target) },
+            )
+        }
+    }
+    when (openList) {
+        "groups" -> RecipientListDialog("Groupes", selectedCount, onDone = { openList = null }) { item { SnapCard { groupRows() } } }
+        "friends" -> RecipientListDialog("Amis", selectedCount, onDone = { openList = null }) { item { SnapCard { friendRows() } } }
+    }
     Scaffold(
         topBar = {
 
@@ -84,7 +132,12 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: (Set<SendTarg
         bottomBar = {
             Column(Modifier.navigationBarsPadding().padding(16.dp)) {
                 PrimaryButton(
-                    text = "Envoyer (${state.selected.size})",
+                    // Avec TalkBack, le bouton dit à combien de destinataires le snap partira.
+                    text = when {
+                        !screenReader -> "Envoyer (${state.selected.size})"
+                        selectedCount == 0 -> "Envoyer, aucun destinataire coché"
+                        else -> "Envoyer à $selectedCount ${if (selectedCount > 1) "destinataires" else "destinataire"}"
+                    },
                     onClick = vm::send,
                     enabled = state.selected.isNotEmpty(),
                 )
@@ -95,7 +148,7 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: (Set<SendTarg
         // Maquette 15:752 : sections en titres gras, lignes groupées dans des cartes blanches arrondies.
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             item {
-                SectionTitle("Stories", Modifier.padding(top = 8.dp, bottom = 6.dp))
+                SectionTitle("Stories", Modifier.padding(top = 8.dp, bottom = 6.dp).semantics { heading() })
                 SnapCard { TargetRow(
                     label = "Ma story · Mes amis",
                     subtitle = "Visible par tes amis pendant 24 h",
@@ -103,26 +156,19 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: (Set<SendTarg
                     checked = SendTarget.ToStory in state.selected,
                     onToggle = { vm.toggle(SendTarget.ToStory) },
                 ) }
-                val groups = state.groups.filter { it.title(myId).contains(query, ignoreCase = true) }
-                if (groups.isNotEmpty()) {
-                    SectionTitle("Groupes", Modifier.padding(top = 14.dp, bottom = 6.dp))
-                    SnapCard {
-                        groups.forEach { group ->
-                            val target = SendTarget.ToGroup(group)
-                            TargetRow(
-                                label = group.title(myId),
-                                subtitle = "${group.members.size} membres",
-                                avatar = { GroupAvatar(group, myId, 40.dp) },
-                                checked = target in state.selected,
-                                onToggle = { vm.toggle(target) },
-                            )
-                        }
-                    }
+                if (shownGroups.isNotEmpty()) {
+                    SectionTitle("Groupes", Modifier.padding(top = 14.dp, bottom = 6.dp).semantics { heading() })
+                    if (screenReader && shownGroups.size > LONG_LIST) {
+                        val checked = shownGroups.count { SendTarget.ToGroup(it) in state.selected }
+                        RecipientListButton(listSummary(shownGroups.size, "Groupes", checked)) { openList = "groups" }
+                    } else SnapCard { groupRows() }
                 }
-                SectionTitle("Amis", Modifier.padding(top = 14.dp, bottom = 6.dp))
+                SectionTitle("Amis", Modifier.padding(top = 14.dp, bottom = 6.dp).semantics { heading() })
             }
             when {
-                state.loading -> item { Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) { CircularProgressIndicator() } }
+                state.loading -> item { Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
+                    CircularProgressIndicator(Modifier.semantics { contentDescription = "Chargement des amis" })
+                } }
                 state.loadError != null -> item { TextButton(onClick = vm::loadFriends, modifier = Modifier.padding(16.dp)) { Text("${state.loadError} · Réessayer") } }
                 state.friends.isEmpty() -> item {
                     Column(Modifier.navigationBarsPadding().padding(16.dp)) {
@@ -130,18 +176,12 @@ fun SendToScreen(media: CapturedMedia, onBack: () -> Unit, onSent: (Set<SendTarg
                         TextButton(onClick = onAddFriends) { Text("Ajouter des amis") }
                     }
                 }
+                screenReader && shownFriends.size > LONG_LIST -> item {
+                    val checked = shownFriends.count { SendTarget.ToFriend(it) in state.selected }
+                    RecipientListButton(listSummary(shownFriends.size, "Amis", checked)) { openList = "friends" }
+                }
                 else -> item {
-                    SnapCard {
-                        state.friends.filter { it.displayName.contains(query, ignoreCase = true) || it.username.contains(query, ignoreCase = true) }.forEach { friend ->
-                            val target = SendTarget.ToFriend(friend)
-                            TargetRow(
-                                label = friend.displayName,
-                                avatar = { Avatar(friend.displayName, friend.pictureUrl, size = 40.dp) },
-                                checked = target in state.selected,
-                                onToggle = { vm.toggle(target) },
-                            )
-                        }
-                    }
+                    SnapCard { friendRows() }
                 }
             }
         }
@@ -158,7 +198,8 @@ private fun TargetRow(
     avatar: (@Composable () -> Unit)? = null,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).heightIn(min = 50.dp).padding(horizontal = 16.dp, vertical = 5.dp),
+        // Une ligne = une case à cocher pour TalkBack : « Léa, coché, case à cocher ».
+        modifier = Modifier.fillMaxWidth().toggleable(checked, role = Role.Checkbox) { onToggle() }.heightIn(min = 50.dp).padding(horizontal = 16.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -168,5 +209,49 @@ private fun TargetRow(
             subtitle?.let { Text(it, color = SnapColors.Grey, style = MaterialTheme.typography.bodySmall) }
         }
         SnapCheckbox(checked)
+    }
+}
+
+// Au-delà, avec TalkBack, la liste se résume en un bouton (ADR-033).
+private const val LONG_LIST = 6
+
+/** « Amis : 24, dont 2 cochés. » */
+private fun listSummary(total: Int, title: String, checked: Int): String =
+    "$title : $total, dont $checked ${if (checked > 1) "cochés" else "coché"}."
+
+/** Résumé d'une longue liste de destinataires pour TalkBack ; ouvre [RecipientListDialog]. */
+@Composable
+private fun RecipientListButton(summary: String, onOpen: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White)
+        .clickable(role = Role.Button, onClick = onOpen)
+        .clearAndSetSemantics {
+            contentDescription = summary
+            role = Role.Button
+            onClick("parcourir et choisir les destinataires") { onOpen(); true }
+        }
+        .padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(summary, fontSize = 16.sp, color = SnapColors.Ink, modifier = Modifier.weight(1f))
+        Text("Choisir", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
+/** Liste de destinataires plein écran, ouverte depuis [RecipientListButton] : « Terminé » en haut et en bas. */
+@Composable
+private fun RecipientListDialog(title: String, checkedCount: Int, onDone: () -> Unit, content: LazyListScope.() -> Unit) {
+    Dialog(onDismissRequest = onDone, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(Modifier.fillMaxSize().background(SnapColors.Background).statusBarsPadding().navigationBarsPadding()) {
+            Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
+                    modifier = Modifier.weight(1f).semantics { heading() }.screenReaderFocusOnAppear())
+                Text("Terminé", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 16.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onDone).padding(8.dp))
+            }
+            LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) { content() }
+            PrimaryButton(
+                if (checkedCount == 0) "Terminé, aucun destinataire coché"
+                else "Terminé, $checkedCount ${if (checkedCount > 1) "destinataires cochés" else "destinataire coché"}",
+                onDone, height = 50.dp, modifier = Modifier.padding(horizontal = 48.dp, vertical = 16.dp),
+            )
+        }
     }
 }
