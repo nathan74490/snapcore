@@ -58,6 +58,14 @@ import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
 import com.snapcore.app.ui.onboarding.GhostLines
+import com.snapcore.app.ui.components.ChunkyButton
+import com.snapcore.app.ui.components.GhostMascot
+import com.snapcore.app.ui.components.GhostMood
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import com.snapcore.app.ui.onboarding.GhostSays
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.ui.focus.FocusRequester
@@ -89,22 +97,36 @@ private fun Logo() {
     FigmaAsset("13-241_imgImageGhostLogo")
 }
 
+/**
+ * Accueil façon Duolingo, aux couleurs de SnapCore : le fantôme animé au centre, le nom et l'accroche, puis
+ * « C'est parti ! » (inscription) et « J'ai déjà un compte » (connexion). Toucher le fantôme change son humeur.
+ */
 @Composable
 fun WelcomeScreen(onLogin: () -> Unit, onSignUp: () -> Unit) {
     StatusBarIcons(dark = true)
-
-    BoxWithConstraints(Modifier.fillMaxSize().background(SnapColors.Yellow)) {
-        FigmaAsset("13-241_imgImageGhostLogo", modifier = Modifier.align(Alignment.TopCenter).padding(top = maxHeight * (262f / 852f)))
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            Box(Modifier.fillMaxWidth().height(80.dp).background(SnapColors.SnapRed).clickable(onClick = onLogin), Alignment.Center) {
-                Text("CONNEXION", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            }
-            Box(Modifier.fillMaxWidth().background(SnapColors.ChatBlue).navigationBarsPadding().height(66.dp).clickable(onClick = onSignUp), Alignment.Center) {
-                Text("INSCRIPTION", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            }
-        }
+    val moods = remember { listOf(GhostMood.WAVE, GhostMood.HAPPY, GhostMood.LOVE, GhostMood.CELEBRATE, GhostMood.CURIOUS) }
+    var mood by remember { mutableIntStateOf(0) }
+    Column(Modifier.fillMaxSize().background(SnapColors.Yellow).systemBarsPadding().padding(horizontal = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.weight(1f))
+        GhostMascot(moods[mood], Modifier.size(220.dp).clickable(
+            interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = "Faire réagir le fantôme",
+        ) { mood = (mood + 1) % moods.size })
+        Text("snapcore", fontFamily = WordmarkFont, fontWeight = FontWeight.Black, fontSize = 46.sp, color = SnapColors.Ink,
+            modifier = Modifier.padding(top = 8.dp))
+        Text("Tes snaps, tes stories et tes amis.\nAu même endroit.", fontSize = 19.sp, lineHeight = 26.sp,
+            color = SnapColors.Ink.copy(alpha = .62f), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
+        Spacer(Modifier.weight(1.3f))
+        ChunkyButton("C'est parti !", onSignUp, container = SnapColors.ChatBlue, edge = Color(0xFF0A87C8), content = Color.White)
+        Spacer(Modifier.height(14.dp))
+        ChunkyButton("J'ai déjà un compte", onLogin, container = SnapColors.SnapRed, edge = Color(0xFFC42A43), content = Color.White)
+        Spacer(Modifier.height(20.dp))
     }
 }
+
+/** Nunito en graisse Black pour le nom de l'app, comme le logotype arrondi de Duolingo. */
+private val WordmarkFont = FontFamily(Font(com.snapcore.app.R.font.nunito_sans, FontWeight.Black,
+    variationSettings = FontVariation.Settings(FontVariation.weight(950), FontVariation.Setting("YTLC", 500f))))
 
 /**
  * Connexion guidée par le fantôme, comme l'inscription (ADR-029) : il pose la question, se cache les yeux
