@@ -57,6 +57,12 @@ import com.snapcore.app.ui.components.SnapTextField
 import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
 import com.snapcore.app.ui.theme.SnapColors
+import com.snapcore.app.ui.onboarding.GhostLines
+import com.snapcore.app.ui.onboarding.GhostSays
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 
 @Composable
 fun StartScreen(onSession: (Session) -> Unit) {
@@ -100,49 +106,41 @@ fun WelcomeScreen(onLogin: () -> Unit, onSignUp: () -> Unit) {
     }
 }
 
+/**
+ * Connexion guidée par le fantôme, comme l'inscription (ADR-029) : il pose la question, se cache les yeux
+ * pendant la saisie du mot de passe et annonce lui-même les erreurs.
+ */
 @Composable
 fun LoginScreen(onBack: () -> Unit, onSession: (Session) -> Unit) {
     val vm = containerViewModel { LoginViewModel(it.auth, it.sessionResolver, it.analytics) }
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.session) { state.session?.let(onSession) }
-
+    var passwordFocused by remember { mutableStateOf(false) }
+    var reveal by remember { mutableStateOf(false) }
+    val emailFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { emailFocus.requestFocus() }
 
     StatusBarIcons(dark = true)
-    Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding().imePadding().verticalScroll(rememberScrollState())) {
-        IconButton(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) {
-            FigmaAsset("19-1518_imgIconChevronLeft", "Retour")
+    Column(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding().imePadding()) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour", tint = SnapColors.Muted) }
+            Text("Connexion", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink)
         }
-        Text("Connexion", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Normal,
-            modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 36.dp), textAlign = TextAlign.Center)
-        Column(Modifier.padding(horizontal = 53.dp)) {
-            LoginField(state.email, vm::onEmail, "ADRESSE EMAIL", false)
-            Spacer(Modifier.height(12.dp))
-            LoginField(state.password, vm::onPassword, "MOT DE PASSE", true)
-            state.error?.let { Text(it, color = SnapColors.SnapRed, modifier = Modifier.padding(top = 12.dp)) }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+            val line = GhostLines.login(state, passwordFocused)
+            GhostSays(line.text, line.mood, Modifier.padding(top = 8.dp, bottom = 24.dp), ghostSize = 88.dp)
+            SignUpField("Email", state.email, vm::onEmail, "ton.email@exemple.fr", keyboardType = KeyboardType.Email,
+                modifier = Modifier.focusRequester(emailFocus))
+            Spacer(Modifier.height(20.dp))
+            SignUpField("Mot de passe", state.password, vm::onPassword, "Ton mot de passe", keyboardType = KeyboardType.Password,
+                password = !reveal, modifier = Modifier.onFocusChanged { passwordFocused = it.isFocused }) {
+                if (state.password.isNotEmpty()) IconButton(onClick = { reveal = !reveal }) {
+                    Icon(if (reveal) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        if (reveal) "Masquer le mot de passe" else "Afficher le mot de passe", tint = SnapColors.Muted)
+                }
+            }
         }
-        Spacer(Modifier.height(150.dp))
         PrimaryButton("Connexion", vm::submit, enabled = state.email.isNotBlank() && state.password.isNotBlank(),
-            loading = state.loading, modifier = Modifier.padding(horizontal = 75.dp),
-            // Bouton « Log In » de la maquette (19:1534) : 48 de haut, libellé Regular 19.
-            height = 48.dp, textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp))
-        Spacer(Modifier.height(24.dp))
+            loading = state.loading, modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp), height = 46.dp)
     }
-}
-
-@Composable
-private fun LoginField(value: String, change: (String) -> Unit, label: String, password: Boolean) {
-
-    var reveal by remember { mutableStateOf(false) }
-    Text(label, color = SnapColors.Muted, fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = .96.sp)
-    Row(Modifier.fillMaxWidth().height(38.dp), verticalAlignment = Alignment.CenterVertically) {
-        BasicTextField(value, change, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, color = SnapColors.Ink),
-            visualTransformation = if(password && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(keyboardType = if(password) KeyboardType.Password else KeyboardType.Email),
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(SnapColors.ChatBlue), modifier = Modifier.weight(1f))
-        if(password) IconButton(onClick = { reveal = !reveal }, modifier = Modifier.size(36.dp)) {
-            if(reveal) Icon(Icons.Filled.Visibility, "Masquer le mot de passe", tint = SnapColors.Muted, modifier = Modifier.size(22.dp))
-            else FigmaAsset("19-1518_imgIconEyeOff", "Afficher le mot de passe")
-        }
-    }
-    HorizontalDivider(color = SnapColors.Hairline, thickness = 1.dp)
 }

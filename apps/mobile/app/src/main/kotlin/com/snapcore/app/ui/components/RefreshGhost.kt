@@ -65,19 +65,7 @@ internal fun RefreshGhost(state: GhostRefreshState, threshold: Float) {
         val pink = Color(0xFFFF508C)
         translate(size.width / 2f - 50f * unit, y) {
             scale(unit, pivot = Offset.Zero) {
-                val body = Path().apply {
-                    moveTo(26f, 59f); lineTo(26f, 34f)
-                    cubicTo(26f, 1f, 74f, 1f, 74f, 34f)
-                    lineTo(74f, 61f)
-                    cubicTo(77f, 71f, 82f, 78f, 94f, 82f)
-                    quadraticTo(88f, 89f, 77f, 87f)
-                    lineTo(73f, 94f)
-                    quadraticTo(62f, 89f, 55f, 94f)
-                    quadraticTo(48f, 98f, 40f, 93f)
-                    lineTo(28f, 95f); lineTo(24f, 88f)
-                    quadraticTo(13f, 91f, 6f, 83f)
-                    quadraticTo(24f, 77f, 26f, 59f); close()
-                }
+                val body = ghostBodyPath()
                 drawPath(body, Color.White)
                 drawPath(body, ink, style = Stroke(2.6f))
                 for (x in listOf(15f, 74f)) {

@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -55,9 +56,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.snapcore.app.BuildConfig
 import com.snapcore.app.domain.Session
 import com.snapcore.app.ui.components.PrimaryButton
-import com.snapcore.app.ui.components.SnapHeader
 import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
+import com.snapcore.app.ui.onboarding.GhostLines
+import com.snapcore.app.ui.onboarding.GhostSays
+import com.snapcore.app.ui.onboarding.Journey
+import com.snapcore.app.ui.onboarding.JourneyBar
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import com.snapcore.app.ui.theme.SnapColors
 import java.time.LocalDate
 import java.time.YearMonth
@@ -75,6 +85,7 @@ import kotlin.math.abs
  * @param resuming compte Firebase déjà créé sans compte SnapCore : seules les étapes nom, naissance
  * et pseudo sont demandées, puis l'inscription est rejouée (ADR-015).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit, resuming: Boolean = false) {
     val vm = containerViewModel { SignUpViewModel(it.auth, it.accounts, it.pendingRegistration, resuming, analytics = it.analytics) }
@@ -85,17 +96,28 @@ fun SignUpScreen(onBack: () -> Unit, onSession: (Session) -> Unit, resuming: Boo
 
     StatusBarIcons(dark = true)
     Column(Modifier.fillMaxSize().background(Color.White).navigationBarsPadding().imePadding()) {
-        SnapHeader("Créer un compte", goBack, subtitle = "Étape ${state.step} sur ${state.steps}")
+        JourneyBar(Journey.signUp(state.step, state.steps), onBack = goBack)
         Column(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp)) {
-            Spacer(Modifier.height(if (state.step == SignUpStep.USERNAME && !state.editingUsername) 0.dp else 72.dp))
-            when (state.step) {
-                SignUpStep.NAME -> NameStep(state, vm)
-                SignUpStep.BIRTHDAY -> BirthdayField(state)
-                SignUpStep.USERNAME -> UsernameStep(state, vm, Modifier.weight(1f))
-                SignUpStep.PASSWORD -> PasswordStep(state, vm)
-                else -> EmailStep(state, vm)
+            // Chaque question arrive en glissant depuis la droite (depuis la gauche au retour).
+            AnimatedContent(state.step, Modifier.fillMaxWidth().weight(1f), transitionSpec = {
+                val forward = targetState > initialState
+                (slideInHorizontally { if (forward) it / 2 else -it / 2 } + fadeIn()) togetherWith
+                    (slideOutHorizontally { if (forward) -it / 2 else it / 2 } + fadeOut())
+            }, label = "étape") { step ->
+                // Clavier ouvert : la question et ses champs défilent plutôt que d'être coupés.
+                val keyboard = WindowInsets.isImeVisible
+                Column(Modifier.fillMaxSize().then(if (keyboard) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
+                    val line = GhostLines.signUp(state, step)
+                    GhostSays(line.text, line.mood, Modifier.padding(top = 8.dp, bottom = if (keyboard) 16.dp else 28.dp), ghostSize = 88.dp)
+                    when (step) {
+                        SignUpStep.NAME -> NameStep(state, vm)
+                        SignUpStep.BIRTHDAY -> BirthdayField(state)
+                        SignUpStep.USERNAME -> UsernameStep(state, vm, if (keyboard) Modifier else Modifier.weight(1f))
+                        SignUpStep.PASSWORD -> PasswordStep(state, vm)
+                        else -> EmailStep(state, vm)
+                    }
+                }
             }
-            if (!(state.step == SignUpStep.USERNAME && !state.editingUsername)) Spacer(Modifier.weight(1f))
             state.error?.let { Text(it, color = SnapColors.SnapRed, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) }
             if (state.step == SignUpStep.NAME) LegalNotice()
             PrimaryButton(
@@ -222,7 +244,7 @@ private fun Wheel(items: List<String>, selected: Int, onSelected: (Int) -> Unit,
 private fun UsernameStep(state: SignUpState, vm: SignUpViewModel, modifier: Modifier) {
     if (!state.editingUsername) {
         // Pseudo proposé d'office, modifiable d'un appui (Snapchat : « Your username is… »).
-        Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Column(modifier.fillMaxWidth().padding(bottom = 48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text("Ton pseudo est", color = SnapColors.Grey, fontSize = 15.sp)
             Text(state.username, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = SnapColors.Ink, modifier = Modifier.padding(vertical = 6.dp))
             Text("Changer mon pseudo", color = SnapColors.ChatBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp,

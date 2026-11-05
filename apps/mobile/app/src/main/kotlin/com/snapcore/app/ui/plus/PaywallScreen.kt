@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import com.snapcore.app.ui.components.FigmaAsset
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,7 +63,8 @@ private val DATE = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.FRENCH)
 
 // Paywall SnapCore+ (ADR-025). `returnedFromCheckout` : ouvert par le lien de retour du paiement.
 @Composable
-fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountChanged: (Account) -> Unit, initialAccount: Account? = null) {
+fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountChanged: (Account) -> Unit, initialAccount: Account? = null,
+    fromOnboarding: Boolean = false) {
     val vm = containerViewModel { PaywallViewModel(it.accounts, it.subscriptions, analytics = it.analytics, initial = initialAccount, experiments = it.experiments) }
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -96,7 +98,8 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
             }
             Spacer(Modifier.height(12.dp))
             FigmaAsset("14-704_imgImageGoldGhost")
-            Spacer(Modifier.height(28.dp))
+            // En fin d'onboarding, un peu plus serré : « Plus tard » doit rester visible sans défiler.
+            Spacer(Modifier.height(if (fromOnboarding) 16.dp else 28.dp))
             Text("Découvre SnapCore+", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
 
             val account = state.account
@@ -110,7 +113,7 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(if (fromOnboarding) 20.dp else 32.dp))
 
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -166,6 +169,12 @@ fun PaywallScreen(returnedFromCheckout: Boolean, onBack: () -> Unit, onAccountCh
                         style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 8.dp),
+                    )
+                    // Fin de l'onboarding : l'offre se refuse aussi clairement qu'elle s'accepte.
+                    if (fromOnboarding) Text(
+                        "Plus tard", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                        modifier = Modifier.padding(top = 4.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onBack)
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
                     )
                 }
             }

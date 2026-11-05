@@ -100,7 +100,8 @@ private val HOME_TAB_SCREENS = listOf("Map", "Chat", "Camera", "Stories")
 @Serializable private data class GroupConversationRoute(val groupId: String, val openSnapId: String? = null)
 @Serializable private object AvatarEditorRoute
 // Paywall SnapCore+ ; returnedFromCheckout = ouvert par le lien de retour du paiement (ADR-025).
-@Serializable private data class PaywallRoute(val returnedFromCheckout: Boolean = false)
+// fromOnboarding : proposé à la fin des premiers pas (ADR-029), avec « Plus tard » pour passer.
+@Serializable private data class PaywallRoute(val returnedFromCheckout: Boolean = false, val fromOnboarding: Boolean = false)
 // authorId = null : sa propre story.
 @Serializable private data class StoryPlayerRoute(val title: String, val authorId: String?, val startItemId: String? = null)
 // openSnapId : snap à lire dès l'ouverture, touché depuis la liste des chats.
@@ -250,6 +251,11 @@ fun SnapCoreNavHost(
                     onboarding = false
                     homeTab = CAMERA_TAB
                     navController.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }
+                    // Fin du parcours : SnapCore+ est proposé une fois, par-dessus la caméra. Le fermer y ramène.
+                    if (!me.isPremium) {
+                        analytics.capture(AnalyticsEvents.PAYWALL_OPENED, mapOf("source" to "onboarding"))
+                        navController.navigate(PaywallRoute(fromOnboarding = true))
+                    }
                 },
             )
         }
@@ -445,8 +451,10 @@ fun SnapCoreNavHost(
             })
         }
         composable<PaywallRoute> { entry ->
+            val route = entry.toRoute<PaywallRoute>()
             PaywallScreen(
-                returnedFromCheckout = entry.toRoute<PaywallRoute>().returnedFromCheckout,
+                returnedFromCheckout = route.returnedFromCheckout,
+                fromOnboarding = route.fromOnboarding,
                 onBack = navController::popBackStack,
                 onAccountChanged = { account = it },
                 initialAccount = account,

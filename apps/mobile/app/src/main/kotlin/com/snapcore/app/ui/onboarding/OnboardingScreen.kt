@@ -58,7 +58,12 @@ import com.snapcore.app.ui.components.FigmaAsset
 import com.snapcore.app.ui.components.PrimaryButton
 import com.snapcore.app.ui.components.SnapCard
 import com.snapcore.app.ui.components.SnapCheckbox
-import com.snapcore.app.ui.components.SnapHeader
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import com.snapcore.app.ui.components.SnapSearchBar
 import com.snapcore.app.ui.components.StatusBarIcons
 import com.snapcore.app.ui.containerViewModel
@@ -95,53 +100,54 @@ fun OnboardingScreen(
     BackHandler { if (state.step != OnboardingStep.DONE) vm.finish() }
 
     StatusBarIcons(dark = true)
-    Box(Modifier.fillMaxSize().background(Color.White)) {
-        when (state.step) {
-            OnboardingStep.PHONE -> PhoneStep(state, vm)
-            OnboardingStep.FIND_FRIENDS -> FindFriendsStep(vm)
-            OnboardingStep.ADD_FRIENDS -> AddFriendsStep(state, vm)
-            OnboardingStep.INVITE -> InviteStep(state, vm, username)
-            OnboardingStep.AVATAR -> AvatarStep(state, onOpenAvatarEditor, vm::skipAvatar)
-            OnboardingStep.NOTIFICATIONS -> NotificationsStep(vm::finish)
-            OnboardingStep.DONE -> Unit
+    var pickingCountry by remember { mutableStateOf(false) }
+    if (pickingCountry) {
+        CountryPicker(onPick = { vm.onCountry(it); pickingCountry = false }, onClose = { pickingCountry = false })
+        BackHandler { pickingCountry = false }
+        return
+    }
+    val background = if (state.step == OnboardingStep.ADD_FRIENDS || state.step == OnboardingStep.INVITE) SnapColors.Background else Color.White
+    Box(Modifier.fillMaxSize().background(background)) {
+        Column(Modifier.fillMaxSize()) {
+            // Le fantôme accompagne chaque écran ; la barre continue celle de l'inscription.
+            JourneyBar(Journey.firstSteps(state.step.ordinal), onSkip = when (state.step) {
+                OnboardingStep.PHONE -> vm::skipPhone
+                OnboardingStep.FIND_FRIENDS -> vm::skipFindFriends
+                OnboardingStep.ADD_FRIENDS -> vm::skipAddFriends
+                OnboardingStep.INVITE -> vm::skipInvites
+                OnboardingStep.AVATAR -> vm::skipAvatar
+                else -> null
+            })
+            AnimatedContent(state.step, Modifier.weight(1f), transitionSpec = {
+                (slideInHorizontally { it / 2 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 2 } + fadeOut())
+            }, label = "étape") { step ->
+                when (step) {
+                    OnboardingStep.PHONE -> PhoneStep(state, vm) { pickingCountry = true }
+                    OnboardingStep.FIND_FRIENDS -> FindFriendsStep(vm)
+                    OnboardingStep.ADD_FRIENDS -> AddFriendsStep(state, vm)
+                    OnboardingStep.INVITE -> InviteStep(state, vm, username)
+                    OnboardingStep.AVATAR -> AvatarStep(state, onOpenAvatarEditor)
+                    OnboardingStep.NOTIFICATIONS -> NotificationsStep(vm::finish)
+                    OnboardingStep.DONE -> Unit
+                }
+            }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
-    }
-}
-
-@Composable
-private fun SkipAction(onSkip: () -> Unit) {
-    Text("Passer", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = SnapColors.Ink,
-        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onSkip).padding(horizontal = 16.dp, vertical = 8.dp))
-}
-
-/** En-tête centré sans retour, avec « Passer » à droite (écrans Add Friends, Invite Contacts). */
-@Composable
-private fun TitleBar(title: String, onSkip: (() -> Unit)?) {
-    Box(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp), modifier = Modifier.align(Alignment.Center))
-        onSkip?.let { Box(Modifier.align(Alignment.CenterEnd)) { SkipAction(it) } }
     }
 }
 
 // --- Numéro de téléphone ------------------------------------------------------------------------
 
 @Composable
-private fun PhoneStep(state: OnboardingState, vm: OnboardingViewModel) {
-    var picking by remember { mutableStateOf(false) }
-    if (picking) {
-        CountryPicker(onPick = { vm.onCountry(it); picking = false }, onClose = { picking = false })
-        BackHandler { picking = false }
-        return
-    }
+private fun PhoneStep(state: OnboardingState, vm: OnboardingViewModel, onPickCountry: () -> Unit) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
-        SnapHeader("Ton numéro", onBack = vm::skipPhone, subtitle = "Facultatif") { SkipAction(vm::skipPhone) }
         Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-            Spacer(Modifier.height(48.dp))
+            val line = GhostLines.phone(error = state.phoneError != null)
+            GhostSays(line.text, line.mood, Modifier.padding(top = 8.dp, bottom = 28.dp), ghostSize = 88.dp)
             FieldLabel("Pays")
-            Box(Modifier.clickable { picking = true }) {
+            Box(Modifier.clickable(onClick = onPickCountry)) {
                 FieldBox {
                     Text("${state.country.flag}  ${state.country.name}", fontSize = 17.sp, color = SnapColors.Ink, modifier = Modifier.weight(1f))
                     Icon(Icons.Filled.KeyboardArrowDown, null, tint = SnapColors.Muted, modifier = Modifier.padding(end = 12.dp))
@@ -161,7 +167,7 @@ private fun PhoneStep(state: OnboardingState, vm: OnboardingViewModel) {
                 }
             }
             FieldStatus(state.phoneError, ok = false)
-            Text("Ton numéro permet à tes amis de te retrouver grâce à leurs contacts. Il n'est jamais montré aux autres et n'est pas vérifié.",
+            Text("Facultatif. Ton numéro n'est jamais montré aux autres et n'est pas vérifié.",
                 fontSize = 13.sp, color = SnapColors.Grey, modifier = Modifier.padding(top = 10.dp))
             Spacer(Modifier.weight(1f))
             PrimaryButton("Continuer", vm::savePhone, enabled = vm.phoneComplete || state.savingPhone, loading = state.savingPhone,
@@ -219,10 +225,10 @@ private fun CountryPicker(onPick: (Country) -> Unit, onClose: () -> Unit) {
 private fun FindFriendsStep(vm: OnboardingViewModel) {
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission(), vm::onContactsPermission)
     val copy = vm.state.collectAsStateWithLifecycle().value.contactsCopy
-    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
+    Column(Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.fillMaxWidth()) { Box(Modifier.align(Alignment.CenterEnd)) { SkipAction(vm::skipFindFriends) } }
-        Text(copy.title, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+        val line = GhostLines.findFriends(copy)
+        GhostSays(line.text, line.mood, Modifier.padding(top = 8.dp), ghostSize = 88.dp)
         Text(copy.text,
             fontSize = 16.sp, color = SnapColors.Grey, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp))
         Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 24.dp), Alignment.Center) { ContactsIllustration() }
@@ -258,8 +264,11 @@ private fun ContactsIllustration() {
 private fun AddFriendsStep(state: OnboardingState, vm: OnboardingViewModel) {
     Box(Modifier.fillMaxSize().background(SnapColors.Background)) {
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-            TitleBar("Ajouter des amis", vm::skipAddFriends)
             LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
+                item {
+                    val line = GhostLines.addFriends(state.addable.size)
+                    GhostSays(line.text, line.mood, Modifier.padding(top = 4.dp, bottom = 16.dp), ghostSize = 76.dp)
+                }
                 item {
                     SnapSearchBar(state.query, vm::onQuery, "Rechercher un pseudo", Modifier.fillMaxWidth(), onSearch = vm::search)
                     state.searchError?.let { Text(it, color = SnapColors.SnapRed, fontSize = 13.sp, modifier = Modifier.padding(8.dp)) }
@@ -336,13 +345,12 @@ private fun InviteStep(state: OnboardingState, vm: OnboardingViewModel, username
     val shown = state.invitable.filter { it.name.contains(query, ignoreCase = true) }
     Box(Modifier.fillMaxSize().background(SnapColors.Background)) {
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-            TitleBar("Inviter des contacts", vm::skipInvites)
             LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
                 item {
+                    GhostSays(GhostLines.invite.text, GhostLines.invite.mood, Modifier.padding(top = 4.dp, bottom = 16.dp), ghostSize = 76.dp)
                     SnapSearchBar(query, { query = it }, "Rechercher", Modifier.fillMaxWidth())
-                    Text("Invite tes amis", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 16.dp))
                     Text("Envoie-leur un message pour les inviter sur SnapCore et les ajouter en amis.", fontSize = 13.sp,
-                        color = SnapColors.Grey, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
+                        color = SnapColors.Grey, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
                 }
                 item {
                     SnapCard {
@@ -376,18 +384,17 @@ private fun InviteStep(state: OnboardingState, vm: OnboardingViewModel, username
 // --- Avatar -------------------------------------------------------------------------------------
 
 @Composable
-private fun AvatarStep(state: OnboardingState, onCreate: () -> Unit, onSkip: () -> Unit) {
-    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
+private fun AvatarStep(state: OnboardingState, onCreate: () -> Unit) {
+    Column(Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.fillMaxWidth()) { Box(Modifier.align(Alignment.CenterEnd)) { SkipAction(onSkip) } }
+        GhostSays(GhostLines.avatar.text, GhostLines.avatar.mood, Modifier.padding(top = 8.dp), ghostSize = 88.dp)
         Spacer(Modifier.weight(1f))
         Box(Modifier.size(240.dp).clip(CircleShape).background(SnapColors.Background), Alignment.Center) {
             state.avatarPreview?.let { AsyncImage(avatarImageUrl(it, size = 512), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
                 ?: FigmaAsset("13-241_imgImageGhostLogo")
         }
-        Text("Crée ton avatar", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 56.dp))
-        Text("Compose le personnage qui te représentera auprès de tes amis, dans le chat et les stories.", fontSize = 16.sp,
-            color = SnapColors.Grey, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
+        Text("Il apparaîtra dans le chat, les stories et sur la carte.", fontSize = 16.sp,
+            color = SnapColors.Grey, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 24.dp, start = 8.dp, end = 8.dp))
         Spacer(Modifier.weight(1f))
         PrimaryButton("Continuer", onCreate, height = 50.dp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp))
     }
@@ -395,31 +402,36 @@ private fun AvatarStep(state: OnboardingState, onCreate: () -> Unit, onSkip: () 
 
 // --- Notifications ------------------------------------------------------------------------------
 
-/** Explication avant la demande d'Android, comme la carte « Please turn on Notifications » de Snapchat. */
+/**
+ * Explication avant la demande d'Android (ADR-029) : le fantôme fête la fin du parcours et montre à quoi
+ * ressemble une notification. « Plus tard » termine sans rien demander.
+ */
 @Composable
 private fun NotificationsStep(onDone: () -> Unit) {
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { onDone() }
-    Box(Modifier.fillMaxSize().background(Color.White), Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 56.dp)) {
-            FigmaAsset("13-241_imgImageGhostLogo", modifier = Modifier.size(72.dp).padding(bottom = 8.dp), tint = SnapColors.Ink)
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, SnapColors.Border, RoundedCornerShape(14.dp)),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Active les notifications", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 20.dp))
-                Text("Tu pourras voir les snaps et les chats que tes amis t'envoient, directement sur ton téléphone.", fontSize = 13.sp,
-                    textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                Box(Modifier.fillMaxWidth().height(1.dp).background(SnapColors.Border))
-                Row(Modifier.fillMaxWidth().height(48.dp)) {
-                    Box(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onDone), Alignment.Center) {
-                        Text("Ne pas autoriser", color = SnapColors.ChatBlue, fontSize = 16.sp)
-                    }
-                    Box(Modifier.width(1.dp).fillMaxHeight().background(SnapColors.Border))
-                    Box(Modifier.weight(1f).fillMaxHeight().clickable {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else onDone()
-                    }, Alignment.Center) {
-                        Text("OK", color = SnapColors.ChatBlue, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
+    Column(Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        GhostSays(GhostLines.notifications.text, GhostLines.notifications.mood, Modifier.padding(top = 8.dp), ghostSize = 96.dp)
+        Spacer(Modifier.weight(1f))
+        NotificationPreview()
+        Spacer(Modifier.weight(1f))
+        PrimaryButton("Activer les notifications", {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else onDone()
+        }, height = 50.dp, modifier = Modifier.padding(horizontal = 24.dp))
+        Text("Plus tard", color = SnapColors.Grey, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+            modifier = Modifier.padding(vertical = 12.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onDone).padding(horizontal = 16.dp, vertical = 10.dp))
+    }
+}
+
+/** Aperçu d'une notification, pour montrer ce que l'on active. */
+@Composable
+private fun NotificationPreview() {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(SnapColors.Background)
+        .border(1.dp, SnapColors.Border, RoundedCornerShape(18.dp)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        FigmaAsset("13-241_imgImageGhostLogo", modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)))
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text("SnapCore", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = SnapColors.Ink)
+            Text("Un ami t'a envoyé un snap", fontSize = 14.sp, color = SnapColors.Grey)
         }
+        Text("maintenant", fontSize = 12.sp, color = SnapColors.Muted)
     }
 }

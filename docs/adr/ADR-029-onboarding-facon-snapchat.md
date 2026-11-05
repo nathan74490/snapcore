@@ -30,6 +30,15 @@ L'écran « Utiliser un numéro de téléphone à la place » de Snapchat n'est 
 5. **Crée ton avatar** : ouvre l'éditeur d'avatar (ADR-028), enregistré en arrière-plan.
 6. **Active les notifications** : explication avant la demande d'Android 13+. Elle n'apparaît que si la permission n'a jamais été demandée (BUG-007 d'ADR-023). Pendant les premiers pas, la demande automatique de `PushRegistration` est suspendue.
 
+**Parcours guidé par le fantôme** (ajout du 2026-11-05) : l'inscription et les premiers pas forment un seul parcours, façon Duolingo.
+- Le fantôme de SnapCore (celui du tirer-pour-actualiser) pose la question de chaque écran dans une bulle, avec un texte qui s'écrit lettre par lettre. Il est dessiné en vectoriel et animé (`GhostMascot`) : une humeur par écran (il salue, est curieux, cherche, réfléchit, est content, se cache les yeux au mot de passe, a des cœurs, fait la fête), et un air inquiet quand une réponse est refusée.
+- Une barre de progression unique remplace « Étape X sur 5 » : elle avance pendant l'inscription, puis continue pendant les premiers pas. « Passer » reste en haut à droite des écrans facultatifs.
+- Chaque écran arrive en glissant (depuis la gauche au retour en arrière).
+- L'écran des notifications montre un aperçu de notification, avec « Activer les notifications » et « Plus tard », au lieu de la fausse boîte de dialogue iOS.
+- Les textes de l'expérience onboarding-contacts-copy (ADR-030) sont conservés : le fantôme dit le titre de la variante.
+- **Connexion** : même style. Le fantôme accueille (« Content de te revoir ! »), se cache les yeux pendant la saisie du mot de passe, réfléchit pendant la vérification, et annonce lui-même l'erreur (« Oups ! Email ou mot de passe incorrect. »).
+- **SnapCore+ proposé à la fin** (ADR-025) : à la fin des premiers pas, le paywall s'ouvre une fois par-dessus la caméra, sauf pour un compte déjà abonné. « Plus tard » (ou la flèche) le ferme et ramène à la caméra. Mesuré par `paywall_opened { source: onboarding }`.
+
 **Correspondance des contacts** : `POST /users/contacts/match` (authentifié, compte actif), corps `{ phoneNumbers }`.
 - Au plus 2000 numéros par requête ; l'app découpe un carnet plus grand.
 - La correspondance porte sur les **9 derniers chiffres**, ce qui absorbe « 06 12… » et « +33 6 12… ».
