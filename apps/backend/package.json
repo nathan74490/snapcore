@@ -7,6 +7,7 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "seed:demo": "tsc -p tsconfig.scripts.json && node --enable-source-maps dist-scripts/scripts/seed-demo.js",
+    "posthog:dashboard": "tsc -p tsconfig.scripts.json && node dist-scripts/scripts/posthog-onboarding-dashboard.js",
     "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json",
     "test": "jest",
     "test:integration": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --runInBand --testRegex \"\\.int-spec\\.ts$\" --setupFiles \"<rootDir>/test/integration-setup.ts\" --globalSetup \"<rootDir>/test/integration-global-setup.ts\""

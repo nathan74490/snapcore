@@ -164,13 +164,16 @@ class OnboardingViewModelTest {
     @Test
     fun `analytics, etapes affichees, etapes passees, contacts et fin des premiers pas`() = runTest(dispatcher) {
         val analytics = RecordingAnalytics()
-        val vm = OnboardingViewModel(accounts, friends, contacts, analytics) { false }
+        var now = 0L
+        val vm = OnboardingViewModel(accounts, friends, contacts, analytics, clock = { now }) { false }
         advanceUntilIdle()
         advanceUntilIdle()
+        now = 4_000
         vm.onContactsPermission(false)
         advanceUntilIdle()
         vm.skipAddFriends()
         advanceUntilIdle()
+        now = 9_000
         vm.skipAvatar()
         advanceUntilIdle()
 
@@ -178,13 +181,55 @@ class OnboardingViewModelTest {
             listOf(
                 AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "find_friends"),
                 AnalyticsEvents.CONTACTS_PERMISSION_ANSWERED to mapOf("granted" to false),
+                AnalyticsEvents.ONBOARDING_STEP_COMPLETED to mapOf("step" to "find_friends", "duration_ms" to 4_000L),
                 AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "add_friends"),
                 AnalyticsEvents.ONBOARDING_STEP_SKIPPED to mapOf("step" to "add_friends"),
                 AnalyticsEvents.ONBOARDING_STEP_VIEWED to mapOf("step" to "avatar"),
                 AnalyticsEvents.ONBOARDING_STEP_SKIPPED to mapOf("step" to "avatar"),
-                AnalyticsEvents.ONBOARDING_COMPLETED to emptyMap<String, Any>(),
+                AnalyticsEvents.ONBOARDING_COMPLETED to mapOf(
+                    "ended_by" to "done", "duration_ms" to 9_000L, "steps_skipped" to 2, "friends_added" to 0,
+                    "invites_sent" to 0, "avatar_created" to false, "contacts_granted" to false,
+                ),
             ),
             analytics.events,
         )
+    }
+
+    @Test
+    fun `analytics, amis ajoutes, notifications acceptees, puis bilan du parcours`() = runTest(dispatcher) {
+        val analytics = RecordingAnalytics()
+        val vm = OnboardingViewModel(accounts, friends, contacts, analytics) { true }
+        advanceUntilIdle()
+        vm.onContactsPermission(true)
+        advanceUntilIdle()
+        val suggested = vm.state.value.addable.size
+        val selected = vm.state.value.selected.size
+        vm.addSelected()
+        advanceUntilIdle()
+        if (vm.state.value.step == OnboardingStep.INVITE) vm.skipInvites()
+        vm.skipAvatar()
+        vm.onNotificationsPermission(true)
+        advanceUntilIdle()
+
+        assertEquals(mapOf("count" to selected, "suggested" to suggested), analytics.propertiesOf(AnalyticsEvents.ONBOARDING_FRIENDS_ADDED))
+        assertEquals(mapOf("granted" to true, "source" to "onboarding"),
+            analytics.propertiesOf(AnalyticsEvents.NOTIFICATIONS_PERMISSION_ANSWERED))
+        val summary = analytics.propertiesOf(AnalyticsEvents.ONBOARDING_COMPLETED)
+        assertEquals(selected, summary["friends_added"])
+        assertEquals(true, summary["contacts_granted"])
+        assertEquals(true, summary["notifications_granted"])
+        assertEquals("done", summary["ended_by"])
+    }
+
+    @Test
+    fun `analytics, la touche retour termine les premiers pas et le dit`() = runTest(dispatcher) {
+        val analytics = RecordingAnalytics()
+        val vm = OnboardingViewModel(accounts, friends, contacts, analytics) { false }
+        advanceUntilIdle()
+        vm.quit()
+        vm.quit()
+        assertEquals(OnboardingStep.DONE, vm.state.value.step)
+        assertEquals(1, analytics.names.count { it == AnalyticsEvents.ONBOARDING_COMPLETED })
+        assertEquals("back", analytics.propertiesOf(AnalyticsEvents.ONBOARDING_COMPLETED)["ended_by"])
     }
 }

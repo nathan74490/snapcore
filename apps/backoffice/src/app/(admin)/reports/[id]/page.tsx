@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { closeReport, deleteStoryItem, redactMessage, suspendUser } from "@/app/actions";
 import { ActionForm } from "@/components/action-form";
 import { ReportTarget } from "@/components/report-target";
-import { REPORT_STATUS_LABEL, TARGET_TYPE_LABEL, formatDateTime } from "@/lib/format";
-import { getReport } from "@/lib/queries";
+import { UserLink } from "@/components/user-link";
+import { REPORT_STATUS_LABEL, TARGET_TYPE_LABEL, formatDateTime, truncate } from "@/lib/format";
+import { getReport, otherReportsAgainst } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
   const pending = report.status === "PENDING";
   // Compte visé : directement (signalement de compte) ou auteur du contenu signalé.
   const offender = report.targetUser ?? report.targetMessage?.sender ?? report.targetStoryItem?.author ?? null;
+  const history = offender ? await otherReportsAgainst(offender.id, report.id) : [];
 
   return (
     <div className="stack">
@@ -38,7 +40,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
           <dd>{report.reason}</dd>
           <dt>Signalé par</dt>
           <dd>
-            <Link href={`/users/${report.reporter.id}`}>@{report.reporter.username}</Link> le {formatDateTime(report.createdAt)}
+            <UserLink user={report.reporter} /> le {formatDateTime(report.createdAt)}
           </dd>
           {!pending && (
             <>
@@ -86,6 +88,37 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
         {offender && offender.moderationStatus === "SUSPENDED" && <p className="muted">@{offender.username} est déjà suspendu.</p>}
         {!report.targetMessage && !report.targetStoryItem && !offender && <p className="muted">Le contenu visé n'existe plus.</p>}
       </div>
+
+      {offender && (
+        <>
+          <h2>
+            Autres signalements visant <Link href={`/users/${offender.id}`}>@{offender.username}</Link> ({history.length})
+          </h2>
+          {history.length === 0 ? (
+            <p className="empty">Aucun autre signalement : premier signalement pour ce compte.</p>
+          ) : (
+            <table>
+              <tbody>
+                {history.map((other) => (
+                  <tr key={other.id}>
+                    <td className="nowrap">{formatDateTime(other.createdAt)}</td>
+                    <td>
+                      <span className="badge">{TARGET_TYPE_LABEL[other.targetType]}</span>
+                    </td>
+                    <td>{truncate(other.reason, 80)}</td>
+                    <td>
+                      <span className={`badge ${other.status === "PENDING" ? "warning" : "ok"}`}>{REPORT_STATUS_LABEL[other.status]}</span>
+                    </td>
+                    <td>
+                      <Link href={`/reports/${other.id}`}>Voir</Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
 
       {pending && (
         <>

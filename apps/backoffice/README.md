@@ -18,8 +18,23 @@ avec un email existant réinitialise son mot de passe.
 
 - **Connexion** : NextAuth, identifiants email + mot de passe (bcrypt), session JWT de 8 h. Chaque page
   et chaque action serveur revérifie que le modérateur existe encore en base.
-- **Lecture** : directement dans PostgreSQL via Prisma (`src/lib/queries.ts`) : tableau de bord, file des
-  signalements, recherche et fiche d'un compte (messages, stories, statut).
+- **Lecture** : directement dans PostgreSQL via Prisma (`src/lib/queries.ts`). Pages :
+
+  | Page | Contenu |
+  |---|---|
+  | `/` Tableau de bord | Chiffres de modération, communauté, activité 24 h, SnapCore+ et Snap Map ; histogrammes des 14 derniers jours ; alerte des suppressions bloquées (ADR-019) ; début de la file des signalements ; lien PostHog (`POSTHOG_DASHBOARD_URL`) |
+  | `/reports` | File et historique, filtres par type, compteurs, pagination ; la fiche liste les autres signalements visant le même compte |
+  | `/messages` | Fil des messages privés de l'app (chats, snaps, retirés), retrait direct |
+  | `/stories` | Stories en ligne, lieu sur la Snap Map, nombre de signalements, suppression |
+  | `/audit` | Journal des actions des modérateurs, reconstitué depuis les champs d'audit |
+  | `/users` | Annuaire filtrable (statut, offre) et recherche par pseudo, prénom, nom, email, téléphone ou id |
+  | `/users/[id]` | Fiche : profil, avatar, SnapCore+, partage de position, appareils, stories ; onglets messages (par conversation), amis et blocages, groupes, signalements reçus et envoyés |
+  | `/groups` | Groupes (ADR-032), membres et historique des messages, en lecture seule |
+  | `/subscriptions` | Abonnés SnapCore+ actifs, fins de période proches, abonnements expirés |
+  | `/moderators` | Équipe et activité de chaque modérateur |
+
+  Les avatars dessinés (ADR-028) passent par `/avatar`, relais authentifié vers le rendu PNG du backend.
+  Les médias (snaps, stories) ne sont jamais affichés.
 - **Actions** : jamais en écriture directe. Les actions serveur (`src/app/actions.ts`) appellent l'API
   admin du backend (`src/lib/admin-api.ts`, en-tête `x-admin-secret`), qui applique les effets de bord :
   suppression R2, purge BullMQ, temps réel. Actions disponibles : suspendre ou réactiver un compte,

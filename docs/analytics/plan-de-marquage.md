@@ -18,13 +18,26 @@ Référence de tous les événements envoyés à PostHog (ADR-008). Les noms cô
 
 ## Événements de l'app
 
+Les durées (`duration_ms`) sont mesurées sur le téléphone, en millisecondes. Le dashboard qui les exploite est décrit dans [dashboard-onboarding.md](dashboard-onboarding.md).
+
+### Accueil
+| Événement | Propriétés | Quand |
+|---|---|---|
+| `welcome_choice` | `choice` : signup ou login | « Je m'inscris » ou « J'ai déjà un compte » touché sur l'accueil |
+
 ### Compte
 | Événement | Propriétés | Quand |
 |---|---|---|
-| `signup_step_viewed` | `step` : name, birthday, username, password, email | Chaque étape de l'inscription affichée, y compris après un retour |
-| `signup_failed` | `step`, `reason` | Création du compte refusée (Firebase ou backend) |
-| `login_completed` | | Connexion réussie |
-| `login_failed` | `reason` | Connexion refusée |
+| `signup_step_viewed` | `step` : name, birthday, username, phone, code ; `step_index` (1 à 5) ; `resuming` | Chaque étape de l'inscription affichée, y compris après un retour. En reprise (`resuming = true`), seules name, birthday et username |
+| `signup_step_completed` | `step`, `step_index`, `duration_ms` ; `username_source` (suggested, refreshed ou typed) pour le pseudo | Étape validée, passage à la suivante |
+| `signup_step_back` | `step` : l'étape quittée | Flèche retour de l'inscription |
+| `signup_failed` | `step`, `reason` | Code SMS, vérification ou création du compte refusés (Firebase ou backend) |
+| `signup_finished` | `outcome` : registered ou existing_account ; `resuming` ; `duration_ms` depuis le premier écran | Fin du parcours sur le téléphone. `existing_account` : le numéro avait déjà un compte, l'inscription devient une connexion. Le compte lui-même est compté par le backend (`user_registered`) |
+| `sms_code_requested` | `flow` : signup ou login ; `resend` ; `country` : code pays ISO, jamais le numéro | Code SMS envoyé (ADR-034) |
+| `sms_code_autofilled` | `flow` | « Utiliser ce code » sur le SMS simulé |
+| `login_completed` | `method` : phone ou email | Connexion réussie |
+| `login_failed` | `method`, `reason` | Connexion refusée |
+| `login_method_switched` | `to` : email ou phone | Passage à la connexion par email (anciens comptes), ou retour au numéro |
 | `signed_out` | | Déconnexion depuis le profil |
 | `email_verification_resent` | | Email de confirmation renvoyé |
 | `account_deletion_prompted` | | Confirmation de suppression affichée |
@@ -33,11 +46,14 @@ Référence de tous les événements envoyés à PostHog (ADR-008). Les noms cô
 ### Premiers pas (ADR-029)
 | Événement | Propriétés | Quand |
 |---|---|---|
-| `onboarding_step_viewed` | `step` : phone, find_friends, add_friends, invite, avatar, notifications | Chaque étape affichée |
-| `onboarding_step_skipped` | `step` | « Passer » |
+| `onboarding_step_viewed` | `step` : find_friends, add_friends, invite, avatar, notifications | Chaque étape affichée. invite seulement s'il reste des contacts à inviter, notifications seulement sur Android 13+ sans la permission |
+| `onboarding_step_skipped` | `step` | « Passer », ou « Plus tard » sur les notifications |
+| `onboarding_step_completed` | `step`, `duration_ms` | Étape terminée par son action principale : contacts répondus, amis ajoutés, invitations envoyées, avatar créé, notifications répondues |
 | `contacts_permission_answered` | `granted`, `$feature/onboarding-contacts-copy` | Réponse à l'accès aux contacts |
-| `invites_sent` | `count` | SMS d'invitation ouvert |
-| `onboarding_completed` | | Fin des premiers pas |
+| `onboarding_friends_added` | `count` : amis cochés ; `suggested` : comptes retrouvés qu'on pouvait ajouter | « Ajouter N amis » |
+| `invites_sent` | `count`, `invitable` | SMS d'invitation ouvert |
+| `notifications_permission_answered` | `granted`, `source` : onboarding | Réponse d'Android à la demande de notifications |
+| `onboarding_completed` | `ended_by` : done ou back ; `duration_ms` ; `steps_skipped` ; `friends_added` ; `invites_sent` ; `avatar_created` ; `contacts_granted` et `notifications_granted` si la question a été posée | Fin des premiers pas, avec le bilan du parcours |
 
 ### Caméra et envoi
 | Événement | Propriétés | Quand |
@@ -68,7 +84,8 @@ Référence de tous les événements envoyés à PostHog (ADR-008). Les noms cô
 |---|---|---|
 | `notification_opened` | `target` : chat ou friends | Notification push touchée |
 | `avatar_randomized` | | « Au hasard » dans l'éditeur d'avatar |
-| `paywall_opened` | `source` : profile_card ou settings, `$feature/profile-plus-card` depuis la carte | Paywall ouvert depuis le profil |
+| `paywall_opened` | `source` : profile_card, settings ou onboarding, `$feature/profile-plus-card` depuis la carte | Paywall ouvert depuis le profil, ou proposé en fin de premiers pas |
+| `paywall_dismissed` | `source` : onboarding ou other | Paywall fermé sans être abonné (flèche ou « Plus tard ») ; la touche retour d'Android n'est pas comptée |
 | `checkout_started` | `$feature/paywall-cta` si exposé (ADR-030) | Bouton du paywall |
 | `checkout_returned` | `activated` | Retour du paiement : abonnement actif ou non |
 

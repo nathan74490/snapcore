@@ -90,11 +90,17 @@ class LoginViewModel(
         if (_state.value.phone.codeComplete && !_state.value.loading) submit()
     }
 
-    fun useSimulatedCode() = _state.value.phone.simulatedCode?.let(::onCode)
+    fun useSimulatedCode() = _state.value.phone.simulatedCode?.let {
+        analytics.capture(AnalyticsEvents.SMS_CODE_AUTOFILLED, mapOf("flow" to "login"))
+        onCode(it)
+    }
     fun resendCode() = sendCode()
 
     /** Lien « Se connecter avec un email » (anciens comptes) ou retour au numéro. */
-    fun useEmail(email: Boolean) = _state.update { it.copy(mode = if (email) LoginMode.EMAIL else LoginMode.PHONE, error = null) }
+    fun useEmail(email: Boolean) {
+        analytics.capture(AnalyticsEvents.LOGIN_METHOD_SWITCHED, mapOf("to" to if (email) "email" else "phone"))
+        _state.update { it.copy(mode = if (email) LoginMode.EMAIL else LoginMode.PHONE, error = null) }
+    }
 
     /** @return false s'il faut quitter l'écran (on était déjà à la première étape). */
     fun back(): Boolean {
@@ -125,6 +131,7 @@ class LoginViewModel(
         viewModelScope.launch {
             try {
                 val sent = auth.requestPhoneCode(number)
+                analytics.capture(AnalyticsEvents.SMS_CODE_REQUESTED, smsCodeProperties("login", _state.value.phone))
                 _state.update { it.copy(loading = false, mode = LoginMode.CODE, phone = it.phone.codeSent(sent)) }
             } catch (e: Throwable) {
                 _state.update {
@@ -135,6 +142,8 @@ class LoginViewModel(
         }
     }
 
+    private fun loginMethod() = if (_state.value.mode == LoginMode.EMAIL) "email" else "phone"
+
     private fun signIn(block: suspend () -> Unit) {
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
@@ -143,10 +152,10 @@ class LoginViewModel(
                 resolver.resolve()
             }.onSuccess { session ->
                 // Envoyé avant identify (fait par la navigation) : PostHog rattache alors l'id anonyme au compte.
-                analytics.capture(AnalyticsEvents.LOGIN_COMPLETED, mapOf("method" to if (_state.value.mode == LoginMode.EMAIL) "email" else "phone"))
+                analytics.capture(AnalyticsEvents.LOGIN_COMPLETED, mapOf("method" to loginMethod()))
                 _state.update { it.copy(loading = false, session = session) }
             }.onFailure { e ->
-                analytics.capture(AnalyticsEvents.LOGIN_FAILED, mapOf("reason" to e.analyticsReason()))
+                analytics.capture(AnalyticsEvents.LOGIN_FAILED, mapOf("method" to loginMethod(), "reason" to e.analyticsReason()))
                 _state.update {
                     // Mauvais code : l'erreur s'affiche sous les cases, qu'on vide pour une nouvelle saisie.
                     if (it.mode == LoginMode.CODE) it.copy(loading = false, phone = it.phone.copy(code = "", codeError = e.userMessage()))

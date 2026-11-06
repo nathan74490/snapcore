@@ -68,6 +68,8 @@ class OnboardingViewModel(
     private val contactsReader: ContactsReader,
     private val analytics: Analytics = NoAnalytics,
     private val experiments: Experiments = NoExperiments,
+    /** Horloge en millisecondes, pour les durées envoyées à l'analytics. */
+    private val clock: () -> Long = System::currentTimeMillis,
     /** Notifications à demander à la fin (Android 13+, permission pas encore accordée ni demandée). */
     private val needsNotificationPrompt: () -> Boolean = { false },
 ) : ViewModel() {
@@ -76,6 +78,16 @@ class OnboardingViewModel(
 
     /** Variante vue de l'expérience onboarding-contacts-copy, lue une fois à l'affichage de l'écran. */
     private var contactsExposure: Exposure<OnboardingContactsCopy>? = null
+
+    // Bilan du parcours, envoyé avec onboarding_completed (ADR-008) : rien de personnel, des nombres.
+    private val startedAt = clock()
+    private var stepShownAt = startedAt
+    private var stepsSkipped = 0
+    private var friendsAdded = 0
+    private var invitesSent = 0
+    private var avatarCreated = false
+    private var notificationsGranted: Boolean? = null
+    private var endedByBack = false
 
     // Toute modification passe par ici : un changement d'étape est capturé au moment même où il a lieu,
     // y compris deux étapes enchaînées sans pause (un observateur du StateFlow ne verrait que la dernière).
@@ -103,6 +115,7 @@ class OnboardingViewModel(
     fun onContactsPermission(granted: Boolean) {
         analytics.capture(AnalyticsEvents.CONTACTS_PERMISSION_ANSWERED,
             mapOf("granted" to granted) + contactsExposure?.conversionProperties.orEmpty())
+        captureCompleted()
         update { it.copy(contactsGranted = granted, step = OnboardingStep.ADD_FRIENDS, loadingContacts = granted) }
         if (!granted) return
         viewModelScope.launch {
@@ -150,6 +163,9 @@ class OnboardingViewModel(
     fun addSelected() {
         val s = _state.value
         val users = s.addable.filter { it.user.id in s.selected }.map { it.user.username }
+        friendsAdded += users.size
+        analytics.capture(AnalyticsEvents.ONBOARDING_FRIENDS_ADDED, mapOf("count" to users.size, "suggested" to s.addable.size))
+        captureCompleted()
         viewModelScope.launch {
             users.forEach { username -> completeEvenIfClosed { friends.sendRequest(username) } }
         }
@@ -171,7 +187,11 @@ class OnboardingViewModel(
     fun sendInvites(): List<String> {
         val s = _state.value
         val numbers = s.invitable.filter { it.name in s.invited }.mapNotNull { it.phoneNumbers.firstOrNull() }
-        if (numbers.isNotEmpty()) analytics.capture(AnalyticsEvents.INVITES_SENT, mapOf("count" to numbers.size))
+        if (numbers.isNotEmpty()) {
+            invitesSent += numbers.size
+            analytics.capture(AnalyticsEvents.INVITES_SENT, mapOf("count" to numbers.size, "invitable" to s.invitable.size))
+            captureCompleted()
+        }
         go(OnboardingStep.AVATAR)
         return numbers
     }
@@ -182,6 +202,10 @@ class OnboardingViewModel(
 
     /** Avatar validé dans l'éditeur : enregistré en arrière-plan (ADR-028), on continue. */
     fun applyAvatar(change: AvatarChange) {
+        if (change is AvatarChange.Set) {
+            avatarCreated = true
+            captureCompleted()
+        }
         viewModelScope.launch {
             completeEvenIfClosed {
                 when (change) {
@@ -200,7 +224,26 @@ class OnboardingViewModel(
 
     private fun afterAvatar() = go(if (needsNotificationPrompt()) OnboardingStep.NOTIFICATIONS else OnboardingStep.DONE)
 
+    /** Réponse d'Android à la demande de notifications, après « Activer les notifications ». */
+    fun onNotificationsPermission(granted: Boolean) {
+        notificationsGranted = granted
+        analytics.capture(AnalyticsEvents.NOTIFICATIONS_PERMISSION_ANSWERED, mapOf("granted" to granted, "source" to "onboarding"))
+        captureCompleted()
+        go(OnboardingStep.DONE)
+    }
+
+    /** « Plus tard » sur l'écran des notifications. */
+    fun skipNotifications() = skip(OnboardingStep.DONE)
+
+    /** Fin sans passer par les écrans restants : touche retour, ou appareil sans demande de notifications. */
     fun finish() = go(OnboardingStep.DONE)
+
+    /** Touche retour : les premiers pas s'arrêtent là. */
+    fun quit() {
+        if (_state.value.step == OnboardingStep.DONE) return
+        endedByBack = true
+        go(OnboardingStep.DONE)
+    }
 
     fun consumeMessage() = update { it.copy(message = null) }
 
@@ -208,7 +251,8 @@ class OnboardingViewModel(
 
     /** Entonnoir des premiers pas (ADR-008, ADR-029) : chaque étape affichée, puis la fin. */
     private fun captureStep(step: OnboardingStep) {
-        if (step == OnboardingStep.DONE) analytics.capture(AnalyticsEvents.ONBOARDING_COMPLETED)
+        stepShownAt = clock()
+        if (step == OnboardingStep.DONE) analytics.capture(AnalyticsEvents.ONBOARDING_COMPLETED, summary())
         else analytics.capture(AnalyticsEvents.ONBOARDING_STEP_VIEWED, mapOf("step" to step.name.lowercase()))
         // Exposition à l'affichage de l'écran testé, une seule fois (ADR-030).
         if (step == OnboardingStep.FIND_FRIENDS && contactsExposure == null) {
@@ -223,6 +267,23 @@ class OnboardingViewModel(
         go(next)
     }
 
-    private fun captureSkip() =
+    private fun captureSkip() {
+        stepsSkipped++
         analytics.capture(AnalyticsEvents.ONBOARDING_STEP_SKIPPED, mapOf("step" to _state.value.step.name.lowercase()))
+    }
+
+    /** Étape terminée par son action principale, avec le temps passé dessus. */
+    private fun captureCompleted() = analytics.capture(AnalyticsEvents.ONBOARDING_STEP_COMPLETED,
+        mapOf("step" to _state.value.step.name.lowercase(), "duration_ms" to clock() - stepShownAt))
+
+    private fun summary(): Map<String, Any> = buildMap {
+        put("ended_by", if (endedByBack) "back" else "done")
+        put("duration_ms", clock() - startedAt)
+        put("steps_skipped", stepsSkipped)
+        put("friends_added", friendsAdded)
+        put("invites_sent", invitesSent)
+        put("avatar_created", avatarCreated)
+        _state.value.contactsGranted?.let { put("contacts_granted", it) }
+        notificationsGranted?.let { put("notifications_granted", it) }
+    }
 }

@@ -1,7 +1,9 @@
 package com.snapcore.app.data
 
 import android.content.Context
+import android.util.Log
 import com.posthog.PostHog
+import com.snapcore.app.BuildConfig
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
 import com.snapcore.app.domain.Analytics
@@ -28,9 +30,16 @@ class PostHogAnalytics(context: Context, apiKey: String, host: String) : Analyti
 
     override fun reset() = PostHog.reset()
 
-    override fun screen(name: String) = PostHog.screen(name)
+    override fun screen(name: String) {
+        if (BuildConfig.DEBUG) Log.d("Analytics", "\$screen $name")
+        PostHog.screen(name)
+    }
 
-    override fun capture(event: String, properties: Map<String, Any>) = PostHog.capture(event, properties = properties)
+    override fun capture(event: String, properties: Map<String, Any>) {
+        // Propriétés sans donnée personnelle (plan de marquage) : on peut les afficher en debug (tag Analytics).
+        if (BuildConfig.DEBUG) Log.d("Analytics", "$event $properties")
+        PostHog.capture(event, properties = properties)
+    }
 }
 
 /**

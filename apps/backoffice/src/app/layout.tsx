@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SnapCore · Modération",
+  title: { default: "SnapCore · Admin", template: "%s · SnapCore Admin" },
   // Outil interne : jamais indexé.
   robots: { index: false, follow: false },
 };

@@ -43,7 +43,7 @@ function idField(form: FormData, name: string): string {
 // Chemin de retour limité aux pages internes du backoffice.
 function returnPath(form: FormData): string {
   const value = field(form, "returnTo");
-  return /^\/(users|reports)(\/[0-9a-f-]{36})?$/.test(value) ? value : "/reports";
+  return /^\/(users|reports|messages|stories|groups)(\/[0-9a-f-]{36})?$/.test(value) ? value : "/reports";
 }
 
 export async function suspendUser(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {

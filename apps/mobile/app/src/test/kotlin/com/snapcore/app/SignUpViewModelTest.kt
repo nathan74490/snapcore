@@ -314,6 +314,9 @@ class SignUpViewModelTest {
 
         assertEquals(listOf("name", "birthday", "username", "birthday", "username"),
             analytics.events.filter { it.first == AnalyticsEvents.SIGNUP_STEP_VIEWED }.map { it.second["step"] })
+        assertEquals(listOf("name", "birthday", "birthday"),
+            analytics.events.filter { it.first == AnalyticsEvents.SIGNUP_STEP_COMPLETED }.map { it.second["step"] })
+        assertEquals(mapOf("step" to "username"), analytics.propertiesOf(AnalyticsEvents.SIGNUP_STEP_BACK))
 
         auth.failCodeRequestWith = ApiException(400, "Numéro de téléphone invalide : vérifie le pays et le numéro")
         vm.next()
@@ -327,6 +330,36 @@ class SignUpViewModelTest {
     }
 
     @Test
+    fun `analytics, code SMS envoye puis renvoye, pseudo propose, et fin du parcours avec sa duree`() = runTest(dispatcher) {
+        val analytics = RecordingAnalytics()
+        var now = 0L
+        vm = SignUpViewModel(auth, accounts, pending, today = { today }, random = Random(7), checkDelayMs = 10,
+            analytics = analytics, countryCode = "FR", clock = { now })
+        advanceUntilIdle()
+        reachUsername()
+        now = 30_000
+        reachCode()
+        vm.resendCode()
+        advanceUntilIdle()
+        now = 95_000
+        vm.useSimulatedCode()
+        advanceUntilIdle()
+
+        val sms = analytics.events.filter { it.first == AnalyticsEvents.SMS_CODE_REQUESTED }.map { it.second }
+        assertEquals(listOf(
+            mapOf("flow" to "signup", "resend" to false, "country" to "FR"),
+            mapOf("flow" to "signup", "resend" to true, "country" to "FR"),
+        ), sms)
+        val username = analytics.events.single { it.first == AnalyticsEvents.SIGNUP_STEP_COMPLETED && it.second["step"] == "username" }.second
+        assertEquals("suggested", username["username_source"])
+        assertEquals(30_000L, username["duration_ms"])
+        assertEquals(mapOf("flow" to "signup"), analytics.propertiesOf(AnalyticsEvents.SMS_CODE_AUTOFILLED))
+        assertEquals(mapOf("outcome" to "registered", "resuming" to false, "duration_ms" to 95_000L),
+            analytics.propertiesOf(AnalyticsEvents.SIGNUP_FINISHED))
+        assertFalse("jamais le numéro", analytics.events.any { e -> e.second.values.any { "0612" in it.toString() || "+33" in it.toString() } })
+    }
+
+    @Test
     fun `analytics, connexion refusee avec le code HTTP puis reussie`() = runTest(dispatcher) {
         val analytics = RecordingAnalytics()
         val login = LoginViewModel(auth, SessionResolver(auth, accounts, pending), analytics, countryCode = "FR")
@@ -336,7 +369,8 @@ class SignUpViewModelTest {
         auth.failSignInWith = ApiException(503, "Service indisponible")
         login.submit()
         advanceUntilIdle()
-        assertEquals(mapOf("reason" to "http_503"), analytics.propertiesOf(AnalyticsEvents.LOGIN_FAILED))
+        assertEquals(mapOf("method" to "email", "reason" to "http_503"), analytics.propertiesOf(AnalyticsEvents.LOGIN_FAILED))
+        assertEquals(mapOf("to" to "email"), analytics.propertiesOf(AnalyticsEvents.LOGIN_METHOD_SWITCHED))
 
         auth.failSignInWith = null
         login.submit()

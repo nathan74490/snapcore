@@ -99,6 +99,8 @@ class SignUpViewModel(
     private val checkDelayMs: Long = 400,
     private val analytics: Analytics = NoAnalytics,
     countryCode: String? = null,
+    /** Horloge en millisecondes, pour les durées envoyées à l'analytics. */
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(SignUpState(resuming = resuming, phone = PhoneEntry(Countries.byCode(countryCode))))
     val state: StateFlow<SignUpState> = _state.asStateFlow()
@@ -109,16 +111,37 @@ class SignUpViewModel(
         val before = _state.value.step
         _state.update(transform)
         val after = _state.value.step
+        if (after > before) captureCompleted(before)
         if (after != before) captureStep(after)
     }
+
+    private val startedAt = clock()
+    private var stepShownAt = startedAt
+
+    /** Origine du pseudo retenu : proposé d'office, proposé après « actualiser », ou tapé. */
+    private var usernameSource = "suggested"
 
     init {
         captureStep(_state.value.step)
     }
 
     /** Entonnoir de l'inscription (ADR-008) : chaque étape affichée, y compris après un retour en arrière. */
-    private fun captureStep(step: Int) =
-        analytics.capture(AnalyticsEvents.SIGNUP_STEP_VIEWED, mapOf("step" to SignUpStep.analyticsName(step)))
+    private fun captureStep(step: Int) {
+        stepShownAt = clock()
+        analytics.capture(AnalyticsEvents.SIGNUP_STEP_VIEWED,
+            mapOf("step" to SignUpStep.analyticsName(step), "step_index" to step, "resuming" to _state.value.resuming))
+    }
+
+    /** Étape validée : temps passé dessus, et pour le pseudo, d'où il vient. */
+    private fun captureCompleted(step: Int) {
+        val properties = mutableMapOf<String, Any>("step" to SignUpStep.analyticsName(step), "step_index" to step,
+            "duration_ms" to clock() - stepShownAt)
+        if (step == SignUpStep.USERNAME) properties["username_source"] = usernameSource
+        analytics.capture(AnalyticsEvents.SIGNUP_STEP_COMPLETED, properties)
+    }
+
+    private fun captureFinished(outcome: String) = analytics.capture(AnalyticsEvents.SIGNUP_FINISHED,
+        mapOf("outcome" to outcome, "resuming" to _state.value.resuming, "duration_ms" to clock() - startedAt))
 
     private fun captureFailure(e: Throwable) = analytics.capture(AnalyticsEvents.SIGNUP_FAILED,
         mapOf("step" to SignUpStep.analyticsName(_state.value.step), "reason" to e.analyticsReason()))
@@ -131,6 +154,7 @@ class SignUpViewModel(
     // En minuscules dès la saisie : c'est ainsi que le backend l'enregistre (ADR-014).
     fun onUsername(raw: String) {
         val value = raw.lowercase().filterNot(Char::isWhitespace)
+        usernameSource = "typed"
         update { it.copy(username = value, error = null) }
         checkUsername(value, delayMs = checkDelayMs)
     }
@@ -138,7 +162,10 @@ class SignUpViewModel(
     fun editUsername() = update { it.copy(editingUsername = true) }
 
     /** Bouton « actualiser » du champ : un autre pseudo proposé d'office. */
-    fun suggestAnother() = proposeUsername()
+    fun suggestAnother() {
+        usernameSource = "refreshed"
+        proposeUsername()
+    }
 
     // --- Numéro et code ----------------------------------------------------------------------
 
@@ -155,7 +182,10 @@ class SignUpViewModel(
     fun resendCode() = sendCode()
 
     /** « Utiliser ce code » sur le SMS simulé : comme la saisie automatique d'un vrai SMS. */
-    fun useSimulatedCode() = _state.value.phone.simulatedCode?.let(::onCode)
+    fun useSimulatedCode() = _state.value.phone.simulatedCode?.let {
+        analytics.capture(AnalyticsEvents.SMS_CODE_AUTOFILLED, mapOf("flow" to "signup"))
+        onCode(it)
+    }
 
     /** @return false si on était à la première étape (l'écran se ferme, ou la reprise est abandonnée). */
     fun back(): Boolean {
@@ -166,6 +196,7 @@ class SignUpViewModel(
             }
             return false
         }
+        analytics.capture(AnalyticsEvents.SIGNUP_STEP_BACK, mapOf("step" to SignUpStep.analyticsName(_state.value.step)))
         update { it.copy(step = it.step - 1, error = null, loading = false) }
         return true
     }
@@ -201,6 +232,7 @@ class SignUpViewModel(
         viewModelScope.launch {
             try {
                 val sent = auth.requestPhoneCode(number)
+                analytics.capture(AnalyticsEvents.SMS_CODE_REQUESTED, smsCodeProperties("signup", _state.value.phone))
                 update { it.copy(loading = false, step = SignUpStep.CODE, phone = it.phone.codeSent(sent)) }
             } catch (e: Throwable) {
                 captureFailure(e)
@@ -227,6 +259,7 @@ class SignUpViewModel(
             // Ce numéro a peut-être déjà un compte : on se connecte simplement, sans en créer un second.
             try {
                 val existing = accounts.me()
+                captureFinished("existing_account")
                 update { it.copy(loading = false, session = Session.Ready(existing)) }
                 return@launch
             } catch (e: ApiException) {
@@ -301,6 +334,7 @@ class SignUpViewModel(
             try {
                 val account = accounts.register(registration)
                 pending.clear()
+                captureFinished("registered")
                 update { it.copy(loading = false, session = Session.Ready(account)) }
             } catch (e: ApiException) {
                 captureFailure(e)
@@ -321,6 +355,10 @@ class SignUpViewModel(
         else -> state.copy(error = e.message)
     }
 }
+
+/** Propriétés d'un code SMS envoyé (ADR-034) : le pays du numéro, jamais le numéro. */
+internal fun smsCodeProperties(flow: String, phone: PhoneEntry): Map<String, Any> =
+    mapOf("flow" to flow, "resend" to (phone.sendCount > 0), "country" to phone.country.code)
 
 internal fun Throwable.userMessage(): String = when (this) {
     is UserFacingException -> message!!

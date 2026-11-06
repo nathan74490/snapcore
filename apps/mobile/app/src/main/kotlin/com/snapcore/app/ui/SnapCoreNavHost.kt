@@ -232,8 +232,14 @@ fun SnapCoreNavHost(
         composable<StartRoute>(exitTransition = { fadeOut(tween(180)) }) { StartScreen(onSession = ::go) }
         composable<WelcomeRoute> { AccessibleScreen("Bienvenue sur SnapCore") {
             WelcomeScreen(
-                onLogin = { navController.navigate(LoginRoute) },
-                onSignUp = { navController.navigate(SignUpRoute) },
+                onLogin = {
+                    analytics.capture(AnalyticsEvents.WELCOME_CHOICE, mapOf("choice" to "login"))
+                    navController.navigate(LoginRoute)
+                },
+                onSignUp = {
+                    analytics.capture(AnalyticsEvents.WELCOME_CHOICE, mapOf("choice" to "signup"))
+                    navController.navigate(SignUpRoute)
+                },
             )
         }}
         composable<LoginRoute> { AccessibleScreen("Connexion") { LoginScreen(onBack = navController::popBackStack, onSession = ::go) }}
@@ -456,7 +462,12 @@ fun SnapCoreNavHost(
             PaywallScreen(
                 returnedFromCheckout = route.returnedFromCheckout,
                 fromOnboarding = route.fromOnboarding,
-                onBack = navController::popBackStack,
+                onBack = {
+                    // Fermé sans payer : flèche, ou « Plus tard » en fin de premiers pas.
+                    if (account?.isPremium != true) analytics.capture(AnalyticsEvents.PAYWALL_DISMISSED,
+                        mapOf("source" to if (route.fromOnboarding) "onboarding" else "other"))
+                    navController.popBackStack()
+                },
                 onAccountChanged = { account = it },
                 initialAccount = account,
             )

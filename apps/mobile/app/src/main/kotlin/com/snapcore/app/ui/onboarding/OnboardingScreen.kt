@@ -114,7 +114,7 @@ fun OnboardingScreen(
     LaunchedEffect(state.step) { if (state.step == OnboardingStep.DONE) onDone() }
     LaunchedEffect(avatarChange) { avatarChange?.let { vm.applyAvatar(it); onAvatarChangeApplied() } }
     // Pas de retour vers l'inscription : le compte existe déjà, la touche retour passe l'écran.
-    BackHandler { if (state.step != OnboardingStep.DONE) vm.finish() }
+    BackHandler { vm.quit() }
 
     StatusBarIcons(dark = true)
     val background = if (state.step == OnboardingStep.ADD_FRIENDS || state.step == OnboardingStep.INVITE) SnapColors.Background else Color.White
@@ -140,7 +140,7 @@ fun OnboardingScreen(
                     OnboardingStep.ADD_FRIENDS -> AddFriendsStep(state, vm)
                     OnboardingStep.INVITE -> InviteStep(state, vm, username)
                     OnboardingStep.AVATAR -> AvatarStep(state, onOpenAvatarEditor)
-                    OnboardingStep.NOTIFICATIONS -> NotificationsStep(vm::finish)
+                    OnboardingStep.NOTIFICATIONS -> NotificationsStep(vm::onNotificationsPermission, vm::skipNotifications, vm::finish)
                     OnboardingStep.DONE -> Unit
                 }
                 }
@@ -414,8 +414,8 @@ private fun AvatarStep(state: OnboardingState, onCreate: () -> Unit) {
  * ressemble une notification. « Plus tard » termine sans rien demander.
  */
 @Composable
-private fun NotificationsStep(onDone: () -> Unit) {
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { onDone() }
+private fun NotificationsStep(onAnswer: (Boolean) -> Unit, onLater: () -> Unit, onDone: () -> Unit) {
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission(), onAnswer)
     Column(Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         GhostSays(GhostLines.notifications.text, GhostLines.notifications.mood, Modifier.padding(top = 8.dp), ghostSize = 96.dp)
         Spacer(Modifier.weight(1f))
@@ -426,7 +426,7 @@ private fun NotificationsStep(onDone: () -> Unit) {
         }, height = 50.dp, modifier = Modifier.padding(horizontal = 24.dp))
         Text("Plus tard", color = SnapColors.Grey, fontWeight = FontWeight.Bold, fontSize = 15.sp,
             modifier = Modifier.padding(vertical = 12.dp).clip(RoundedCornerShape(8.dp))
-                .clickable(role = Role.Button, onClickLabel = "terminer sans activer les notifications", onClick = onDone)
+                .clickable(role = Role.Button, onClickLabel = "terminer sans activer les notifications", onClick = onLater)
                 .padding(horizontal = 16.dp, vertical = 10.dp))
     }
 }
