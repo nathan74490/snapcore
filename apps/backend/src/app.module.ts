@@ -6,6 +6,7 @@ import { AvatarsModule } from "./modules/avatars/avatars.module";
 import { FriendshipsModule } from "./modules/friendships/friendships.module";
 import { GroupsModule } from "./modules/groups/groups.module";
 import { IdentityModule } from "./modules/identity/identity.module";
+import { LiveModule } from "./modules/live/live.module";
 import { LocationModule } from "./modules/location/location.module";
 import { MessagesModule } from "./modules/messages/messages.module";
 import { ModerationModule } from "./modules/moderation/moderation.module";
@@ -31,6 +32,7 @@ import { SharedModule } from "./shared/shared.module";
     AvatarsModule,
     LocationModule,
     GroupsModule,
+    LiveModule,
   ],
   controllers: [HealthController],
 })

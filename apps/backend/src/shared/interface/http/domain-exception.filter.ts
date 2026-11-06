@@ -8,6 +8,7 @@ import {
   NotFoundError,
   UnauthenticatedError,
   UniqueViolationError,
+  UnavailableError,
   ValidationError,
 } from "../../domain/errors";
 
@@ -19,6 +20,7 @@ const STATUS_BY_ERROR: Array<[new (...args: never[]) => DomainError, HttpStatus]
   [ValidationError, HttpStatus.BAD_REQUEST],
   [UnauthenticatedError, HttpStatus.UNAUTHORIZED],
   [GoneError, HttpStatus.GONE],
+  [UnavailableError, HttpStatus.SERVICE_UNAVAILABLE],
 ];
 
 @Catch(DomainError)

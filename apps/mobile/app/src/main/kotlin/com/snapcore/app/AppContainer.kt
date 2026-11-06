@@ -49,6 +49,8 @@ import com.snapcore.app.domain.StoryService
 import com.snapcore.app.domain.SubscriptionService
 import com.snapcore.app.push.FcmDeviceRegistry
 import com.snapcore.app.push.PushDetailsResolver
+import fr.echimine.live.core.LiveClient
+import fr.echimine.live.core.LiveSdk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -143,4 +145,13 @@ class AppContainer(context: Context) {
 
     /** Incrustation du filtre choisi sur l'aperçu, avant l'envoi (ADR-022). */
     val filterRenderer: FilterRenderer = MediaFilterRenderer(context.applicationContext, capturesDir)
+
+    /**
+     * SDK Live commun (ADR-035) : un jeton de Participant frais signé par le backend à chaque
+     * connexion, jamais mis en cache. Les écrans du SDK l'utilisent via `LiveSdk.client`.
+     */
+    val live: LiveClient = LiveSdk.configure(
+        serverUrl = BuildConfig.LIVE_SERVER_URL,
+        tokenProvider = { api.liveParticipantToken().token },
+    )
 }

@@ -147,3 +147,4 @@ mention contraire. Un compte dont la suppression est demandée est traité comme
 | POST | `/reports` | Signale un compte, un message reçu ou une story visible `{ targetType, targetId, reason }` | 021 |
 | POST | `/devices` | Enregistre le token FCM de l'appareil `{ token }` (upsert) | 018 |
 | DELETE | `/devices/:token` | Au logout : retire le token de l'appareil | 018 |
+| POST | `/live/participant-token` | Jeton de Participant du SDK Live commun `{ token }` (JWT HS256, 5 min) ; 503 sans `LIVE_SDK_SECRET` | 035 |

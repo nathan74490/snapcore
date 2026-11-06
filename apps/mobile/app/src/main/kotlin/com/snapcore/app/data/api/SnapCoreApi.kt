@@ -205,7 +205,15 @@ interface SnapCoreApi {
 
     @POST("group-messages/{messageId}/view")
     suspend fun viewGroupSnap(@Path("messageId") messageId: String): SnapViewUrlDto
+
+    // --- SDK Live commun (ADR-035) ---
+    /** Jeton de Participant frais, demandé par le SDK à chaque connexion au serveur Live. */
+    @POST("live/participant-token")
+    suspend fun liveParticipantToken(): LiveTokenDto
 }
+
+@Serializable
+data class LiveTokenDto(val token: String)
 
 // Miroirs de GroupView, GroupMessageView et GroupSummary (packages/types, ADR-032).
 @Serializable

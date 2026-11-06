@@ -78,7 +78,11 @@ import com.snapcore.app.ui.home.STORIES_TAB
 import com.snapcore.app.ui.plus.PaywallScreen
 import com.snapcore.app.ui.profile.ProfileScreen
 import com.snapcore.app.ui.stories.MyStoryScreen
+import com.snapcore.app.ui.stories.SnapLiveTheme
 import com.snapcore.app.ui.stories.StoryPlayerScreen
+import fr.echimine.live.core.Live
+import fr.echimine.live.ui.LiveLaunchScreen
+import fr.echimine.live.ui.LiveScreen
 import kotlinx.serialization.Serializable
 import java.io.File
 
@@ -107,6 +111,9 @@ private val HOME_TAB_SCREENS = listOf("Map", "Chat", "Camera", "Stories")
 @Serializable private data class StoryPlayerRoute(val title: String, val authorId: String?, val startItemId: String? = null)
 // openSnapId : snap à lire dès l'ouverture, touché depuis la liste des chats.
 @Serializable private data class ConversationRoute(val friendId: String, val username: String, val photoUrl: String?, val firstName: String? = null, val openSnapId: String? = null)
+// SDK Live commun (ADR-035) : un Live ouvert depuis la page Stories, ou lancé par l'utilisateur.
+@Serializable private data class LiveRoute(val liveId: String)
+@Serializable private object LiveLaunchRoute
 
 // Le média capturé transite par son chemin dans le cache privé de l'app (ADR-011).
 @Serializable private data class PreviewRoute(val path: String, val kind: MediaKind)
@@ -333,9 +340,24 @@ fun SnapCoreNavHost(
                         val start = story.items.getOrNull(firstUnviewedIndex(story.items))?.id
                         navController.navigate(StoryPlayerRoute(story.author.displayName, story.author.id, start))
                     },
+                    onOpenLive = { liveId -> navController.navigate(LiveRoute(liveId)) },
+                    onLaunchLive = { navController.navigate(LiveLaunchRoute) },
                 )
             }
         }
+        // Écrans du SDK Live (ADR-035), aux couleurs de SnapCore ; ils quittent le Live en disparaissant.
+        composable<LiveRoute> { entry -> AccessibleScreen("Live") {
+            SnapLiveTheme { LiveScreen(entry.toRoute<LiveRoute>().liveId, onClose = navController::popBackStack) }
+        }}
+        composable<LiveLaunchRoute> { AccessibleScreen("Lancer un Live") {
+            // Le Live lancé s'affiche à la place de l'écran de lancement : ✕ revient aux stories.
+            var launched by remember { mutableStateOf<Live?>(null) }
+            SnapLiveTheme {
+                val live = launched
+                if (live == null) LiveLaunchScreen(onLaunched = { launched = it }, onClose = navController::popBackStack)
+                else LiveScreen(live, onClose = navController::popBackStack)
+            }
+        }}
         composable<PreviewRoute> { entry -> AccessibleScreen("Aperçu du snap") {
             val route = entry.toRoute<PreviewRoute>()
             PreviewScreen(

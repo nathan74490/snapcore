@@ -44,14 +44,20 @@ import com.snapcore.app.ui.theme.SnapColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory) -> Unit, modifier: Modifier = Modifier) {
+fun StoriesScreen(
+    account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory) -> Unit,
+    onOpenLive: (liveId: String) -> Unit, onLaunchLive: () -> Unit, modifier: Modifier = Modifier,
+) {
     val vm = containerViewModel { StoriesViewModel(it.stories, it.outbox.items, it.outbox::retry) }
     val state by vm.state.collectAsStateWithLifecycle()
-    LifecycleResumeEffect(Unit) { vm.refresh(showIndicator = false); onPauseOrDispose {} }
+    // Lives en cours de toutes les App membres, sous les stories (ADR-035).
+    val livesVm = containerViewModel { LivesViewModel(it.live::lives) }
+    val lives by livesVm.state.collectAsStateWithLifecycle()
+    LifecycleResumeEffect(Unit) { vm.refresh(showIndicator = false); livesVm.refresh(); onPauseOrDispose {} }
     // TalkBack (ADR-033) : la rangée de bulles répète les cartes « Stories récentes » ; on ne la lit pas,
     // les cartes disent tout (nom, nouveau ou déjà vu, date).
     val screenReader = rememberScreenReaderOn()
-    SnapRefresh(state.loading, { vm.refresh() }, modifier.fillMaxSize()) {
+    SnapRefresh(state.loading, { vm.refresh(); livesVm.refresh() }, modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp)) {
             // Comme Snapchat : la rangée ne montre que les stories des amis, Ma story a sa propre carte.
             if (state.friends.isNotEmpty()) {
@@ -133,6 +139,7 @@ fun StoriesScreen(account: Account, onOpenMine: () -> Unit, onPlay: (FriendStory
                     if(pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
+            livesSection(lives, onOpenLive, onLaunchLive)
         }
     }
 }

@@ -34,6 +34,8 @@ android {
         // Snap Map (ADR-031) : jeton public Mapbox (pk.…) ; vide = la carte affiche un message au lieu des tuiles.
         resValue("string", "mapbox_access_token", localProperty("mapboxAccessToken"))
         buildConfigField("boolean", "MAPBOX_CONFIGURED", localProperty("mapboxAccessToken").startsWith("pk.").toString())
+        // Serveur Live commun (ADR-035) ; liveServerUrl dans local.properties pour un serveur local.
+        buildConfigField("String", "LIVE_SERVER_URL", "\"${localProperty("liveServerUrl").ifBlank { "https://live.echimine.fr" }}\"")
         buildConfigField("String", "POSTHOG_HOST", "\"${localProperty("posthogHost").ifBlank { "https://eu.i.posthog.com" }}\"")
     }
 
@@ -114,6 +116,8 @@ dependencies {
     implementation(libs.mapbox.maps)
     implementation(libs.mapbox.compose)
     implementation(libs.play.services.location)
+    // Lives en cours de toutes les App membres, sous les stories (ADR-035) : écrans Compose du SDK Live.
+    implementation(libs.live.sdk.ui)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

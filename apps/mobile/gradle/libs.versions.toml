@@ -19,6 +19,8 @@ camerax = "1.6.2"
 media3 = "1.11.1"
 cameraKit = "1.50.0"
 posthog = "3.72.2"
+# SDK Live commun (ADR-035) : pas encore de tag semver, JitPack construit le commit de main.
+liveSdk = "9b2f639c6e"
 mapbox = "11.32.0"
 playServicesLocation = "21.3.0"
 
@@ -61,6 +63,7 @@ media3-transformer = { module = "androidx.media3:media3-transformer", version.re
 camerakit = { module = "com.snap.camerakit:camerakit", version.ref = "cameraKit" }
 camerakit-support-camerax = { module = "com.snap.camerakit:support-camerax", version.ref = "cameraKit" }
 posthog-android = { module = "com.posthog:posthog-android", version.ref = "posthog" }
+live-sdk-ui = { module = "com.github.echimine.live-sdk:ui", version.ref = "liveSdk" }
 mapbox-maps = { module = "com.mapbox.maps:android-ndk27", version.ref = "mapbox" }
 mapbox-compose = { module = "com.mapbox.extension:maps-compose-ndk27", version.ref = "mapbox" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServicesLocation" }
